@@ -36,6 +36,10 @@ sources:
     label: "Session-local Schedule subsystem reference"
   - path: docs/subsystems/workflow.md
     label: "Workflow subsystem reference"
+  - path: docs/tool-catalog.md
+    lineStart: 1039
+    lineEnd: 1045
+    label: "schedule_create generated tool description"
   - path: docs/glossary.md
     lineStart: 35
     lineEnd: 45
@@ -197,7 +201,6 @@ The generated tool-catalog description states the constraint the same way the mo
 > date-time or local date/time object, or safe-integer every_seconds of at least 300.
 > Fixed-rate reminders stay creation-aligned, skip missed occurrences, and batch one
 > latest occurrence per overdue rule.
-```
 
 Every management operation — create, list, delete — first awaits `ctx.sessions.flush(session)`; a barrier failure returns `persistence_uncertain` rather than guessing whether an uncommitted write actually landed. Create and an actual delete wait on a second barrier after appending, for the same reason.
 

@@ -36,6 +36,10 @@ sources:
     label: "会话内 Schedule 子系统参考(中文)"
   - path: docs/subsystems/workflow.zh.md
     label: "Workflow 子系统参考(中文)"
+  - path: docs/tool-catalog.md
+    lineStart: 1039
+    lineEnd: 1045
+    label: "schedule_create 生成的工具描述"
   - path: docs/glossary.zh.md
     lineStart: 35
     lineEnd: 45
@@ -190,14 +194,13 @@ Schedule 在架构上恰恰与 job 相反:它**没有 service**,没有可变数�
 - `at`——一个显式的绝对时间目标,可以是带偏移量的 RFC 3339 字符串,也可以是 `{ date, time, time_zone }`,并且必须显式给出 UTC 或 IANA 时区。Schedule 从不读取浏览器、会话或模型上下文来推断时区——调用方(或者一个向模型提供上下文的 `dsh-time-context` overlay)必须显式给出。
 - `every_seconds`——固定速率间隔,最小五分钟,以创建时刻为锚点。
 
-```json
-// docs/tool-catalog.md:1039-1045(schedule_create 描述)
-"Create one reminder in the current session. Supply a non-empty prompt and exactly
- one selector: a positive safe-integer after_seconds delay, at as a strict offset
- date-time or local date/time object, or safe-integer every_seconds of at least 300.
- Fixed-rate reminders stay creation-aligned, skip missed occurrences, and batch one
- latest occurrence per overdue rule."
-```
+生成的工具目录里,`schedule_create` 的描述用模型实际读到的措辞陈述了同一约束:
+
+> Create one reminder in the current session. Supply a non-empty prompt and exactly
+> one selector: a positive safe-integer after_seconds delay, at as a strict offset
+> date-time or local date/time object, or safe-integer every_seconds of at least 300.
+> Fixed-rate reminders stay creation-aligned, skip missed occurrences, and batch one
+> latest occurrence per overdue rule.
 
 每一次管理操作——创建、列出、删除——都会先等待 `ctx.sessions.flush(session)`;如果这个持久化屏障失败,返回的是 `persistence_uncertain`,而不是去猜测一次未确认的写入到底有没有真正落地。创建操作和真正发生的删除操作,在追加事件之后还会再等待第二道屏障。
 
@@ -242,7 +245,7 @@ export abstract class WorkflowEngine extends Service {
 
 ### 为什么用 worker thread,以及它不是什么
 
-每次运行使用一个 `node:worker_threads` worker,让同步的脚本循环不占用宿主的事件循环,并让 `dispose()` 拥有真正的最终停止手段(`worker.terminate()`)。[worker-thread 引擎的 README](../../../packages/workflow/workflow-worker-thread/README.md) 明确说明了这**不是**什么边界:「worker 内的 `node:vm` 是一种 API 塑形机制,不是安全边界:一段逃逸的脚本可以用宿主进程的权限重新拿到 Node 的能力。」workflow 脚本与模型现有的 bash 访问权限具有相同的信任前提——隔离带来的是崩溃/挂起的containment,以及值跨越回宿主时的一个 JSON 序列化边界,而不是针对恶意脚本的沙箱防护。
+每次运行使用一个 `node:worker_threads` worker,让同步的脚本循环不占用宿主的事件循环,并让 `dispose()` 拥有真正的最终停止手段(`worker.terminate()`)。[worker-thread 引擎的 README](../../../packages/workflow/workflow-worker-thread/README.md) 明确说明了这**不是**什么边界:「worker 内的 `node:vm` 是一种 API 塑形机制,不是安全边界:一段逃逸的脚本可以用宿主进程的权限重新拿到 Node 的能力。」workflow 脚本与模型现有的 bash 访问权限具有相同的信任前提——隔离带来的是对崩溃/挂起的遏制,以及值跨越回宿主时的一个 JSON 序列化边界,而不是针对恶意脚本的沙箱防护。
 
 hook 的严重误用——未知的 `agent()` 选项、超出受支持结构化输出子集的 schema、触发的上限、provider 启动失败——都会抛出一个 `fatal: true` 的 `WorkflowError`,并且 `parallel()`/`pipeline()` 会**重新抛出**致命错误,而不是把该条目映射为 `null`。这是一个刻意的严格性选择:一个拼写错误的选项必须让脚本大声地失败,而不是消解成一个和普通子任务失败无法区分的东西。普通的子任务失败(一个跑完了但没有成功完成的 subagent)*确实*会映射为 `null`——脚本本身应当据此分支处理。
 

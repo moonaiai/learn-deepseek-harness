@@ -15,8 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          # Caching disabled while diagnosing a reproducible npm ci hang —
+          # ruling out a corrupted/stale actions/cache entry as the cause.
       - name: Update npm
         # The npm 10.8.2 bundled with setup-node's Node 20 image has a
         # recurring "Exit handler never called!" bug (npm/cli#8974) that
@@ -25,11 +25,10 @@ jobs:
         # Node 20.17+ and doesn't carry the bug.
         run: npm install -g npm@11
       - name: Install dependencies
-        # A bare `npm ci` has been observed to hang past its `timeout`
-        # deadline: `timeout` alone sends SIGTERM, which a stalled raw
-        # https.get() in a postinstall script (esbuild's) can ignore. `-k 10`
-        # force-SIGKILLs 10s after SIGTERM if the process is still alive.
-        run: timeout -k 10 180 npm ci || timeout -k 10 180 npm ci || npm ci
+        # `npm ci` has been reproducibly hanging on this runner pool through
+        # every attempt (each force-killed at its 180s timeout). Verbose
+        # logging surfaces exactly which package/request it's stuck on.
+        run: timeout -k 10 180 npm ci --loglevel verbose
         working-directory: web
       - name: Generate search index
         run: npm run generate
