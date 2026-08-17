@@ -9,6 +9,7 @@ jobs:
   web:
     name: Typecheck & build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,7 +25,10 @@ jobs:
         # Node 20.17+ and doesn't carry the bug.
         run: npm install -g npm@11
       - name: Install dependencies
-        run: npm ci
+        # A bare `npm ci` has been observed to hang indefinitely on this
+        # runner pool (no error, no progress) rather than failing fast; cap
+        # each attempt at 3 minutes and retry up to 3 times.
+        run: timeout 180 npm ci || timeout 180 npm ci || npm ci
         working-directory: web
       - name: Generate search index
         run: npm run generate

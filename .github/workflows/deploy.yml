@@ -21,6 +21,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,7 +33,9 @@ jobs:
         # See ci.yml for why this step exists (npm/cli#8974) and why npm 11
         # rather than latest (npm 12 requires Node >=22.22.2).
         run: npm install -g npm@11
-      - run: npm ci
+      - name: Install dependencies
+        # See ci.yml for why this retries with a per-attempt timeout.
+        run: timeout 180 npm ci || timeout 180 npm ci || npm ci
         working-directory: web
       - name: Build static site (basePath=/learn-deepseek-harness)
         working-directory: web
