@@ -17,10 +17,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Update npm
-        # The npm version bundled with setup-node's Node 20/22/24 images has a
+        # The npm 10.8.2 bundled with setup-node's Node 20 image has a
         # recurring "Exit handler never called!" bug (npm/cli#8974) that
-        # deterministically kills `npm ci` here; a current npm release fixes it.
-        run: npm install -g npm@latest
+        # deterministically kills `npm ci` here. npm 12 requires Node
+        # >=22.22.2 so isn't installable under Node 20; npm 11 supports
+        # Node 20.17+ and doesn't carry the bug.
+        run: npm install -g npm@11
       - name: Install dependencies
         run: npm ci
         working-directory: web
