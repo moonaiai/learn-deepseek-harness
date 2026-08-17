@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Generate search index
+        run: npm run generate
+        working-directory: web
+      - name: Type-check
+        run: npx tsc --noEmit
+        working-directory: web
+      - name: Build (static export)
+        run: npm run build
+        working-directory: web

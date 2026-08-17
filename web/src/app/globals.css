@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 is configured CSS-first (no tailwind.config.*): the `@custom-variant`
+ * below teaches `dark:` utilities to key off a `.dark` class on <html> (toggled by
+ * ThemeToggle, initialized pre-paint by the inline script in app/layout.tsx),
+ * and the two `:root`/`.dark` blocks below are the single source of every
+ * color token consumed as `bg-[--color-*]` / `text-[--color-*]` across components.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f8fafc;
+  --color-surface-hover: #eef2f7;
+  --color-border: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-faint: #94a3b8;
+}
+
+.dark {
+  --color-bg: #0b0f19;
+  --color-surface: #131a2b;
+  --color-surface-hover: #1b2337;
+  --color-border: #232c42;
+  --color-text: #e5e9f5;
+  --color-text-muted: #9aa5c0;
+  --color-text-faint: #5c6687;
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* ---------------------------------------------------------------------- */
+/* prose-course: styling for server-rendered chapter/doc Markdown bodies.  */
+/* Deliberately hand-rolled rather than @tailwindcss/typography so heading */
+/* anchors, code-block language tags, and mermaid containers share the     */
+/* same token set as the rest of the app.                                 */
+/* ---------------------------------------------------------------------- */
+
+.prose-course {
+  max-width: 72ch;
+  line-height: 1.75;
+  color: var(--color-text);
+}
+
+.prose-course > :first-child {
+  margin-top: 0;
+}
+
+.prose-course h1 {
+  display: none; /* the page template renders its own <h1> from frontmatter title */
+}
+
+.prose-course h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 5rem;
+}
+
+.prose-course h3 {
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  scroll-margin-top: 5rem;
+}
+
+.prose-course p {
+  margin-top: 0;
+  margin-bottom: 1.1rem;
+  color: var(--color-text);
+}
+
+.prose-course a {
+  color: #3b82f6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dark .prose-course a {
+  color: #60a5fa;
+}
+
+.prose-course ul,
+.prose-course ol {
+  margin-bottom: 1.1rem;
+  padding-left: 1.5rem;
+}
+.prose-course ul {
+  list-style: disc;
+}
+.prose-course ol {
+  list-style: decimal;
+}
+.prose-course li {
+  margin-bottom: 0.35rem;
+}
+
+.prose-course blockquote {
+  margin: 1.5rem 0;
+  border-left: 3px solid #3b82f6;
+  border-radius: 0.25rem;
+  background: linear-gradient(to right, rgba(59, 130, 246, 0.08), transparent);
+  padding: 0.75rem 1.25rem;
+  color: var(--color-text-muted);
+}
+
+.prose-course table {
+  display: block;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.prose-course th,
+.prose-course td {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.prose-course th {
+  background: var(--color-surface);
+  font-weight: 600;
+}
+
+.prose-course code:not(pre code) {
+  border-radius: 0.25rem;
+  background: var(--color-surface);
+  padding: 0.15rem 0.4rem;
+  font-size: 0.875em;
+  border: 1px solid var(--color-border);
+}
+
+.prose-course pre {
+  position: relative;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 1rem 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.prose-course pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.prose-course pre[data-language]::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 0.4rem;
+  right: 0.75rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-faint);
+}
+
+.prose-course hr {
+  margin: 2rem 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
+}
+
+/* highlight.js theme, tuned to the same token palette as the rest of the site */
+.hljs {
+  color: var(--color-text);
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal {
+  color: #c084fc;
+}
+.hljs-string,
+.hljs-attr {
+  color: #4ade80;
+}
+.hljs-number {
+  color: #fb923c;
+}
+.hljs-comment {
+  color: var(--color-text-faint);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-function .hljs-title {
+  color: #60a5fa;
+}
+.hljs-built_in,
+.hljs-type {
+  color: #38bdf8;
+}

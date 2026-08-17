@@ -1,0 +1,48 @@
+{
+  "nav": {
+    "home": "Home",
+    "glossary": "Glossary",
+    "conceptMap": "Concept Map",
+    "search": "Search",
+    "searchPlaceholder": "Search chapters, terms…",
+    "github": "GitHub",
+    "sourceRepo": "deepseek-harness source",
+    "toggleTheme": "Toggle theme",
+    "toggleSidebar": "Toggle sidebar"
+  },
+  "home": {
+    "kicker": "20 chapters · 5 modules · Bilingual",
+    "title": "Learn DeepSeek Harness",
+    "subtitle": "From the Cordis plugin kernel to the agent loop, tool pipeline, capability seams, subagents, skills, compaction, and background work — a systematic architecture deep-dive, every chapter grounded in real source.",
+    "cta": "Start reading",
+    "ctaSecondary": "View the concept map",
+    "modulesTitle": "Course modules",
+    "anchorNote": "Every source link is anchored to commit",
+    "progressTitle": "Your progress"
+  },
+  "chapter": {
+    "sourcesTitle": "Sources cited in this chapter",
+    "prev": "Previous",
+    "next": "Next",
+    "markComplete": "Mark as complete",
+    "markIncomplete": "Mark as incomplete",
+    "onThisPage": "On this page",
+    "moduleLabel": "Module"
+  },
+  "sidebar": {
+    "title": "Course outline",
+    "progress": "completed"
+  },
+  "glossary": {
+    "title": "Glossary",
+    "subtitle": "Core DeepSeek Harness vocabulary — capability seams, agent scope, goals, Ralph, and more."
+  },
+  "conceptMap": {
+    "title": "Concept Map",
+    "subtitle": "A global view of package dependencies and capability seams, adapted directly from the project's own generated docs."
+  },
+  "footer": {
+    "sourceNote": "Content anchored to deepseek-harness commit",
+    "license": "This site is MIT licensed"
+  }
+}
