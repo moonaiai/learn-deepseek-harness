@@ -111,13 +111,7 @@ Notice what is missing: tool arguments. The request identifies *which* tool call
 
 ### Dispatch: policy first, then the waterfall
 
-`ApprovalService.request(req)` runs a fixed sequence, all inside `packages/interaction/user-approval/src/index.ts`:
-
-1. **Require an open turn.** The audit pair below must be enclosed inside a `turn/start`/`turn/end` boundary — an event appended between turns is indistinguishable from a crash tail on reload and would be silently dropped. An idle-session ask throws before touching the log at all.
-2. **Append `approval/asked`** — a fresh `ApprovalRequestId`, the tool name, optional `callId` and `reason`. Log-only; this never enters the model transcript.
-3. **Decide.** If `req.signal` is already aborted, the outcome is `cancelled` immediately. Otherwise the service checks the session's effective `ApprovalPolicy`: `'never'` resolves `rejected` deterministically, decided *inside the service itself, before any waterfall dispatch* — so a listener registered with `prepend: true` cannot get in front of this check and override it. Under `'ask'`, the service dispatches the `approval/request` waterfall to composed answerers, racing the result against `req.signal` so a late abort still wins.
-4. **Append `approval/decided`** with the same id and the resolved outcome.
-5. **Return the outcome** to the caller.
+`ApprovalService.request(req)` first requires the requesting session to be inside an open turn — the audit pair below must sit inside a `turn/start`/`turn/end` boundary, since an event appended between turns is indistinguishable from a crash tail on reload and would be silently dropped; an idle-session ask throws before touching the log at all. It then appends `approval/asked` (log-only, never in the model transcript), decides an outcome, appends the matching `approval/decided`, and returns:
 
 ```ts
 async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
@@ -133,17 +127,13 @@ async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
 }
 ```
 
-A failure that prevents either audit event from committing rejects the whole call rather than returning an unlogged decision — the `approval/asked`/`approval/decided` pair is a hard invariant, never a best-effort log line.
+Inside `decide()`: an already-aborted `req.signal` resolves `cancelled` immediately; otherwise the service checks the session's effective `ApprovalPolicy` *before any waterfall dispatch* — `'never'` resolves `rejected` deterministically right here, so a listener registered with `prepend: true` cannot get in front of this check and override it. Under `'ask'`, the service dispatches the `approval/request` waterfall to composed answerers, racing the result against `req.signal` so a late abort still wins. A failure that prevents either audit event from committing rejects the whole call rather than returning an unlogged decision — the asked/decided pair is a hard invariant, never a best-effort log line.
 
 ### Answerers are waterfall listeners, scoped by agent
 
-```ts
-'approval/request'(this: Scoped<ApprovalService>, req: ApprovalRequest, next: () => Promise<ApprovalOutcome>): Promise<ApprovalOutcome>
-```
-
 An answerer either returns a closed `ApprovalOutcome` to claim the decision, or calls `next()` to delegate further down the chain; the chain's terminal default (with no answerer claiming it) is `'unavailable'`. `@deepseek-ai/dsh-scope` filters dispatch so an agent-scoped listener only sees requests for the agents it owns — a deployment composes one terminal answerer, because sibling listener order is not meant to function as a priority mechanism.
 
-The ACP automation bridge is the reference machine answerer, registered directly against this event:
+The ACP automation bridge is the reference machine answerer, registered directly against `approval/request`: it offers exactly two one-shot options (`allow-once`, `reject-once`) through `conn.requestPermission()`, tagged to the exact `callId` being decided, and maps the client's choice straight onto `ApprovalOutcome` — never inferring a durable grant from an unrecognized response.
 
 ```ts
 ctx.on('approval/request', (request, next) => {
@@ -163,11 +153,9 @@ ctx.on('approval/request', (request, next) => {
 })
 ```
 
-It offers exactly the two one-shot options the closed vocabulary allows, and never infers a durable grant from an unrecognized client response.
-
 ### Two consumers, one seam
 
-`ctx.tools`' pipeline is the primary consumer. When a `tools/pre-execute` listener returns `{ kind: 'ask', reason? }`, `ToolRuntime.serviceAsk()` resolves it through `ctx.approval` opportunistically (`ctx.get('approval')`, not a hard injection — a deployment without the plugin degrades to deny):
+`ctx.tools`' pipeline is the primary consumer. When a `tools/pre-execute` listener returns `{ kind: 'ask', reason? }`, `ToolRuntime.serviceAsk()` resolves it through `ctx.approval` opportunistically (`ctx.get('approval')`, not a hard injection — a deployment without the plugin degrades to deny), then maps each outcome to its own model-facing denial text so the model can tell "the user said no" from "nobody was there to ask":
 
 ```ts
 const outcome = await approval.request({
@@ -181,8 +169,6 @@ switch (outcome) {
   case 'unavailable': return { decision: { kind: 'deny', reason: `tool "${exec.name}" requires approval, but no approval channel is available` }, approvalCancelled: false }
 }
 ```
-
-Every non-grant outcome gets its own model-facing denial text, so the model can tell "the user said no" from "nobody was there to ask."
 
 The sandbox escalation gate (`packages/sandbox/sandbox/src/escalation.ts`) is the second consumer, and it shows the seam is genuinely shared mechanism, not tool-specific: when a bash or filesystem call asks to widen its `sandbox_permissions` beyond its current mode, `approveEscalation()` first checks strict widening against the call's effective mode (an execution-time check, not a schema constraint), then routes through the *identical* `approval.request()` call with a self-describing reason (`escalate sandbox to ${mode}: ${justification}`), and maps the same four outcomes to distinct thrown errors. Two families — the generic tool pipeline and the sandbox escalation retry — share one vocabulary, one audit format, and one fail-closed guarantee because both close over `ctx.approval` rather than reinventing it.
 
@@ -222,7 +208,7 @@ The name `custom` is reserved and cannot appear in the configured table — the 
 
 ### Deriving the current preset, and when it becomes `custom`
 
-`current(events)` does not read its own event in isolation — it folds the session's effective sandbox mode and effective approval policy first, then asks which table entry that *combination* matches:
+`current(events)` does not read its own event in isolation — it folds the session's effective sandbox mode and effective approval policy first, then asks which table entry that *combination* matches. A still-matching last recorded selection wins ties when two presets happen to share a bundle; otherwise the first table match in declaration order wins; and if the live knobs match nothing in the table at all, the answer is `CUSTOM_PRESET` (`'custom'`) — a client may display it, but it is never a switch target, and it never appears as an event payload.
 
 ```ts
 private derive(state: KnobState): string {
@@ -240,15 +226,11 @@ private derive(state: KnobState): string {
 }
 ```
 
-A still-matching last recorded selection wins ties when two presets happen to share a bundle; otherwise the first table match in declaration order wins; and if the live knobs match nothing in the table at all, the answer is `CUSTOM_PRESET` (`'custom'`) — a client may display it, but it is never a switch target, and it never appears as an event payload.
-
 ### Switching: the selection event precedes the knob writes
 
-```ts
-set(session: Session, name: string): void {
-  this.apply(session, name, (policy) => { setApprovalPolicy(session, policy) })
-}
+`set()` resolves the preset (an unknown name throws), appends a log-only `permission/preset` event only when the preset actually changes, then writes each knob through its *own* canonical setter — `setSandboxMode` and `setApprovalPolicy` — and only for the knob whose effective value would actually change. Re-selecting the already-effective preset appends nothing at all.
 
+```ts
 private apply(session: Session, name: string, setApproval: (policy: ApprovalPolicy) => void): void {
   const spec = this.resolve(name)
   if (this.current(session.events) !== name) {
@@ -264,7 +246,7 @@ private apply(session: Session, name: string, setApproval: (policy: ApprovalPoli
 }
 ```
 
-`set()` resolves the preset (an unknown name throws), appends a log-only `permission/preset` event only when the preset actually changes, then writes each knob through its *own* canonical setter — `setSandboxMode` and `setApprovalPolicy` — and only for the knob whose effective value would actually change. Re-selecting the already-effective preset appends nothing at all. `permission/preset` never enters the model transcript; the knob events it triggers own all model-visible consequences through their own consumers (the approval policy sentence above, the sandbox mode's own runtime-context contribution). Its only job is preserving *which* preset the user picked, for the case where two presets happen to bundle the same sandbox/approval pair and `current()` needs a tiebreaker.
+`permission/preset` never enters the model transcript; the knob events it triggers own all model-visible consequences through their own consumers (the approval policy sentence above, the sandbox mode's own runtime-context contribution). Its only job is preserving *which* preset the user picked, for the case where two presets happen to bundle the same sandbox/approval pair and `current()` needs a tiebreaker.
 
 Two optional children ship over the same service, activating only when their registry is composed: a `permissions` session-projection unit (folds the three knob events into a `PermissionSelect` — options plus current value — for a UI to render) and a `/permission` command (`packages/interaction/permission-presets/src/index.ts:257-277`) that reports the current preset with no argument or switches through `set()` with one.
 
@@ -304,27 +286,21 @@ interface AskUserQuestionRequest {
 
 ### Runtime ownership, not durable lineage, decides who may ask
 
+When a caller supplies an agent, `ask()` first checks that it is the exact live instance the registry currently tracks (`CALLER_NOT_LIVE` otherwise — stale references are rejected, not silently routed), then checks that it is a runtime root, not an owned child (`DELEGATED_CALLER` otherwise):
+
 ```ts
-async ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer> {
-  // …
-  const agent = request.agent
-  if (agent !== undefined) {
-    const agents = this.ctx.get('agents')
-    if (agents === undefined || agents.get(agent.id) !== agent) {
-      throw new UserQuestionError('human interaction requires the exact live calling agent when an agent is supplied', 'CALLER_NOT_LIVE')
-    }
-    if (!agents.roots().includes(agent)) {
-      throw new UserQuestionError(
-        "human interaction is unavailable while the calling agent is owned by another live agent; "
-        + "include the unresolved question or decision in the child agent's final result",
-        'DELEGATED_CALLER')
-    }
-  }
-  // …
+if (agents === undefined || agents.get(agent.id) !== agent) {
+  throw new UserQuestionError('human interaction requires the exact live calling agent when an agent is supplied', 'CALLER_NOT_LIVE')
+}
+if (!agents.roots().includes(agent)) {
+  throw new UserQuestionError(
+    "human interaction is unavailable while the calling agent is owned by another live agent; "
+    + "include the unresolved question or decision in the child agent's final result",
+    'DELEGATED_CALLER')
 }
 ```
 
-When a caller supplies an agent, `ask()` first checks that it is the exact live instance the registry currently tracks (`CALLER_NOT_LIVE` otherwise — stale references are rejected, not silently routed), then checks that it is a runtime root, not an owned child (`DELEGATED_CALLER` otherwise). A delegated subagent has no human answerer of its own and would block forever waiting for one; the fix is architectural, not a timeout — a child must report the unresolved question or decision in its final result instead. Note this is about *runtime* ownership at the moment of the call, not durable session lineage: a session with historical delegation depth that gets resumed later as a fresh runtime root may ask normally, while a live child owned by another agent is rejected even if its durable lineage depth happens to be zero.
+A delegated subagent has no human answerer of its own and would block forever waiting for one; the fix is architectural, not a timeout — a child must report the unresolved question or decision in its final result instead. This is about *runtime* ownership at the moment of the call, not durable session lineage: a session with historical delegation depth that gets resumed later as a fresh runtime root may ask normally, while a live child owned by another agent is rejected even if its durable lineage depth happens to be zero.
 
 ### The answer shape
 
@@ -340,36 +316,20 @@ For a single-select question, `custom` (free text) overrides the selected choice
 
 ## `ask_user_question`: the tool that puts a question in front of the human
 
-`dsh-tool-ask-user` is the Consumer that turns `ctx.userQuestions` into a model-visible tool. It registers exactly one tool, `ask_user_question`:
+`dsh-tool-ask-user` is the Consumer that turns `ctx.userQuestions` into a model-visible tool. It registers exactly one tool, `ask_user_question`, whose `execute` translates model arguments into an `AskUserQuestionRequest` and translates the human's `AskUserQuestionAnswer` back into the tool's canonical `{ answers: [...] }` return value — nothing more:
 
 ```ts
-export const inject = ['tools', 'userQuestions']
-
-export function apply(ctx: Context): void {
-  ctx.tools.register(defineTool({
-    name: 'ask_user_question',
-    description: 'Ask the user a concise question when you need confirmation, a choice, or missing information before proceeding. '
-      + 'Send one or more questions, each with a stable id that will be echoed in the answer.',
-    parameters: {
-      questions: { type: 'array', required: true, /* id, question, header?, options?, multi_select? */ },
-    },
-    output: {
-      schema: { /* { answers: [{ id, selected, custom? }] } */ },
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-    },
-    async execute(args, exec) {
-      const result = await ctx.userQuestions.ask({
-        questions: args.questions.map(question => ({ id: question.id, question: question.question, /* … */ })),
-        ...exec.agent !== undefined ? { agent: exec.agent } : {},
-        signal: exec.signal,
-      })
-      return { answers: result.answers.map(answer => ({ id: answer.id, selected: [...answer.selected], /* … */ })) }
-    },
-  }))
+async execute(args, exec) {
+  const result = await ctx.userQuestions.ask({
+    questions: args.questions.map(question => ({ id: question.id, question: question.question, /* … */ })),
+    ...exec.agent !== undefined ? { agent: exec.agent } : {},
+    signal: exec.signal,
+  })
+  return { answers: result.answers.map(answer => ({ id: answer.id, selected: [...answer.selected], /* … */ })) }
 }
 ```
 
-The tool translates model arguments into an `AskUserQuestionRequest` and translates the human's `AskUserQuestionAnswer` back into the tool's canonical `{ answers: [...] }` return value — nothing more. It does not render UI and does not know how input is collected; that is entirely the registered provider's job. Because `execute` passes `exec.agent` and `exec.signal` straight through, the tool call inherits every rule described above for free: a delegated subagent's call fails with `DELEGATED_CALLER`, an aborted turn resolves `ASK_ABORTED`, and a missing provider resolves `NO_PROVIDER` — all surfaced to the model as ordinary tool errors it can read and react to.
+It does not render UI and does not know how input is collected; that is entirely the registered provider's job. Because `execute` passes `exec.agent` and `exec.signal` straight through, the tool call inherits every rule described above for free: a delegated subagent's call fails with `DELEGATED_CALLER`, an aborted turn resolves `ASK_ABORTED`, and a missing provider resolves `NO_PROVIDER` — all surfaced to the model as ordinary tool errors it can read and react to.
 
 ## How a tool call becomes a human decision, end to end
 

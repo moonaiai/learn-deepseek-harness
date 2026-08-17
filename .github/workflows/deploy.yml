@@ -34,8 +34,9 @@ jobs:
         # rather than latest (npm 12 requires Node >=22.22.2).
         run: npm install -g npm@11
       - name: Install dependencies
-        # See ci.yml for why this retries with a per-attempt timeout.
-        run: timeout 180 npm ci || timeout 180 npm ci || npm ci
+        # See ci.yml for why this retries with a per-attempt timeout, and why
+        # `-k 10` (force-kill) rather than a bare `timeout`.
+        run: timeout -k 10 180 npm ci || timeout -k 10 180 npm ci || npm ci
         working-directory: web
       - name: Build static site (basePath=/learn-deepseek-harness)
         working-directory: web

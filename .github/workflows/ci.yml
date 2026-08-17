@@ -25,10 +25,11 @@ jobs:
         # Node 20.17+ and doesn't carry the bug.
         run: npm install -g npm@11
       - name: Install dependencies
-        # A bare `npm ci` has been observed to hang indefinitely on this
-        # runner pool (no error, no progress) rather than failing fast; cap
-        # each attempt at 3 minutes and retry up to 3 times.
-        run: timeout 180 npm ci || timeout 180 npm ci || npm ci
+        # A bare `npm ci` has been observed to hang past its `timeout`
+        # deadline: `timeout` alone sends SIGTERM, which a stalled raw
+        # https.get() in a postinstall script (esbuild's) can ignore. `-k 10`
+        # force-SIGKILLs 10s after SIGTERM if the process is still alive.
+        run: timeout -k 10 180 npm ci || timeout -k 10 180 npm ci || npm ci
         working-directory: web
       - name: Generate search index
         run: npm run generate
