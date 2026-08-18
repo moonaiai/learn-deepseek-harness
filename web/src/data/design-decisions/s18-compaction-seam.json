@@ -1,0 +1,64 @@
+{
+  "decisions": [
+    {
+      "id": "compaction-as-capability-seam",
+      "title": {
+        "en": "Ship compaction as a capability seam with an abstract contract",
+        "zh": "将压缩作为能力接缝发布,契约保持抽象"
+      },
+      "description": {
+        "en": "Compaction is split into four packages — Service Definition (abstract CompactionEngine), Service Provider (compaction-basic), an optional model-free pruner companion, and the /compact command Consumer — so contract, algorithm, and consumer API evolve independently. All three operations are declared abstract: putting the retention walk, token-summing, and summarization concretely on the interface would recouple every backend to one strategy.",
+        "zh": "压缩被拆分为四个包——Service Definition(抽象 CompactionEngine)、Service Provider(compaction-basic)、可选的无模型修剪伴随包,以及 /compact 命令 Consumer——使契约、算法和消费者 API 各自独立演进。三个操作全部声明为抽象:把保留遍历、token 求和与 summarization 具体地放在接口上会把每个后端重新耦合到单一策略。"
+      },
+      "alternatives": {
+        "en": "Putting the full algorithm (retention walk, token-summing, text extraction) as concrete interface methods was rejected because a backend wanting a different retention policy would have to fight inherited code; token measurement is not a compaction hook at all but the separate LLM-family ctx.tokenMeter service.",
+        "zh": "被否决的方案是把完整算法(保留遍历、token 求和、文本抽取)作为接口上的具体方法,因为想要不同保留策略的后端将不得不与继承的代码对抗;token 度量根本不是压缩的钩子,而是独立的 LLM 家族 ctx.tokenMeter 服务。"
+      }
+    },
+    {
+      "id": "log-only-events-user-message-checkpoint",
+      "title": {
+        "en": "Log-only compaction/* events, with one user/message as the surface mutation",
+        "zh": "仅用日志的 compaction/* 事件,以单个 user/message 完成表面变更"
+      },
+      "description": {
+        "en": "Because SurfaceEventType is a closed union (user/message, assistant/message, tool/result), a bespoke compaction/* event cannot itself join the surface; compaction instead records three log-only events and performs its one surface mutation through an ordinary user/message carrying surfaceOp = { op: 'replace', start, end } and source = compactCheckpointSource. Reusing user/message is deliberate honesty: a summary genuinely is user-role context, and the surface mutation sits inside the lock bracket so a crash mid-summarization becomes a detectable orphan rather than silent corruption.",
+        "zh": "由于 SurfaceEventType 是封闭联合(user/message、assistant/message、tool/result),专用的 compaction/* 事件本身无法进入表面;压缩改为记录三个仅用日志的事件,并通过一个普通的 user/message 完成唯一的表面变更,携带 surfaceOp = { op: 'replace', start, end } 和 source = compactCheckpointSource。复用 user/message 是有意的诚实:摘要本质上就是 user 角色的上下文;且表面变更位于锁括号之内,使 summarization 中途的崩溃变成可检测的孤儿事件而非静默损坏。"
+      },
+      "alternatives": {
+        "en": "Adding a bespoke compaction surface event was impossible under the closed union, and a separate compaction/error event was rejected in favor of an error? field on compaction/end (mirroring tool/result's self-contained error). Teaching core session repair about compaction/* was also rejected — the general session/end-seed boundary already distinguishes prior-lifecycle history.",
+        "zh": "新增一个专用压缩表面事件在封闭联合下不可行;单独的 compaction/error 事件也被否决,改为在 compaction/end 上保留 error? 字段(效仿 tool/result 自带的 error)。让核心会话修复逻辑感知 compaction/* 同样被否决——通用的 session/end-seed 边界已经能区分上一生命周期留下的历史。"
+      }
+    },
+    {
+      "id": "after-call-pressure-and-overflow-backstop",
+      "title": {
+        "en": "Run successful-call pressure at the after-call pre-step boundary, with overflow as the reactive backstop",
+        "zh": "在调用后的 pre-step 边界运行成功调用压力,并以溢出作为被动兜底"
+      },
+      "description": {
+        "en": "Pressure is checked at agent/pre-step — after the prior step's assistant output, tool results, buffered context, and steering are already durable — because an earlier hook like agent/request only sees a provisional request whose routing and tool schemas are not yet frozen. Checking after every successful step (not once per turn) is load-bearing for a tool-heavy ReAct turn whose surface grows within one turn. Since a provider can reject a request before returning usage, agent/request-error handles context-overflow reactively, authorizing retry only when session.surface.replaceGeneration actually advances.",
+        "zh": "压力在 agent/pre-step 检查——在前一步的 assistant 输出、工具结果、缓冲上下文与 steering 均已持久化之后——因为更早的钩子(如 agent/request)只能看到路由与工具 schema 尚未冻结的临时请求。在每个成功步骤之后检查(而非每个轮次一次)对工具密集型 ReAct 轮次至关重要,因为其表面在单个轮次内就会增长。由于 provider 可能在返回 usage 之前就拒绝请求,agent/request-error 以被动方式处理 context-overflow,且仅当 session.surface.replaceGeneration 真正前进时才授权重试。"
+      },
+      "alternatives": {
+        "en": "Rejected alternatives: adding compaction-only prompt/prefix fields to the generic pre-step (the durable session and token meter already own the measurement input); retrying whenever compactIfNeeded returns a result (a custom backend can report success without changing model-visible state — replaceGeneration is the authoritative proof); and falling back to AgentOptions.model when no durable route exists (automatic policy must describe a completed logged request).",
+        "zh": "被否决的备选方案:给通用 pre-step 增加仅压缩用的 prompt/prefix 字段(持久会话与 token meter 已拥有度量输入);一旦 compactIfNeeded 返回结果即重试(自定义后端可能报告成功却未改变模型可见状态——replaceGeneration 才是权威证据);以及在没有持久路由时回退到 AgentOptions.model(自动策略必须描述一个已完成的已记录请求)。"
+      }
+    },
+    {
+      "id": "bracket-first-durable-lock",
+      "title": {
+        "en": "One durable bracket-first lock shared by every entry point, with end-seed orphan classification",
+        "zh": "所有入口共享一个持久的前置括号锁,并用 end-seed 区分孤儿"
+      },
+      "description": {
+        "en": "A single region transaction appends compaction/start synchronously before any async work, so a slow or crashed attempt is observable and cannot be mistaken for an unlocked session; the compaction/start ... compaction/end bracket is the only lock — no WeakSet, wrapper mutex, or locked/unlocked method split. An unmatched start after the newest session/end-seed is live and blocks every entry point, while one before that boundary is stale evidence from a prior process lifecycle and does not wedge a resumed or forked session.",
+        "zh": "单个区间事务在任何异步工作之前同步追加 compaction/start,使缓慢或崩溃的尝试可观察,且不会被误认为会话未加锁;compaction/start ... compaction/end 括号是唯一的锁——没有 WeakSet、包装互斥锁,也没有 locked/unlocked 方法拆分。位于最新 session/end-seed 之后的未匹配 start 是活跃的,会阻塞每个入口;位于该边界之前的未匹配 start 是来自先前进程生命周期的陈旧证据,不会卡住恢复或分叉的会话。"
+      },
+      "alternatives": {
+        "en": "Rejected alternatives: summarizing before appending compaction/start (the expensive in-flight operation would be invisible and not participate in the shared lock); using both a durable marker and a process-local mutex (two authorities can disagree after replay); treating every unmatched marker as permanently busy (a crash-recovered or forked session would remain wedged); and requiring the marker interval to contain only compaction events (markers are lock time points, not an exclusive container, so idle injection may sit inside the interval).",
+        "zh": "被否决的备选方案:在追加 compaction/start 之前先做 summarization(耗时的进行中操作将不可见,且不参与共享锁);同时使用持久标记与进程内互斥锁(两个权威在重放后可能不一致);把每个未匹配标记视为永久繁忙(崩溃恢复或分叉的会话会被永久卡住);以及要求标记区间内只包含压缩事件(标记是锁的时间点,而非独占容器,因此空闲注入可能位于区间内)。"
+      }
+    }
+  ]
+}

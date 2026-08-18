@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "event-taxonomy-over-middleware-stack",
+      "title": {
+        "en": "Typed event taxonomy with explicit dispatch modes",
+        "zh": "具有明确分发模式的类型化事件分类体系"
+      },
+      "description": {
+        "en": "The product principle is \"everything is a plugin\" — hooks, workflows, permissions, UI, persistence, and skills must be writable as plugins without touching the core. The agent loop's extension points therefore became typed Cordis events with documented dispatch modes: waterfall for interception (transform, reject, wrap, or short-circuit), serial for ordered checkpoints, parallel for fan-out where every listener must run, and emit for fire-and-forget notifications.",
+        "zh": "产品原则是「一切皆插件」——钩子、工作流、权限、UI、持久化和技能都必须能以插件形式实现，无需修改核心。因此，智能体循环的扩展点被设计为带明确分发模式的类型化 Cordis 事件：waterfall 用于拦截（可变换、拒绝、包装或短路），serial 用于有序检查点，parallel 用于每个监听器都必须获得执行机会的并行扇出，emit 用于即发即弃的通知。"
+      },
+      "alternatives": {
+        "en": "A dedicated middleware stack (koa-compose style) and an explicit phase state machine that plugins insert stages into were both rejected: each would re-implement the dispatch, dispose, and reload semantics Cordis's native event system already provides — as Cordis effects, listeners get hot-reload and teardown for free.",
+        "zh": "曾考虑专用中间件栈（koa-compose 风格）和由插件插入阶段的显式阶段状态机，但均被否决：两者都需要重新实现 Cordis 原生事件系统已提供的分发、dispose 与重载语义——作为 Cordis effect，监听器无需额外工作即可获得热重载与拆解能力。"
+      }
+    },
+    {
+      "id": "capability-seam-three-roles",
+      "title": {
+        "en": "Capability seam: Service Definition / Service Provider / Consumer",
+        "zh": "能力接缝：Service Definition / Service Provider / Consumer 三角色"
+      },
+      "description": {
+        "en": "Swappable capabilities (bash today, sandboxed/remote executors and alternative model providers tomorrow) split into three roles that change for different reasons at different rates: a Service Definition owning the ctx key and vocabulary, Service Providers registering implementations, and Consumers that inject the key and never import provider-specific types. This is built on Cordis services plus inject — a provider registers ctx.<key>, and a consumer's fiber pends until the service exists.",
+        "zh": "可替换的能力（当前的 bash，未来的沙箱/远程执行器与替代模型提供方）按「变化原因与速率不同」拆分为三个角色：拥有 ctx 键与词汇的 Service Definition、注册实现的 Service Provider，以及仅注入该键、绝不导入提供方特定类型的 Consumer。这建立在 Cordis 服务与 inject 之上——提供方注册 ctx.<key>，消费方的 fiber 会一直等待到该服务存在。"
+      },
+      "alternatives": {
+        "en": "Always bundling the three roles into one package was rejected because it recouples independently changing contracts, implementations, and consumer APIs (swapping a backend would churn model-facing schemas). @cordisjs/plugin-capability was evaluated as a different axis entirely — it is a permission/capability-security service, not a mechanism for swapping implementations.",
+        "zh": "曾考虑将三个角色始终捆绑在同一包中，但被否决，因为这会把独立变化的契约、实现与消费方 API 重新耦合（更换后端会波及面向模型的 schema）。@cordisjs/plugin-capability 属于完全不同的轴线——它是权限/能力安全服务，而非实现替换机制。"
+      }
+    },
+    {
+      "id": "event-domains-single-source-of-truth",
+      "title": {
+        "en": "One event domain per kind of fact",
+        "zh": "每类事实归属唯一事件域"
+      },
+      "description": {
+        "en": "Events are partitioned by fact kind into three domains: session/* is the durable, JSON-only, replayable fact log; agent/* is the live interception surface where waterfall listeners transform, reject, or recover; and tools/* owns the registry and execution pipeline. A turn/step boundary is a durable fact, so it lives only in the session log and is never mirrored as a live agent emit.",
+        "zh": "事件按事实类别划分为三个域：session/* 是持久、仅 JSON、可重放的事实日志；agent/* 是实时拦截面，waterfall 监听器在其中进行变换、拒绝或恢复；tools/* 拥有注册表与执行管线。轮次/步骤边界属于持久事实，因此只存在于会话日志中，绝不镜像为实时 agent 事件。"
+      },
+      "alternatives": {
+        "en": "Mirroring turn/step boundaries as both durable session events and live agent emits was rejected: it gave consumers two sources of truth for the same fact, forced every lifecycle change to update both, and left plugin authors guessing which feed to subscribe to.",
+        "zh": "曾考虑将轮次/步骤边界同时镜像为持久会话事件与实时 agent 事件，但被否决：这会让同一事实存在两个事实源，迫使每次生命周期变更都要双写，并让插件作者无从判断应订阅哪个来源。"
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "decisions": [
+    {
+      "id": "preset-mounted-into-agent-scope",
+      "title": {
+        "en": "A preset mounts a whole cordis.yml into the agent's existing scope, no new registry tier",
+        "zh": "preset 把整份 cordis.yml 挂载进 agent 已有的 scope,不为注册表新增分层"
+      },
+      "description": {
+        "en": "Instead of adding a preset layer to the loader, the agent factory's setup(agentCtx) hook mounts the preset's agent.cordis.yml as a Cordis include subtree plugged into the agent's own scope context. Entry contexts chain to that context, so every preset row registers into the agent's existing scope layer and unwinds with it; running setup before the agent is published means a rejected mount rolls back the whole ctx.agents.create().",
+        "zh": "loader 无需新增 preset 分层:agent 工厂的 setup(agentCtx) 钩子把 preset 的 agent.cordis.yml 作为 Cordis include 子树挂载进该 agent 自己的 scope 上下文。entry 上下文沿原型链连接到该上下文,因此 preset 内每一行都注册进 agent 已有的分层并随之卸载;setup 在 agent 发布前运行,故挂载被拒会让整个 ctx.agents.create() 回滚。"
+      },
+      "alternatives": {
+        "en": "Rejected: adding a preset layer to ScopedLayers.merge() (touches dsh-scope and every scope-aware registry for mere millisecond savings and gives preset registrations a lifetime no agent owns); keying the agent's scope by preset (per-agent registrations like installAgentLlmTarget would collide across sessions); running each preset as a subprocess (absolute isolation but a transport-layer project, not a composition one).",
+        "zh": "已否决:在 ScopedLayers.merge() 中新增 preset 分层(要改动 dsh-scope 及每个 scope 感知的注册表,却只省毫秒级开销,还让 preset 注册获得没有任何 agent 拥有的生命周期);把 agent 的 scope 键设为 preset(按 agent 的注册如 installAgentLlmTarget 会跨会话相撞);把每个 preset 跑成子进程(隔离绝对,但那是传输层项目而非组装问题)。"
+      }
+    },
+    {
+      "id": "isolation-by-default-measured-cheap",
+      "title": {
+        "en": "Per-session isolation is the default because it was measured to be cheap",
+        "zh": "按会话隔离成为默认,因为实测足够便宜"
+      },
+      "description": {
+        "en": "Mounting a preset subtree is per-session by default: a twelve-row composition measured roughly 3ms and 600KB per session, so isolation costs less than any sharing scheme and a user- or agent-authored preset automatically gets the smallest blast radius. A preset that genuinely owns an expensive or process-scoped service opts into sharing via Cordis's own isolate vocabulary; a bare unrealmed service row is rejected at mount because it would publish process-global and collide with the second session mounting it.",
+        "zh": "挂载 preset 子树默认按会话进行:实测一份十二行组装每会话约 3ms、约 600KB,因此隔离比任何共享方案都划算,由用户或 agent 写出的 preset 自动获得最小影响面。确实自带昂贵或进程级服务的 preset 用 Cordis 自身的 isolate 词汇显式选择共享;未指名 realm 的裸服务行会在挂载时被拒,因为它会发布为进程级全局,导致第二个挂载同 preset 的会话与之相撞。"
+      },
+      "alternatives": {
+        "en": "Sharing by default via a named isolate label was rejected as the default: a named label is a process-global realm, so two subtrees naming the same label resolve to the same instance and the second mount collides. Sharing must be explicit opt-in, not the default posture.",
+        "zh": "默认经命名 isolate label 共享被否决:命名 label 是进程级全局 realm,两棵子树写同一 label 会解析到同一实例,第二次挂载即相撞。共享必须是显式选择,而非默认姿态。"
+      }
+    },
+    {
+      "id": "standing-mount-per-process",
+      "title": {
+        "en": "One standing mount per preset per process, joined by binding a scope parent",
+        "zh": "每 preset 每进程一份常驻挂载,会话经绑定 scope 父链加入"
+      },
+      "description": {
+        "en": "The original per-session mounts broke three host readers that assumed a static registry surface: cold session.history found no presenters, the projections block dropped preset-registered keys, and the Typert gateway got service-unavailable resolving goals on the host root. The fix mounts one composition per preset per PROCESS under a synthetic standing scope; each session joins via bindScopeParent(agentKey, standingKey), and dsh-scope registration views walk the agent→preset→global chain while scoped dispatch admits only ancestor-tagged listeners so sibling presets stay deaf to each other.",
+        "zh": "最初的按会话挂载让三个仍假设注册表静态的宿主读取方失效:冷读 session.history 找不到 presenter、投影块丢掉 preset 注册的键、Typert 网关在宿主根上解析 goals 得到 service-unavailable。修法是把一个 preset 按每进程一份挂载到合成常驻 scope 下;每个会话经 bindScopeParent(agentKey, standingKey) 加入,dsh-scope 的注册视图沿 agent→preset→global 父链解析,带作用域的分发只对祖先标签的监听器放行,故兄弟 preset 彼此失聪。"
+      },
+      "alternatives": {
+        "en": "Rejected: resume-on-read (flips the projections fold from detached to live and wipes token counts); a host-plane presenter table plus a block completeness flag (fixes two readers but leaves the class); per-session template mounts (duplicates every instance just to serve pure functions). A shared realm label was not an option — provide() throws on a second registration under the same realm symbol.",
+        "zh": "已否决:冷读时 resume(会把投影折叠从 detached 翻到 live 并抹掉 token 计数);宿主面 presenter 表加投影块完整性标志(只修两个读取方、留下这一类);每会话模板挂载(为服务纯函数而复制每一份实例)。共享 realm label 不可行——provide() 对同一 realm 符号下的第二次注册直接抛错。"
+      }
+    },
+    {
+      "id": "self-mod-correctness-not-security",
+      "title": {
+        "en": "Sandbox and facade steer for correctness, explicitly not a security boundary",
+        "zh": "沙箱与门面为正确性而引导,明确不是安全边界"
+      },
+      "description": {
+        "en": "The toolset answers three correctness hazards of letting the model run code: validate registration where it happens, give model-written code the real service signatures via a generated catalog, and make every mount fully disposable through ordinary fiber disposal. The node:vm realm and whitelist context facade narrow the API mount code sees — steering it onto Cordis services and away from leak-prone Node built-ins — but exposed services (ctx.shell, ctx.fs, ctx.web) reach the real runtime with the host's privileges, so it is bash-equivalent trust, opt-in only on the cordis preset. NOTE: the 2026-07-08 note documents an earlier three-tool shape (cordis_inspect / cordis_mount / cordis_unmount) that has since been superseded by the seven tools now in tool-cordis/src/index.ts (cordis_inspect_list/_query/_self, cordis_define, cordis_run, cordis_stop, cordis_undefine); the note's design rationale remains current but its tool table does not.",
+        "zh": "该工具集回答「让模型执行代码」带来的三个正确性隐患:在注册发生时校验、通过生成的目录给模型编写的代码真实的服务签名、让每个挂载经普通 fiber 释放完全可释放。node:vm realm 与白名单上下文门面收窄的是挂载代码所见的 API——把它引导到 Cordis 服务、远离易泄漏的 Node 内置模块——但暴露的服务(ctx.shell、ctx.fs、ctx.web)以宿主权限触及真实运行时,因此信任等级与 bash 相当,仅在 cordis preset 上显式启用。注意:2026-07-08 的笔记记录的是较早的三工具形态(cordis_inspect / cordis_mount / cordis_unmount),此后已被 tool-cordis/src/index.ts 中现行的七个工具(cordis_inspect_list/_query/_self、cordis_define、cordis_run、cordis_stop、cordis_undefine)取代;笔记的设计理由仍然有效,但其工具表已过时。"
+      },
+      "alternatives": {
+        "en": "Rejected: a structured per-capability registration tool (cordis_register_tool with name/description/parameters/code) — a single mount primitive covers every capability and cross-mount provide/inject composition, while structured tools grow without bound; a hand-maintained service/event reference table — it drifts from JSDoc the moment a signature changes with nothing gating the drift, so a generated, freshness-gated catalog replaced it; a hardened capability-restricted sandbox (separate process, permission prompts) — out of scope for a dev/opt-in toolset and would fight the entire point of handing the model the live runtime.",
+        "zh": "已否决:结构化的逐能力注册工具(带 name/description/parameters/code 的 cordis_register_tool)——单一 mount 原语覆盖所有能力及跨挂载 provide/inject 组合,而结构化工具会无限增长;手工维护的服务/事件参考表——签名一变即与 JSDoc 脱节且无门禁约束漂移,故由生成的、受新鲜度门禁的目录取代;加固的/能力受限沙箱(独立进程、权限提示)——超出开发/显式启用工具集的范围,且与「把活跃运行时交给模型」这一核心目的相冲突。"
+      }
+    }
+  ]
+}

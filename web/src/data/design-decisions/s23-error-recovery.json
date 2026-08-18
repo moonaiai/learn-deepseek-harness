@@ -1,0 +1,40 @@
+{
+  "decisions": [
+    {
+      "id": "cooperative-ask-dont-kill-cancellation",
+      "title": { "en": "Cooperative cancellation: ask, don't kill", "zh": "协作式取消：请求而非强杀" },
+      "description": {
+        "en": "The loop checks signal.aborted at every await boundary but never races an in-progress promise against the abort signal to abandon it early; work that ignores the signal must still settle before whenIdle() or disposal report quiescence. This keeps the reported quiescent state truthful — reporting idle while a tool is still writing a file or a subprocess still runs would break cleanup and ownership guarantees.",
+        "zh": "循环在每个异步等待边界前后检查 signal.aborted，但绝不用 Promise.race 让进行中的 Promise 与中止信号竞速来提前丢弃它；忽略信号的工作必须真正结算，whenIdle() 或 dispose 才能报告完全停稳。这使报告的停稳状态保持真实——在工具仍在写文件、子进程仍在运行时就报告空闲，会破坏资源清理与归属保证。"
+      },
+      "alternatives": {
+        "en": "Promise.race-style abandonment (rejected: reports completion while same-process side effects are still landing, violating the quiescent-disposal rule); abandoning uncooperative work after a grace period (rejected: hard termination belongs at a worker or process isolation boundary, not this control).",
+        "zh": "Promise.race 式丢弃（否决：会在同进程副作用仍在落地时报告完成，违反 dispose 必须完全停稳的规则）；宽限期后放弃不协作的工作（否决：硬终止属于 worker 或进程隔离边界，不属于该控制）。"
+      }
+    },
+    {
+      "id": "required-readonly-cancellation-signal",
+      "title": { "en": "Cancellation signal is required and readonly at the tool boundary", "zh": "工具边界上的取消信号必填且只读" },
+      "description": {
+        "en": "ToolExecutionInput.signal (and ToolExecution/ToolRunContext.signal) is a required, readonly AbortSignal, and defineTool() types exec.signal as required — so every registered tool can observe or forward cancellation without a cast or null check. This is the codebase's explicit-over-implicit rule: an optional signal would let a caller silently opt out, and the registry cannot synthesize a fallback that represents a lifetime it does not own.",
+        "zh": "ToolExecutionInput.signal（以及 ToolExecution/ToolRunContext.signal）是必填且只读的 AbortSignal，defineTool() 把 exec.signal 推断为必填——因此每个已注册工具无需类型断言或空值检查即可观察或转发取消。这体现了仓库的显式优于隐式约定：可选信号会让调用方静默逃避取消，而注册表无法合成一个能代表它不拥有的生命周期的后备信号。"
+      },
+      "alternatives": {
+        "en": "Keep the signal optional and synthesize a registry fallback (rejected: a fallback has no caller lifetime to represent and preserves the exact omission the type should prevent); runtime AbortSignal validation (rejected: this is a typed same-process boundary, not a serialization boundary); supportsCancellation metadata or signal-use linting (rejected: none proves async work actually observes the signal).",
+        "zh": "保留可选信号并生成注册表后备值（否决：后备信号不代表任何调用方生命周期，还保留了类型系统本应阻止的缺失情况）；运行时校验 AbortSignal（否决：这是类型化同进程边界，不是序列化边界）；supportsCancellation 元数据或信号使用 lint（否决：都无法证明异步工作真正观察了信号）。"
+      }
+    },
+    {
+      "id": "coarse-aborted-outcome-no-cause",
+      "title": { "en": "Durable turn/end records a coarse aborted outcome, not who cancelled", "zh": "持久化 turn/end 只记录粗粒度中止结果，不记录是谁取消的" },
+      "description": {
+        "en": "An interrupted turn closes with the coarse durable outcome { kind: 'aborted' }; the typed AgentCancelCause lives only on the runtime AbortSignal, and session seed/load actively rejects legacy aborted records carrying a reason field. The terminal event records what happened to the turn while the runtime signal identifies who requested it — two different facts, and only the first earns a place in durable history.",
+        "zh": "被中断的轮次以粗粒度持久化结果 { kind: 'aborted' } 结束；类型化的 AgentCancelCause 只存在于运行时 AbortSignal 上，且会话 seed/load 会主动拒绝携带原因字段的旧式中止记录。终态事件记录轮次发生了什么，运行时 signal 标识谁请求了取消——这是两项不同的事实，只有第一项值得进入持久化历史。"
+      },
+      "alternatives": {
+        "en": "Persist the typed caller cause in turn/end (rejected: no production replay, UI, ACP, telemetry, or workflow consumer distinguishes user from parent; copying the request source into the terminal result conflates two facts and adds session-specific validation without a consumer); persist a free-form reason string (rejected: invites spelling drift and blocks exhaustive switch handling).",
+        "zh": "在 turn/end 中持久化类型化的调用方取消原因（否决：当前没有任何生产环境的回放、UI、ACP、遥测或工作流消费方区分 user 与 parent；把请求来源复制进终态结果会混淆两项事实，还会在没有消费方的情况下引入会话特有校验）；持久化自由文本原因字符串（否决：会导致拼写漂移并阻碍穷尽分支判断）。"
+      }
+    }
+  ]
+}

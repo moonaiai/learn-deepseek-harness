@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "subprocess-as-own-seam",
+      "title": {
+        "en": "Split the process substrate out of dsh-bash-local into a standalone ctx.subprocess seam",
+        "zh": "将进程基底从 dsh-bash-local 中拆分为独立的 ctx.subprocess 接缝"
+      },
+      "description": {
+        "en": "Child-process spawning was extracted from dsh-bash-local into a standalone dsh-subprocess capability seam so that bash, the PTY backend, the LSP host, and the out-of-process subagent providers all program against one shared SubprocessRuntime with explicit, Consumer-supplied specs. Because every Consumer depends on the abstract service rather than a concrete implementation, swapping the single provider for dsh-subprocess-e2b moves Bash, PTY, and LSP into the remote sandbox at once, with no provider forks.",
+        "zh": "子进程派生能力从 dsh-bash-local 中抽取为独立的 dsh-subprocess 能力接缝，使 bash、PTY 后端、LSP 宿主以及进程外子代理提供者都基于同一个共享的 SubprocessRuntime 编程，并使用由 Consumer 显式提供的 spec。由于每个 Consumer 依赖的是抽象服务而非具体实现，只需将单个提供者替换为 dsh-subprocess-e2b，即可一次性把 Bash、PTY 和 LSP 迁移到远程沙箱，且无需任何提供者分叉。"
+      },
+      "alternatives": {
+        "en": "Keeping the process logic inside dsh-bash-local and exporting a public helper was rejected because a Context subclass needs special Loader injection and the service pattern was already proven. Reusing the existing ctx.jobs service as the substrate was rejected because the jobs runtime is a Consumer-level abstraction that returns results only at completion and cannot expose pipes or support mid-process interaction. Splitting terminal-process management into a separate service was rejected because it would duplicate environment scrubbing, output limits, and process-tree handling; putting the environment/output contract in a neutral package was rejected because the service definition is its natural owner.",
+        "zh": "曾考虑把进程逻辑保留在 dsh-bash-local 内并导出公共辅助函数，但被否决，因为 Context 子类需要特殊的 Loader 注入，且服务范式已在本仓库得到验证。也曾考虑复用现有的 ctx.jobs 服务作为基底，但被否决，因为 jobs 运行时是 Consumer 级抽象，只在完成时返回结果，无法暴露管道或支持进程运行中的交互。把终端进程管理拆成独立服务也被否决，因为这会导致环境变量清洗、输出限制和进程树处理的重复；把环境/输出契约放入中立包同样被否决，因为服务定义才是该契约的自然属主。"
+      }
+    },
+    {
+      "id": "pty-as-separate-capability",
+      "title": {
+        "en": "Make persistent PTY sessions a separate opt-in capability (ctx.terminals), not a bash persistent mode",
+        "zh": "将持久 PTY 会话做成独立的可选能力（ctx.terminals），而非 bash 的持久模式"
+      },
+      "description": {
+        "en": "Terminal state that must survive across many tool calls (cwd, exported variables, virtualenv, a running REPL) needs an ownership and failure contract that one-shot bash does not have, so it was built as its own smaller seam layered on ctx.subprocess.spawnTerminal. It follows the repository's capability pattern, coexists with the existing command and filesystem tools, and does not change agent-loop; one-shot tools remain the default for bounded, auditable operations.",
+        "zh": "需要在多次工具调用之间保留的终端状态（当前目录、导出变量、虚拟环境、运行中的 REPL）要求一种一次性 bash 所不具备的所有权与失败契约，因此被构建为叠加在 ctx.subprocess.spawnTerminal 之上的独立、更小的接缝。它遵循仓库的能力范式，与现有命令和文件系统工具共存，且不改动 agent-loop；一次性工具仍是有界、可审计操作的默认选择。"
+      },
+      "alternatives": {
+        "en": "Replacing the bash, filesystem, or task tools with PTY was rejected because one-shot tools retain stronger validation, approval, sandbox, output-bound, and replay contracts. Adding a persistent mode to bash was rejected because returning on readiness rather than process exit, retaining a process tree across calls, and exposing interactive stdin create a fundamentally different ownership and failure contract. Adding a PTY-specific sleep tool was rejected because ctx.jobs already owns bounded waiting, cancellation, and completion notices; a second wake mechanism would cross the agent-loop boundary. Using an out-of-process daemon immediately was rejected for the initial in-process capability.",
+        "zh": "曾考虑用 PTY 取代 bash、文件系统或任务工具，但被否决，因为一次性工具保留了更强的校验、审批、沙箱、输出上限和重放契约。也曾考虑给 bash 增加持久模式，但被否决，因为按就绪而非进程退出来返回、跨调用保留进程树、暴露交互式 stdin，会产生根本不同的所有权与失败契约。增加 PTY 专属的 sleep 工具被否决，因为 ctx.jobs 已拥有有界等待、取消和完成通知；第二种唤醒机制会越过 agent-loop 边界。立即采用进程外守护进程的方案对最初的进程内能力也被否决。"
+      }
+    },
+    {
+      "id": "pid-fenced-tree-teardown",
+      "title": {
+        "en": "Tear down PTY sessions via a PID-identity-fenced descendant tree, not session-wide signalling",
+        "zh": "通过 PID 身份围栏的子孙进程树拆除 PTY 会话，而非会话级信号"
+      },
+      "description": {
+        "en": "On close, the subprocess terminal handle snapshots transitive descendants by parent PID in children-first order, escalates SIGTERM then SIGKILL to that union, and verifies every non-zombie descendant left the process table. Each captured PID carries process-start identity so PID reuse cannot redirect the escalation, making teardown narrow and safe by construction.",
+        "zh": "关闭时，子进程终端句柄按父 PID 以子进程优先的顺序快照所有传递子孙进程，先 SIGTERM 再 SIGKILL 升级发送到该集合并核实每个非僵尸子孙都已离开进程表。每个捕获的 PID 都带有进程启动身份，使 PID 复用无法重定向升级，从而让拆除既收敛又天然安全。"
+      },
+      "alternatives": {
+        "en": "Signalling every member of the root PID's POSIX session was rejected because node-pty may expose a helper PID whose session belongs to the launcher, so session-ID-wide teardown could signal unrelated harness or desktop processes. Requiring native master-fd access from node-pty was rejected because its public API exposes no master fd; the local adapter instead derives foreground groups and descendants from supported OS process metadata (/proc on Linux, ps on macOS) and treats unreadable metadata as a detector miss. The accepted cost is that a daemonized descendant that reparents before teardown can escape the captured tree.",
+        "zh": "曾考虑向根 PID 的整个 POSIX 会话发送信号，但被否决，因为 node-pty 可能暴露一个其会话属于启动器的辅助 PID，按会话 ID 范围拆除可能会信号到无关的 harness 或桌面进程。要求 node-pty 提供原生 master fd 访问也被否决，因为其公共 API 并不暴露 master fd；本地适配器改为从受支持的操作系统进程元数据（Linux 的 /proc、macOS 的 ps）推导前台进程组和子孙，并把不可读的元数据视为检测未命中。被接受的代价是：在拆除前重新挂父的守护化子孙进程可能逃逸出被捕获的进程树。"
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "decisions": [
+    {
+      "id": "todo-state-on-session-log",
+      "title": { "en": "Store the todo list on the event-sourced session log, not a service", "zh": "将 todo 列表存储在事件溯源会话日志上，而非服务" },
+      "description": {
+        "en": "Whole-list snapshots are appended to the session log as a `todo/write` SessionEventMap variant, gaining persistence, replay, and resume reconstruction for free with last-write-wins on replay. The `{ content, status }` item shape stays deliberately minimal because claude-code V2's ids, dependencies, and ownership only existed to support disk-backed agent swarms, which are out of scope.",
+        "zh": "整列表快照作为 `todo/write` SessionEventMap 变体追加到会话日志，免费获得持久化、回放与恢复重建，回放时 last-write-wins。`{ content, status }` 条目保持最小集，因为 claude-code V2 的 id、依赖与所有权仅为支持以磁盘为后端的 agent 集群，这超出本工具范围。"
+      },
+      "alternatives": {
+        "en": "An in-memory `ctx.todos` service (rejected: would reinvent log-provided durability, replay, and resume); per-item delta protocol (rejected: only needed for shared multi-owner lists, out of scope); richer item fields like `activeForm`, ids, `priority` (rejected: each removed field saves one output item per call).",
+        "zh": "内存 `ctx.todos` 服务（否决：需要重新发明日志免费提供的持久化、回放与恢复）；逐项 delta 协议（否决：仅共享多所有者列表需要，超出范围）；更丰富字段如 `activeForm`、id、`priority`（否决：每舍弃一个字段，模型每次调用少产出一项）。"
+      }
+    },
+    {
+      "id": "plan-strip-clears-on-turn-start",
+      "title": { "en": "Clear the standing plan on the next `turn/start`, not `turn/end`", "zh": "在下一个 `turn/start` 清空常驻计划条，而非 `turn/end`" },
+      "description": {
+        "en": "Clearing on `turn/end` would hide the finished checklist while the user is still reading the answer, so the list stays visible through the turn's end and disappears only when a new turn begins. The `todos` projection unit folds whole-list replacement on `todo/write` and resets to `null` on each `turn/start`.",
+        "zh": "在 `turn/end` 清空会在用户仍在阅读刚完成的回答时隐藏清单，因此列表在轮次结束前保持可见，仅在新轮次开始时消失。`todos` 投影单元在 `todo/write` 折叠整列表替换，并在每个 `turn/start` 重置为 `null`。"
+      },
+      "alternatives": {
+        "en": "Clear on `turn/end` (rejected: hides the checklist while the user reads); clear only when every item is `completed` (rejected: leaves abandoned or partial plans across turns); appending an empty `todo/write` on turn start (rejected: mutates the log for a UI lifetime rule and invents a write the model never authored).",
+        "zh": "在 `turn/end` 清空（否决：用户阅读时被隐藏）；仅在全部项为 `completed` 时清空（否决：放弃或部分完成的计划会跨轮次残留）；轮次开始时追加空的 `todo/write`（否决：为 UI 生命周期规则改写日志，并捏造模型从未写出的写入）。"
+      }
+    },
+    {
+      "id": "plan-specific-over-generic-registry",
+      "title": { "en": "Plan-specific collaboration package over a generic named-mode registry", "zh": "plan 专用协作包，而非通用具名模式注册表" },
+      "description": {
+        "en": "The first implementation built a generic mode registry (`ModeConfig.modes`, definition-name validation, `ctx.modes.list()`, retired-definition fallback, synthetic `review` test mode) despite shipping only `plan`. It was deleted in favor of a plan-specific package because the unused machinery still needed maintaining with no second production consumer, and sandbox mode is an enforcing policy with an independent owner, not another instance of the abstraction.",
+        "zh": "首个实现构建了通用模式注册表（`ModeConfig.modes`、定义名称校验、`ctx.modes.list()`、已退役定义回退、测试用合成 `review` 模式），尽管只交付了 `plan`。这些被删除，改为 plan 专用包：未使用的机制仍需维护，却没有第二个生产消费方；沙箱模式是强制执行策略，归属独立，不是同一抽象的另一个实例。"
+      },
+      "alternatives": {
+        "en": "Keeping a private generic registry exposing only plan (rejected: unused machinery maintained without a second consumer); folding sandbox/approval into plan state (rejected: different owners, lifecycles, consumers); letting one presentation transport own plan state (rejected: TUI, web, resume, fork, prompt assembly, and the exit tool all need the same logged fact independently); filtering tools by a name allowlist (rejected: mutability is a property of each tool); reviewing through the approval seam or prose (rejected: needs the exact artifact, corrective free text, and a logged tool call, supplied by the user-questions seam).",
+        "zh": "保留私有通用注册表只暴露 plan（否决：没有第二个消费方仍需维护未使用机制）；把沙箱/审批折叠进 plan 状态（否决：归属方、生命周期、消费方不同）；让一种呈现传输拥有 plan 状态（否决：TUI、Web、恢复、fork、提示词组装和退出工具都需要独立于任何单一传输的同一项已记录事实）；按名称允许列表筛选工具（否决：可变性是每个工具自身的属性）；通过审批 seam 或普通文本完成评审（否决：需要原样的计划产物、纠正性自由文本和已记录的工具调用，而用户交互 seam 提供了这项约定）。"
+      }
+    }
+  ]
+}

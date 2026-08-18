@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "fs-capability-seam-split",
+      "title": {
+        "en": "Filesystem access is a first-class capability seam, not direct node:fs in the tools",
+        "zh": "文件系统访问是一等能力 seam，而非在工具中直接使用 node:fs"
+      },
+      "description": {
+        "en": "read/write/edit land as a three-role seam — dsh-fs owns the abstract ctx.fs Service Definition, dsh-fs-local is the first Service Provider, and dsh-tool-fs is the Consumer — so the contract, the backend, and the model-facing schema stay decoupled even though they change independently. A sandboxed or remote backend can then swap in for ctx.fs without churning the tool schemas or prompt guidance.",
+        "zh": "read/write/edit 以三角色 seam 落地——dsh-fs 拥有抽象的 ctx.fs Service Definition，dsh-fs-local 是第一个 Service Provider，dsh-tool-fs 是 Consumer——从而使约定、后端与面向模型的 schema 这三个独立变化的关注点保持解耦。沙箱或远程后端随后可为 ctx.fs 换入，而不必搅动工具 schema 或提示词引导。"
+      },
+      "alternatives": {
+        "en": "Model-facing tools directly over node:fs, and one combined dsh-fs-tools package, were both rejected: the tool package would own execution policy, path resolution, atomic writes, decoding, and edit semantics at once, coupling the three independently-changing concerns and churning the schema on any backend swap.",
+        "zh": "让面向模型的工具直接基于 node:fs，以及合并为单一 dsh-fs-tools 包，均被否决：工具包将同时承担执行策略、路径解析、原子写入、解码与编辑语义，耦合三个独立变化的关注点，并在任何后端替换时搅动 schema。"
+      }
+    },
+    {
+      "id": "observation-policy-as-event-gate",
+      "title": {
+        "en": "Read-before-write/edit policy lives in an event-gate plugin, not on ctx.fs",
+        "zh": "读后写/编辑策略位于事件门控插件中，而非 ctx.fs 上"
+      },
+      "description": {
+        "en": "Observed-state and the read-before-write/edit gate were moved into dsh-fs-observation-policy, contributed through the fs/write-intent, fs/edit-intent, and fs/observed events rather than as service methods on ctx.fs. With no policy plugin loaded, the tool degrades gracefully to the bare provider's unconditional mutation, and a sandboxed or remote backend never inherits model-facing observation policy — the provider keeps only a backend-minted version token and an optional version-guarded mutation.",
+        "zh": "观测状态与读后写/编辑门控被移入 dsh-fs-observation-policy，通过 fs/write-intent、fs/edit-intent 与 fs/observed 事件贡献，而非作为 ctx.fs 上的服务方法。未加载策略插件时，工具优雅降级为裸提供方的无条件变更，沙箱或远程后端也不会继承面向模型的观测策略——提供方只保留后端铸造的版本令牌和可选的版本守护变更。"
+      },
+      "alternatives": {
+        "en": "The original shape kept observed state as a FileState cache with full/partial views directly on ctx.fs; it was superseded by the split-fs-seam and event-gate notes because a sandboxed/remote backend must not inherit model-facing observation policy, and because freshness-based authorization replaces the full/partial view distinction.",
+        "zh": "最初形态把观测状态作为带 full/partial 视图的 FileState 缓存直接放在 ctx.fs 上；拆分文件系统 seam 与事件门控笔记将其取代，因为沙箱/远程后端不应继承面向模型的观测策略，且基于新鲜度的授权取代了 full/partial 视图区分。"
+      }
+    },
+    {
+      "id": "lsp-narrowed-to-four-read-only-ops",
+      "title": {
+        "en": "ctx.lsp narrows the full LSP protocol to four read-only operations with no JSON-RPC escape hatch",
+        "zh": "ctx.lsp 将完整 LSP 协议收窄为四个只读操作，不设 JSON-RPC 逃生口"
+      },
+      "description": {
+        "en": "The seam exposes exactly goToDefinition, findReferences, goToImplementation, and hover as a closed result union, with exclusive per-extension provider registration. This keeps the enormous LSP surface — including mutating capabilities such as workspace/applyEdit and command execution — from ever reaching the model-facing contract through the provider.",
+        "zh": "seam 仅以封闭结果联合公开 goToDefinition、findReferences、goToImplementation 与 hover，并按扩展名互斥注册提供方。这使庞大的 LSP 协议面——包括 workspace/applyEdit 与命令执行等变更能力——永远无法经由提供方到达面向模型的约定。"
+      },
+      "alternatives": {
+        "en": "Copying Claude Code's full nine-operation unified schema, letting providers register their own tools, and exposing arbitrary LSP methods were all rejected: the first freezes speculative surface, the second hands model-schema control to loaded servers, and the third leaks protocol payloads and admits unreviewed mutation or command execution.",
+        "zh": "照搬 Claude Code 的九操作统一 schema、允许提供方注册各自的工具、以及公开任意 LSP 方法，均被否决：第一种会固化投机性接口，第二种把模型 schema 控制权交给已加载的服务器，第三种会泄露协议载荷并允许未经评审的变更或命令执行。"
+      }
+    }
+  ]
+}

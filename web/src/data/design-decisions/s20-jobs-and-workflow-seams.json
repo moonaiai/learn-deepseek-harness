@@ -1,0 +1,52 @@
+{
+  "decisions": [
+    {
+      "id": "generic-long-running-runtime",
+      "title": { "en": "Extract the generic long-running-job runtime", "zh": "抽取出通用的长时任务运行时" },
+      "description": {
+        "en": "Background bash originally owned both process execution and the whole job lifecycle (ids, ownership, incremental reads, cancellation, completion notices). Adding background subagents would have re-implemented that protocol a second time, so packages/jobs/ extracts the generic half into a capability family — dsh-jobs as Definition, dsh-jobs-local as Provider, and producers like dsh-tool-bash/dsh-tool-subagent only supply execution hooks. The runtime finishes all failable preflight before run(), so a producer never gets an id for unregistered work.",
+        "zh": "后台 bash 原本兼有进程执行和整个任务生命周期（job id、所有权、增量读取、取消、完成通知）。新增后台 subagent 会第二次重复实现该约定，因此 packages/jobs/ 把通用的一半抽成一个能力家族——dsh-jobs 为 Service Definition，dsh-jobs-local 为 Service Provider，而 dsh-tool-bash/dsh-tool-subagent 等生产方只提供执行钩子。运行时在调用 run() 前完成所有可能失败的预检，因此生产方不会得到未注册工作的 id。"
+      },
+      "alternatives": {
+        "en": "Rejected: per-capability control tools (separate bash and subagent output/stop tools), which duplicates ids, isolation, cleanup, notifications and guidance; consumer-owned authorization/registration; blocking output or a separate wait-only tool; runtime-owned output sinks; random ids and dedicated lifecycle session events.",
+        "zh": "否决方案：按能力划分控制工具（bash 与 subagent 各自的输出/停止工具），会重复 id、隔离、清理、通知与指导；由消费方负责授权或注册；阻塞式输出或单独的等待工具；由运行时拥有输出接收端；随机 id 与专用生命周期会话事件。"
+      }
+    },
+    {
+      "id": "job-registry-seam-split",
+      "title": { "en": "Split the job registry into a three-package capability seam", "zh": "将任务注册表拆分为三包能力 seam" },
+      "description": {
+        "en": "dsh-jobs originally shipped as one concrete package owning both the ctx.jobs contract and the process-local provider, the repo's last TODO(job-service-backend) exception. It was split into abstract JobRegistry extends Service (dsh-jobs, Service Definition) and LocalJobRegistry (dsh-jobs-local, Service Provider), retiring that exception; dsh-tool-jobs stays an unchanged Consumer. Because abstract erases at runtime, mounting the Definition directly throws a loud load error naming a Service Provider to load.",
+        "zh": "dsh-jobs 原本作为一个具体包交付，同时拥有 ctx.jobs 约定与进程内 Service Provider，是仓库最后一条 TODO(job-service-backend) 例外。本次把它拆分为抽象的 JobRegistry extends Service（dsh-jobs，Service Definition）与 LocalJobRegistry（dsh-jobs-local，Service Provider），从而消除该例外；dsh-tool-jobs 保持不变的 Consumer。由于 abstract 在运行时会被擦除，直接挂载 Service Definition 会在加载时明确报错并点名应加载的 Service Provider。"
+      },
+      "alternatives": {
+        "en": "Rejected: keep the concrete service until a second backend exists (status quo); extract only an abstract class beside the concrete one (separates nothing operationally); split out types.ts but keep the service concrete (types are not the complete capability, the ctx.jobs contract is).",
+        "zh": "否决方案：在第二个后端出现前保持具体服务（维持现状）；在具体类旁仅抽取一个抽象类（运作层面没有分离任何东西）；只拆出 types.ts 而保留服务具体（类型不是完整能力，ctx.jobs 服务约定才是）。"
+      }
+    },
+    {
+      "id": "workflow-worker-thread-engine",
+      "title": { "en": "Run each workflow script in its own worker thread", "zh": "每个工作流脚本在独立的 worker 线程中运行" },
+      "description": {
+        "en": "The ctx.workflowEngine seam executes a model-written JavaScript orchestration script. The dsh-workflow-worker-thread Provider gives each run one unpooled node:worker_threads worker, keeping synchronous script work off the host event loop, providing a serialization boundary for values crossing to the host, and making dispose() termination real via worker.terminate(). The trust premise equals the model's bash access: the isolation buys crash/hang containment and a JSON boundary, not sandboxing against hostile code.",
+        "zh": "ctx.workflowEngine seam 执行模型编写的 JavaScript 编排脚本。dsh-workflow-worker-thread Provider 为每次运行提供一个非池化的 node:worker_threads worker，使脚本的同步工作不阻塞宿主事件循环，为跨回宿主的值提供序列化边界，并通过 worker.terminate() 使 dispose() 的终止真实生效。信任前提与模型的 bash 访问相同：隔离带来的是崩溃/挂起收容与 JSON 边界，而非针对恶意代码的沙箱。"
+      },
+      "alternatives": {
+        "en": "Rejected: in-process node:vm execution (start() blocks the caller for the script's initial synchronous slice and a spin past the first await cannot be killed in-process); isolated-vm (maintenance state and deployment requirements); hostile-value containment in the host (defends against an author the trust premise accepts).",
+        "zh": "否决方案：进程内 node:vm 执行（start() 会在脚本初始同步切片段阻塞调用方，且第一个 await 之后的同步自旋无法在进程内终止）；isolated-vm（维护状态与部署要求）；宿主侧恶意值防护（它防御的正是信任前提所接受的作者）。"
+      }
+    },
+    {
+      "id": "ralph-fixed-policy-plugin",
+      "title": { "en": "Build Ralph as a fixed policy plugin over existing seams, not a fourth engine", "zh": "把 Ralph 构建为现有 seam 之上的固定策略插件，而非第四种引擎" },
+      "description": {
+        "en": "Ralph (dsh-tool-ralph) is a separate Consumer package under packages/workflow/ that registers ralph({ objective, maxRounds? }) and owns a fixed workflow script. Each round starts one fresh child whose provider must report inheritsParentContext: false; the shared workspace plus one bounded RalphRoundReport carry all cross-round state. It creates no goal state and requires no branch in the agent loop — composition of the workflow and subagent seams, not new execution machinery.",
+        "zh": "Ralph（dsh-tool-ralph）是 packages/workflow/ 下的独立 Consumer 包，注册 ralph({ objective, maxRounds? }) 并拥有固定工作流脚本。每个 Round 启动一个全新子 agent，其提供方必须报告 inheritsParentContext: false；共享工作区加一份有界的 RalphRoundReport 承载全部跨 Round 状态。它不创建目标状态，也不要求在 agent loop 中增加分支——是对 workflow 与 subagent seam 的组合，而非新的执行机制。"
+      },
+      "alternatives": {
+        "en": "Rejected: put Ralph in the same-session goal driver (goal rounds preserve conversation, Ralph needs fresh context per round); a fresh/loop flag on the general workflow tool (the script API should stay general and provider-neutral); subagent_fork for replay (inherited turns violate the fresh-context contract); calling the subagent seam directly (the workflow engine already owns foreground orchestration, cancellation, and disposal).",
+        "zh": "否决方案：放进同会话目标驱动器（Goal Round 保留对话，Ralph 每轮需要全新上下文）；在通用工作流工具上添加 fresh/循环标志（脚本 API 应保持通用且与提供方无关）；为重放而使用 subagent_fork（继承的轮次违反全新上下文约定）；直接调用 subagent seam（工作流引擎已拥有前台编排、取消传播与 dispose）。"
+      }
+    }
+  ]
+}

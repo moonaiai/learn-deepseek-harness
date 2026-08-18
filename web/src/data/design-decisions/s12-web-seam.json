@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "one-seam-for-search-and-fetch",
+      "title": {
+        "en": "Keep search and fetch on a single ctx.web seam",
+        "zh": "将 search 和 fetch 保留在同一个 ctx.web 接缝上"
+      },
+      "description": {
+        "en": "Although search and fetch share no request schema or business logic, they share the machinery around the operation: one provider-id registry, one registration-order-independent selection policy, abort propagation, the WebError taxonomy, and one product-facing configuration surface. Splitting them would duplicate that machinery across two near-identical seams, so WebRuntime deliberately accepts parallel search()/fetch() method pairs and two provider maps.",
+        "zh": "尽管 search 和 fetch 不共享请求 schema 或业务逻辑,但它们共享操作周边的机制:同一个 provider-id 注册表、同一套不依赖注册顺序的选择策略、abort 传播、WebError 错误分类,以及同一个面向产品的配置面。拆分它们会在两个几乎相同的接缝之间重复这套机制,因此 WebRuntime 有意接受并行的 search()/fetch() 方法对和两个 provider 映射。"
+      },
+      "alternatives": {
+        "en": "Splitting into two seams (dsh-search, dsh-fetch) was considered because each half would map cleanly onto the shell/fs three-package template and remove the method-pair duplication. It was rejected because the shared registry, selection policy, abort, and error machinery is real and would otherwise be duplicated; one ctx.web gives the product a single thing to inject and configure and gives provider selection one owner.",
+        "zh": "曾考虑拆分为两个接缝(dsh-search、dsh-fetch),因为每一半都能干净地套用到 shell/fs 的三包模板上,并消除方法对的重复。但该方案被否决,因为共享的注册表、选择策略、abort 和错误机制是真实存在的,否则会被重复;单一 ctx.web 让产品只需注入和配置一个对象,并让 provider 选择只有一个所有者。"
+      }
+    },
+    {
+      "id": "single-tool-consumer-owns-schema",
+      "title": {
+        "en": "Make dsh-tool-web the sole owner of the model-facing schema",
+        "zh": "让 dsh-tool-web 成为面向模型的 schema 的唯一所有者"
+      },
+      "description": {
+        "en": "Providers register capabilities, never tools. dsh-tool-web alone owns the model-facing names, descriptions, prompt guidance, JSON schemas, and presentation for web_search and web_fetch, so the model contract stays stable while backends change and provider-specific knobs cannot leak into the shared vocabulary.",
+        "zh": "Provider 注册的是能力而不是工具。dsh-tool-web 独占 web_search 和 web_fetch 面向模型的名称、描述、提示词引导、JSON schema 和展示,因此模型契约在后端更换时保持稳定,provider 特有的开关也无法泄漏进共享词汇表。"
+      },
+      "alternatives": {
+        "en": "Letting each provider register its own model-facing tool was rejected because it hands providers ownership of names, descriptions, and formatting, producing duplicate or provider-specific tool names and teaching the model backend details. Putting provider dispatch directly inside dsh-tool-web (OpenCode-style) was rejected because the tool package would then own selection, credentials, request mapping, transport, parsing, and presentation, baking vendor differences into the tool schema.",
+        "zh": "让每个 provider 注册自己的面向模型的工具被否决,因为这会把名称、描述和格式化的所有权交给 provider,导致工具名重复或带有 provider 特征,并让模型学到后端细节。把 provider 派发直接放进 dsh-tool-web(OpenCode 风格)也被否决,因为那样工具包将同时拥有选择、凭据、请求映射、传输、解析和展示,把厂商差异固化进工具 schema。"
+      }
+    },
+    {
+      "id": "explicit-selection-over-registration-order",
+      "title": {
+        "en": "Resolve providers at execution time, never by registration order",
+        "zh": "在执行时解析 provider,绝不按注册顺序选择"
+      },
+      "description": {
+        "en": "Multiple providers may be registered at once, and selection happens fresh on every call: a configured id wins, otherwise exactly one usable provider auto-selects, and several usable providers fail with WEB_PROVIDER_AMBIGUOUS. Tools stay registered even when their provider is missing or ambiguous, surfacing a structured WebError at execution rather than churning the model schema.",
+        "zh": "多个 provider 可以同时注册,选择在每次调用时重新进行:配置了 id 就用该 id,否则恰有一个可用 provider 时自动选中,多个可用 provider 则以 WEB_PROVIDER_AMBIGUOUS 失败。即使 provider 缺失或模糊,工具仍保持注册状态,在执行时以结构化 WebError 暴露问题,而不是让模型 schema 随之变动。"
+      },
+      "alternatives": {
+        "en": "Choosing the first registered provider was rejected because registration order is not a product policy — it can change with config order, plugin loading, HMR, or refactors. Selection must be explicit, or automatic only when exactly one usable provider exists. Exposing a registry-change event or capability-status query was also dropped as unconsumed, since callers observe availability only by executing and routing the thrown error.",
+        "zh": "按第一个注册的 provider 选择被否决,因为注册顺序不是产品策略——它可能随配置顺序、插件加载、HMR 或重构而改变。选择必须显式进行,或仅在恰有一个可用 provider 时自动进行。暴露注册表变更事件或能力状态查询也因无人消费而被放弃,因为调用者只能通过执行并路由抛出的错误来观察可用性。"
+      }
+    }
+  ]
+}

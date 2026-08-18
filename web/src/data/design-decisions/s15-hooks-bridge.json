@@ -1,0 +1,40 @@
+{
+  "decisions": [
+    {
+      "id": "shared-wire-protocol-library",
+      "title": { "en": "Extract one shared wire-protocol library instead of two bridges", "zh": "抽取一个共享的线协议库，而非两个各自独立的桥" },
+      "description": {
+        "en": "The reference sources show Codex deliberately reimplements a subset of the Claude Code hook protocol — same hooks.json matcher-group shape, exit-code/stdout contract, and command-hook model. So `@deepseek-ai/dsh-hook-protocol` was made a pure library (registers and injects nothing) owning the genuinely-identical primitives: matcher, runHook execution, parseHookOutput codec, mergeHookOutputs, and the hook/* events; each bridge keeps only what truly differs (payload shape, env, Decision mapping).",
+        "zh": "参考实现源码显示 Codex 刻意重新实现了 Claude Code 钩子协议的一个子集——相同的 hooks.json 匹配器组形态、退出码/stdout 契约和命令钩子模型。因此 `@deepseek-ai/dsh-hook-protocol` 被做成一个纯库（不注册、不注入任何东西），持有真正一致的原语：matcher、runHook 执行、parseHookOutput 编解码、mergeHookOutputs，以及 hook/* 事件；每个桥只保留真正不同的部分（payload 形态、env、Decision 映射）。"
+      },
+      "alternatives": {
+        "en": "Two independent bridges (rejected: the duplicated protocol would drift, as later proven when stderr-truncation and decision-derivation logic had to be re-converged into appendHookResult); one parameterized engine (rejected: payload construction and Decision mapping genuinely differ by dialect, so keeping them explicit per bridge makes wire behavior readable in place).",
+        "zh": "两个各自独立的桥（否决：重复的协议会漂移，后来 stderr 截断与 decision 推导逻辑不得不重新收敛进 appendHookResult 一事证明了这一点）；单一参数化引擎（否决：payload 构造和 Decision 映射随方言确实不同，因此在每个桥里显式保留能让线行为就地可读）。"
+      }
+    },
+    {
+      "id": "bridge-as-compat-adapter",
+      "title": { "en": "The bridge is a Consumer of two seams, not a capability seam of its own", "zh": "桥是两个接缝的 Consumer，而非它自己的能力接缝" },
+      "description": {
+        "en": "The harness's real extension surface is typed interception points (agent/session-start, agent/pre-step, tools/pre-execute, tools/post-execute, agent/turn-stopping, subagent/start, subagent/end) that any cordis plugin can subscribe to. The two bridge plugins exist only as a compatibility path to run a user's existing CC/Codex hooks.json files; they inject ctx.shell to spawn commands and opportunistically ctx.get('sessionPersistence') for the transcript locator, and own no Service Definition. Anything a bridge does, a native plugin does more powerfully (typed returns, full ctx, no serialization boundary).",
+        "zh": "harness 真正的扩展面是类型化的拦截点（agent/session-start、agent/pre-step、tools/pre-execute、tools/post-execute、agent/turn-stopping、subagent/start、subagent/end），任何 cordis 插件都能订阅。这两个桥插件只作为运行用户已有 CC/Codex hooks.json 文件的兼容路径存在；它们注入 ctx.shell 来派生命令，并机会性地用 ctx.get('sessionPersistence') 取得 transcript 定位符，且不拥有任何 Service Definition。桥能做的任何事，原生插件都能做得更强（类型化返回、完整 ctx、无序列化边界）。"
+      },
+      "alternatives": {
+        "en": "Promoting hooks/ into its own capability seam with a Service Definition and swappable implementations (rejected: there is nothing to swap — the bridges are thin adapters over the interception surface, and the dual identity of a shared library plus two seam Consumers is the correct shape, not a gap).",
+        "zh": "把 hooks/ 提升为拥有 Service Definition 和可交换实现的自有能力接缝（否决：没有可交换之物——桥只是拦截面上的薄适配器，而共享库加两个接缝 Consumer 的双重身份是正确形态，而非缺陷）。"
+      }
+    },
+    {
+      "id": "log-only-hook-events-in-library",
+      "title": { "en": "hook/* session events live in the library as log-only records", "zh": "hook/* 会话事件作为仅日志记录放在库中" },
+      "description": {
+        "en": "hook/invoked and hook/result are declaration-merged into SessionEventMap from dsh-hook-protocol's types.ts (like compaction/* — not SurfaceEventTypes, carrying no surfaceOp) purely for audit and replay. A native plugin using the typed interception decisions needs no external hook log at all, so the pair belongs to the bridge protocol, not to the canonical extension-point surface every plugin shares.",
+        "zh": "hook/invoked 和 hook/result 从 dsh-hook-protocol 的 types.ts 声明合并进 SessionEventMap（同 compaction/* ——不是 SurfaceEventType，不携带 surfaceOp），纯用于审计与回放。使用类型化拦截决策的原生插件根本不需要任何外部钩子日志，因此这对事件属于桥协议，而非每个插件共享的规范拦截点表面。"
+      },
+      "alternatives": {
+        "en": "Putting the hook/* event pair on the extension-point Service Definition shared by all plugins (rejected: that surface is the canonical API every plugin uses, and native decision users would carry hook-log types they never need); omitting the events entirely (rejected: hook invocations and outcomes must be recorded durably for audit/replay even though they are never presented in UI).",
+        "zh": "把 hook/* 事件对放在所有插件共享的拦截点 Service Definition 上（否决：该表面是每个插件使用的规范 API，原生决策用户会被迫携带他们从不需要的钩子日志类型）；完全省略这些事件（否决：即便从不在 UI 展示，钩子调用及其结果也必须被持久记录以用于审计/回放）。"
+      }
+    }
+  ]
+}

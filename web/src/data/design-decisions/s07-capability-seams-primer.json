@@ -1,0 +1,64 @@
+{
+  "decisions": [
+    {
+      "id": "three-role-capability-seam",
+      "title": {
+        "en": "Split each swappable capability into Service Definition / Service Provider / Consumer",
+        "zh": "将每个可替换能力拆分为 Service Definition / Service Provider / Consumer 三个角色"
+      },
+      "description": {
+        "en": "A capability's contract (what it is), implementation (how it runs), and consumer API (what the model programs against) change at different rates for different reasons, so the note assigns each to its own role and package; a provider swap then stops at the provider boundary instead of churning the model-facing tool schema.",
+        "zh": "一项能力的约定(它是什么)、实现(它如何运行)与消费方 API(模型面向什么编程)以不同速率、因不同原因变化,因此该笔记将三者各自指派为独立的角色与包;这样更换 Service Provider 时只止于提供方边界,而不会搅动面向模型的工具 schema。"
+      },
+      "alternatives": {
+        "en": "\"Always combine the roles\" was rejected because it recouples independently changing definitions, providers, and consumers — swapping a local executor for a sandboxed one would churn the tool schema even though the model-facing contract never changed.",
+        "zh": "否决了「始终合并各角色」,因为它会重新耦合独立变化的 Service Definition、Service Provider 与 Consumer——把本地执行器换成沙箱化执行器时会搅动工具 schema,尽管面向模型的约定从未改变。"
+      }
+    },
+    {
+      "id": "service-definition-is-cordis-service",
+      "title": {
+        "en": "Define the contract as a Cordis Service, never a bare interface",
+        "zh": "将约定定义为 Cordis Service,绝不用裸 interface"
+      },
+      "description": {
+        "en": "The Service Definition owns ctx.<key> and the vocabulary types as a Cordis Service — an abstract class like ShellExecutor, or a concrete registry service like WebRuntime — rather than a TypeScript interface, because only a Service participates in the framework's mounting, disposal, and inject gating.",
+        "zh": "Service Definition 以 Cordis Service 的形式拥有 ctx.<key> 与词汇类型——如抽象类 ShellExecutor,或具体注册表服务 WebRuntime——而非 TypeScript interface,因为只有 Service 才能参与框架的挂载、销毁与 inject 门控。"
+      },
+      "alternatives": {
+        "en": "A plain TypeScript interface was rejected: it cannot claim a ctx key, gate consumers via inject, or hook the Cordis lifecycle, so it cannot enforce the boundary the seam relies on.",
+        "zh": "否决了纯 TypeScript interface:它无法占用 ctx 键、无法通过 inject 门控消费方,也无法挂接 Cordis 生命周期,因而无法强制执行 seam 所依赖的边界。"
+      }
+    },
+    {
+      "id": "seam-names-the-trio",
+      "title": {
+        "en": "Reserve the word \"seam\" for the whole three-role capability",
+        "zh": "将「seam」一词严格保留给完整的三角色能力"
+      },
+      "description": {
+        "en": "\"Seam\" names the complete trio — one Service Definition plus one or more Service Providers and Consumers — never a single role or the interface alone, so constituents are named by their concrete role, class, or service (e.g. \"the dsh-bash-sandbox provider\").",
+        "zh": "「seam」指完整的三者组合——一个 Service Definition 加上一个或多个 Service Provider 与 Consumer——绝不指单个角色或单独的接口;命名组成部分时使用其具体角色、类或服务(如「dsh-bash-sandbox 提供方」)。"
+      },
+      "alternatives": {
+        "en": "Calling the Service Definition package itself \"the seam\" was rejected as imprecise and calling one provider \"the seam\" as wrong; the note also disambiguates from @cordisjs/plugin-capability, a permission/security service on a different axis, not a way to swap implementations.",
+        "zh": "否决了把 Service Definition 包本身称为「the seam」(不精确),也否决了把某个提供方称为「the seam」(错误);笔记同时将其与 @cordisjs/plugin-capability 区分开——后者是处于另一维度的权限/安全服务,并非替换实现的机制。"
+      }
+    },
+    {
+      "id": "fold-roles-until-second-provider",
+      "title": {
+        "en": "Don't split preemptively; fold roles that are genuinely one concern",
+        "zh": "不要预防性拆分;确实同属一个关注点的角色保持合并"
+      },
+      "description": {
+        "en": "Roles split into separate packages only when they evolve independently; dsh-llm folds Service Definition and Consumer into one package because its Consumer is the agent loop itself, not a swappable schema surface, while adapters (dsh-llm-deepseek, dsh-llm-pi-ai) remain Service Provider packages.",
+        "zh": "只有当角色独立演进时才拆分为不同的包;dsh-llm 将 Service Definition 与 Consumer 合并为一个包,因为它的 Consumer 就是 agent loop 本身而非可替换的 schema 接口,而适配器(dsh-llm-deepseek、dsh-llm-pi-ai)仍作为 Service Provider 包。"
+      },
+      "alternatives": {
+        "en": "A capability with one conceivable provider and one Consumer stays one package until a second appears; to keep the folded dsh-llm contract honest, two real adapters ship from the start — a single adapter would leave the provider-neutral claim unverified, and a mock adapter would not exercise a real provider's wire quirks.",
+        "zh": "一项只有一种可设想的 Service Provider 和一个 Consumer 的能力保持为一个包,直到出现第二个;为了让合并后的 dsh-llm 约定保持中立,从一开始就交付两个真实适配器——单个适配器会让「提供方中立」的声称无法验证,而 mock 适配器无法触及真实提供方的线路细节。"
+      }
+    }
+  ]
+}

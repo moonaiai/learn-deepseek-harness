@@ -29,6 +29,12 @@
     "onThisPage": "本页目录",
     "moduleLabel": "模块"
   },
+  "tabs": {
+    "read": "阅读",
+    "visualize": "图解",
+    "play": "实战",
+    "deepDive": "深挖"
+  },
   "sidebar": {
     "title": "课程目录",
     "progress": "已完成"

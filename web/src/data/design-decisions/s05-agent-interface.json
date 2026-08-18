@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "initiator-scope-via-async-local-storage",
+      "title": {
+        "en": "Carry the initiating Agent with Node AsyncLocalStorage",
+        "zh": "用 Node AsyncLocalStorage 携带发起 Agent"
+      },
+      "description": {
+        "en": "Deep process-local infrastructure (a host-aware transport, tracing helper, or logger) legitimately needs to know which Agent caused the current async call, well below explicit loop/tool/request parameters. The mandatory ctx.agents service carries the initiating Agent in an AsyncLocalStorage so those helpers get a trusted 'who is this for' without every private function threading an explicit agent parameter.",
+        "zh": "进程内深层基础设施(如宿主感知传输层、追踪辅助函数或日志器)在显式传递的循环、工具及请求参数之下,确实需要知道是哪个 Agent 发起了当前的异步调用。必需的 ctx.agents 服务用 AsyncLocalStorage 携带发起 Agent,让这些辅助函数获得可信的「为谁服务」身份,而无需每个私有函数都显式转发 agent 参数。"
+      },
+      "alternatives": {
+        "en": "Forwarding Agent through every private helper was rejected as repetitive plumbing with no added trust (it is already same-process code). A process-global mutable slot is incorrect because concurrent agents overwrite each other across await boundaries. Deriving identity from model-visible arguments was rejected because a model must never choose its own trusted session or routing header.",
+        "zh": "在每个私有辅助函数中转发 Agent 被否决,因为这只是重复的管道代码,不会提高可信度(本就是同进程代码)。进程级可变槽被否决,因为并发 Agent 会在 await 边界上相互覆盖。从模型可见参数推导身份被否决,因为绝不能信任模型来选择自己的可信会话或路由请求头。"
+      }
+    },
+    {
+      "id": "store-bare-agent-not-frame",
+      "title": {
+        "en": "Store the bare Agent value, not a carried frame",
+        "zh": "直接存储 Agent 值,而非携带帧"
+      },
+      "description": {
+        "en": "The AsyncLocalStorage holds the exact Agent value directly, not a wrapper frame with extra fields, and not turn, step, signal, cwd, sandbox, or authorization. Those already have their own authoritative owners, so adding more fields to a carried frame would only create stale copies of state tracked correctly elsewhere.",
+        "zh": "AsyncLocalStorage 直接保存 Agent 值本身,而不是带额外字段的包装帧,也不包含轮次、步骤、signal、cwd、沙箱或授权。这些状态已有各自的权威归属方,在携带帧上增加字段只会产生已在别处被正确跟踪的状态的陈旧副本。"
+      },
+      "alternatives": {
+        "en": "A named or complete runtime frame ({ agent } plus more) was rejected because it merely wraps the value and duplicates state owned elsewhere, adding another lifecycle. Including a step AbortSignal, cwd, sandbox, or authorization was rejected because their lifetimes and authority do not match the driver boundary and their existing seams already pass them explicitly.",
+        "zh": "命名帧或完整运行时帧({ agent } 及更多字段)被否决,因为它只是包装该值并重复了别处归属的状态,还额外引入一套生命周期。包含步骤级 AbortSignal、cwd、沙箱或授权也被否决,因为它们的生命周期和权限范围与驱动边界不一致,且现有 seam 已经显式传递这些值。"
+      }
+    },
+    {
+      "id": "initiator-lives-on-agentregistry",
+      "title": {
+        "en": "Own the initiator scope on AgentRegistry, with an ordered teardown",
+        "zh": "由 AgentRegistry 持有发起方作用域,并采用有序 teardown"
+      },
+      "description": {
+        "en": "The carrier lives on the existing mandatory ctx.agents service rather than a new one, and its teardown is deliberately asymmetric: closeInitiators() first rejects new boundaries, then disposeInitiators() drains every active boundary's returned Promise before calling AsyncLocalStorage.disable() (which Node requires before the ALS instance is garbage-collectable, mattering for HMR). A private run-token lineage releases a self-triggering nested chain so teardown never waits on itself.",
+        "zh": "该载体挂在现有的必需服务 ctx.agents 上,而非新建服务;其 teardown 刻意不对称:closeInitiators() 先拒绝新边界,再由 disposeInitiators() 排空每个活动边界返回的 Promise,最后才调用 AsyncLocalStorage.disable()(Node 要求在 ALS 实例可被垃圾回收前调用它,这对 HMR 很重要)。私有运行标记谱系会释放自我触发的嵌套链,使 teardown 永不等待自身。"
+      },
+      "alternatives": {
+        "en": "Adding a separate ctx.agentExecution service was rejected: the carrier stores the same Agent ctx.agents already owns and has no independent backend, configuration, or identity type, so a second mandatory provider would only add wiring without separating a real capability. Making ctx.agent dynamic was rejected because it would conflate the static registration scope with the execution scope and break under concurrency.",
+        "zh": "新增独立的 ctx.agentExecution 服务被否决:该载体存储的是 ctx.agents 已管理的同一个 Agent,没有独立后端、配置或身份类型,第二个必需提供方只会增加接线却拆不出真实能力。让 ctx.agent 变成动态值也被否决,因为这会混淆静态注册作用域与执行作用域,并在并发下失效。"
+      }
+    }
+  ]
+}

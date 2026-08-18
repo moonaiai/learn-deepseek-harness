@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "event-sourced-log-as-state",
+      "title": {
+        "en": "Append-only SessionEvent log as the single source of truth",
+        "zh": "以仅追加的 SessionEvent 日志作为唯一真源"
+      },
+      "description": {
+        "en": "The MVP required strict event-based tracing with fully replayable sessions, so a Session is an append-only log of typed SessionEvents and the LLM message history is derived from it via deriveMessages(); the log IS the state, making divergence between what happened and what is recorded structurally impossible rather than merely avoided.",
+        "zh": "MVP 要求严格的基于事件的追踪和完全可回放的会话，因此 Session 是一份仅追加的、类型化的 SessionEvent 日志，LLM 消息历史通过 deriveMessages() 从日志派生；日志本身即是状态，使“发生了什么”与“记录了什么”之间的分歧在结构上不可能发生，而不仅仅是被避免。"
+      },
+      "alternatives": {
+        "en": "A mutable message array with events fired as notifications was considered — simpler, but state and log can diverge (one missed emit or a mutation that forgot to notify), which a trace-and-replay product cannot tolerate.",
+        "zh": "曾考虑可变消息数组加事件通知的方案——更简单，但状态与日志可能分歧（漏发一次通知或某处变更忘记通知），这是以追踪与回放为核心的产品无法容忍的。"
+      }
+    },
+    {
+      "id": "sync-append-write-behind-persistence",
+      "title": {
+        "en": "Synchronous appends with write-behind persistence",
+        "zh": "同步追加配合延后写入的持久化"
+      },
+      "description": {
+        "en": "Appends are synchronous so the hot path never blocks on I/O; session/event is a synchronous notification, and persistence plugins buffer write-behind and drain at the awaited session/flush checkpoint fired at every turn end. This keeps persistence a plugin concern while the in-memory store ships in dsh-session.",
+        "zh": "追加操作是同步的，热路径从不阻塞于 I/O；session/event 是同步通知，持久化插件缓冲延后写入，并在每个轮次结束时触发的 session/flush 检查点处等待排空。这使持久化保持为插件关注点，而内存存储随 dsh-session 一起提供。"
+      },
+      "alternatives": {
+        "en": "Blocking on persistence in the append path would couple the hot path to I/O latency; the write-behind model instead buffers and drains at an explicit per-turn flush checkpoint.",
+        "zh": "在追加路径上阻塞等待持久化会把热路径与 I/O 延迟耦合；延后写入模型改为缓冲并在每轮一次的显式 flush 检查点排空。"
+      }
+    },
+    {
+      "id": "monotonic-version-with-ignorable-marker",
+      "title": {
+        "en": "One monotonic format version plus a per-event ignorable marker",
+        "zh": "单一单调递增的格式版本号加逐事件 ignorable 标记"
+      },
+      "description": {
+        "en": "Session logs use one monotonic integer version with no major/minor split — whether a step is auto-upgradable is expressed by whether its upgrader exists, matching the SQLite SCHEMA_VERSION precedent — and a bump is required only for structural changes. Ordinary event-vocabulary growth is instead covered by a per-event ignorable marker, because the vocabulary is decided by which plugins are mounted, which a single integer cannot describe.",
+        "zh": "会话日志使用单一单调递增整数版本号，不分主/次版本——某一步是否可自动升级由该步是否存在升级器来表达，与 SQLite SCHEMA_VERSION 的先例一致——并且只有结构性变更才需要提升版本。普通的事件词汇增长改由逐事件 ignorable 标记覆盖，因为事件词汇由挂载哪些插件决定，单个整数无法描述这一点。"
+      },
+      "alternatives": {
+        "en": "Major/minor versioning was rejected because pre-committing convertibility into a number invites wrong promises; default-ignorable unknown events were rejected because a forgotten marker would then silently resume a gutted session instead of visibly over-refusing; per-plugin runtime registration of known event types was rejected because it would make the known set composition-dependent, so a leaner same-version composition would refuse logs a fuller one wrote.",
+        "zh": "主/次版本号被否决，因为把“是否可转换”预先提交进数字会招致错误的承诺；默认 ignorable 的未知事件被否决，因为忘记标记时会静默恢复被掏空的会话，而不是可见地过度拒绝；按插件运行时注册已知事件类型被否决，因为这会使已知集合依赖于组合，导致同版本下更精简的组合拒绝更完整组合所写的日志。"
+      }
+    }
+  ]
+}

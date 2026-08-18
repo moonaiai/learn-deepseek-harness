@@ -125,6 +125,116 @@ export const CHAPTER_SHOWCASES: Record<string, ChapterShowcase> = {
     },
   },
 
+  "s08-filesystem-and-lsp": {
+    diagram: {
+      width: 460,
+      height: 280,
+      nodes: [
+        { id: "definition", label: "FileSystem\n(ctx.fs)", x: 230, y: 36, width: 180, height: 44 },
+        { id: "local", label: "dsh-fs-local", x: 90, y: 130, width: 130, height: 38 },
+        { id: "sandbox", label: "dsh-fs-sandbox", x: 230, y: 130, width: 150, height: 38 },
+        { id: "e2b", label: "dsh-fs-e2b", x: 370, y: 130, width: 130, height: 38 },
+        { id: "consumer", label: "dsh-tool-fs\n(Consumer)", x: 230, y: 226, width: 160, height: 44 },
+      ],
+      edges: [
+        { from: "definition", to: "local" },
+        { from: "definition", to: "sandbox" },
+        { from: "definition", to: "e2b" },
+        { from: "local", to: "consumer" },
+        { from: "sandbox", to: "consumer" },
+        { from: "e2b", to: "consumer" },
+      ],
+      steps: [
+        {
+          activeNodeIds: ["definition"],
+          activeEdgeIds: [],
+          title: "Service Definition",
+          desc: "FileSystem owns ctx.fs and twelve primitives — no disk access, no policy, no model-facing schema.",
+        },
+        {
+          activeNodeIds: ["local"],
+          activeEdgeIds: ["definition->local"],
+          title: "Provider: local",
+          desc: "dsh-fs-local: unconfined host filesystem. config.cwd is a resolution default, explicitly not a sandbox.",
+        },
+        {
+          activeNodeIds: ["sandbox"],
+          activeEdgeIds: ["definition->sandbox"],
+          title: "Provider: sandboxed",
+          desc: "dsh-fs-sandbox extends local and overrides exactly two methods (writeText, editText) with a per-call mode check.",
+        },
+        {
+          activeNodeIds: ["e2b"],
+          activeEdgeIds: ["definition->e2b"],
+          title: "Provider: remote",
+          desc: "dsh-fs-e2b: remote container access, same E2B sandbox as E2B-backed Bash — does not sync with the host.",
+        },
+        {
+          activeNodeIds: ["consumer"],
+          activeEdgeIds: ["local->consumer", "sandbox->consumer", "e2b->consumer"],
+          title: "Consumer",
+          desc: "dsh-tool-fs injects ctx.fs by name and never imports a provider-specific type.",
+        },
+      ],
+    },
+  },
+
+  "s10-sandbox": {
+    diagram: {
+      width: 460,
+      height: 300,
+      nodes: [
+        { id: "confine", label: "ctx.sandbox.confine()", x: 230, y: 30, width: 190, height: 34 },
+        { id: "platform", label: "platform?", x: 230, y: 96, width: 120, height: 34, shape: "diamond" },
+        { id: "linux", label: "linux: bwrap → landlock", x: 90, y: 180, width: 170, height: 38 },
+        { id: "macos", label: "darwin: seatbelt", x: 230, y: 180, width: 150, height: 38 },
+        { id: "windows", label: "win32: windows-acl", x: 370, y: 180, width: 170, height: 38 },
+        { id: "verdict", label: "SelectedRunner (cached)", x: 230, y: 264, width: 180, height: 34 },
+      ],
+      edges: [
+        { from: "confine", to: "platform" },
+        { from: "platform", to: "linux", label: "linux" },
+        { from: "platform", to: "macos", label: "darwin" },
+        { from: "platform", to: "windows", label: "win32" },
+        { from: "linux", to: "verdict" },
+        { from: "macos", to: "verdict" },
+        { from: "windows", to: "verdict" },
+      ],
+      steps: [
+        {
+          activeNodeIds: ["confine"],
+          activeEdgeIds: [],
+          title: "confine() called",
+          desc: "dsh-bash-sandbox or dsh-terminal-bash asks to run this argv under this file-effect mode.",
+        },
+        {
+          activeNodeIds: ["platform"],
+          activeEdgeIds: ["confine->platform"],
+          title: "Resolve platform",
+          desc: "The provider reads process.platform and looks up its runner chain.",
+        },
+        {
+          activeNodeIds: ["linux"],
+          activeEdgeIds: ["platform->linux"],
+          title: "Linux arbitrates",
+          desc: "bwrap is probed first (real mount-namespace profile); Landlock is the fallback only if that probe fails.",
+        },
+        {
+          activeNodeIds: ["macos", "windows"],
+          activeEdgeIds: ["platform->macos", "platform->windows"],
+          title: "macOS and Windows have one candidate each",
+          desc: "darwin selects Seatbelt directly; win32 selects windows-acl directly. chainVerdict skips probing for single-candidate chains.",
+        },
+        {
+          activeNodeIds: ["verdict"],
+          activeEdgeIds: ["linux->verdict", "macos->verdict", "windows->verdict"],
+          title: "Cache the SelectedRunner",
+          desc: "The resolved runner is cached for the provider's lifetime; an unusable chain fails closed with SANDBOX_UNAVAILABLE.",
+        },
+      ],
+    },
+  },
+
   "s07-capability-seams-primer": {
     diagram: {
       width: 420,

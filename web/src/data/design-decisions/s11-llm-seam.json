@@ -1,0 +1,40 @@
+{
+  "decisions": [
+    {
+      "id": "two-adapters-one-contract",
+      "title": { "en": "Ship two adapters against one StreamChunk contract from day one", "zh": "从第一天起就针对同一份 StreamChunk 约定交付两个适配器" },
+      "description": {
+        "en": "A streaming vocabulary defined against a single adapter silently bakes that adapter's quirks into the 'neutral' contract and stays unverified until a second provider arrives, when the leak is expensive to fix. Shipping two deliberately different adapters from the start enforces the rule that anything the StreamChunk vocabulary cannot express for both implementations is a core-vocabulary bug, caught immediately rather than at the next provider.",
+        "zh": "如果流式词汇只针对单个适配器定义，就会悄悄把该适配器的特异行为固化进「中立」约定，并在第二个提供方到来之前一直未经验证——届时修复泄漏的代价已经很高。从一开始就交付两个刻意不同实现的适配器，可以强制执行一条规则：凡 StreamChunk 词汇无法为两个实现同时表达的内容，都是核心词汇的缺陷，立即暴露，而不是等到接入下一个提供方时才发现。"
+      },
+      "alternatives": {
+        "en": "A single adapter: less code and half the e2e cost, but leaves the provider-neutral claim unverified and silently encodes DeepSeek-via-fetch assumptions. A mock second adapter: cheaper, but does not exercise a real provider's wire quirks, so it proves little — the twin is real-on-real.",
+        "zh": "单一适配器：代码更少、e2e 成本减半，但「提供方无关」的声明无从验证，词汇会默默编码 DeepSeek-via-fetch 的假设。mock 第二适配器：更便宜，但不会触及真实提供方的协议格式怪癖，证明力有限——孪生体是真实对真实的验证。"
+      }
+    },
+    {
+      "id": "deepseek-hand-rolled-direct",
+      "title": { "en": "dsh-llm-deepseek hand-rolls direct fetch + translation for exactly one vendor", "zh": "dsh-llm-deepseek 为且仅为一个厂商手写直接 fetch 与翻译逻辑" },
+      "description": {
+        "en": "dsh-llm-deepseek speaks the exact DeepSeek chat-completions wire format directly (raw fetch plus eventsource-parser SSE framing, hand-translating reasoning_content, prompt_cache_hit_tokens, and DeepSeek's finish_reason vocabulary). With exactly one endpoint family to get exactly right, owning the wire bytes end to end is tractable and lets the harness assert facts a generic client could not. Its twin identity is owning the fetch/translate internals rather than delegating to a full provider SDK.",
+        "zh": "dsh-llm-deepseek 直接讲 DeepSeek chat-completions 的精确协议格式（裸 fetch 加 eventsource-parser 做 SSE 分帧，手工翻译 reasoning_content、prompt_cache_hit_tokens 以及 DeepSeek 特有的 finish_reason 词汇）。由于只需把唯一一个端点族做到完全正确，端到端自持协议字节是可行的，也让 harness 能断言通用客户端无法断言的事实。它的孪生身份在于自持 fetch/translate 内部实现，而非委托给完整的提供方 SDK。"
+      },
+      "alternatives": {
+        "en": "Routing DeepSeek through the pi-ai SDK as well: it would delegate the one vendor the harness most needs to control precisely, and lose the ability to assert vendor-specific facts such as DeepSeek's cache-read accounting. Hand-rolling SSE transport plumbing too: rejected — SSE framing is delegated to eventsource-parser; only the fetch/translate internals are owned.",
+        "zh": "让 DeepSeek 也走 pi-ai SDK：这会把 harness 最需要精确掌控的那个厂商委托出去，并丧失断言厂商特有事实（如 DeepSeek 的缓存命中计量）的能力。连 SSE 传输管道也手写：被否决——SSE 分帧委托给 eventsource-parser，只有 fetch/translate 内部实现是自持的。"
+      }
+    },
+    {
+      "id": "pi-ai-wraps-multi-vendor-sdk",
+      "title": { "en": "dsh-llm-pi-ai wraps a multi-vendor SDK instead of hand-rolling one adapter per vendor", "zh": "dsh-llm-pi-ai 封装多厂商 SDK，而不是为每个厂商手写一个适配器" },
+      "description": {
+        "en": "OpenAI, Anthropic, Bedrock, Azure, and self-hosted OpenAI-compatible gateways each have their own reasoning-dialect wire shape for how much the model should think, but that difference is really confined to one field. dsh-llm-pi-ai wraps @earendil-works/pi-ai, which already knows how to speak to many providers, and layers the harness's own configuration, credential resolution, and reasoning-effort vocabulary on top — so adding a new gateway is a cordis.yml profile, not a new adapter package.",
+        "zh": "OpenAI、Anthropic、Bedrock、Azure 以及自托管的 OpenAI 兼容网关，各自对「模型应当思考多少」有不同的推理方言协议形状，但这种差异实际上只集中在一个字段上。dsh-llm-pi-ai 封装已经懂得如何与众多提供方通信的 @earendil-works/pi-ai，并在其上叠加 harness 自己的配置、凭据解析和推理强度词汇——因此新增一个网关只是一份 cordis.yml profile，而不是一个新的适配器包。"
+      },
+      "alternatives": {
+        "en": "Hand-rolling a dsh-llm-deepseek-style adapter for each vendor: it is N wire clients to build and maintain, each duplicating auth, retry-policy plumbing, streaming-chunk translation, and model-catalog resolution for a difference that is really confined to one field — it does not scale.",
+        "zh": "为每个厂商手写一个 dsh-llm-deepseek 式适配器：需要构建和维护 N 个协议客户端，每个都重复实现认证、重试策略管道、流式分块翻译和模型目录解析，而差异其实只集中在一个字段上——这无法规模化。"
+      }
+    }
+  ]
+}

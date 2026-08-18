@@ -1,15 +1,16 @@
 import { notFound } from "next/navigation";
 import { getTranslator } from "@/i18n/i18n-server";
 import { getAllChapters, getChapter, getAdjacentChapters } from "@/lib/content";
-import { DocBody } from "@/components/docs/doc-body";
+import { getAvailableTabs } from "@/lib/chapter-tabs";
+import { getChapterShowcase } from "@/data/chapter-showcases";
+import { getDesignDecisions } from "@/data/design-decisions";
 import { SourceBadge } from "@/components/docs/source-badge";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { MODULES } from "@/lib/modules";
 import { ChapterProgressToggle } from "@/components/chapter/chapter-progress-toggle";
 import { ChapterPager } from "@/components/chapter/chapter-pager";
 import { TableOfContents } from "@/components/chapter/table-of-contents";
-import { ChapterShowcasePanel } from "@/components/diagram/chapter-showcase-panel";
-import { getChapterShowcase } from "@/data/chapter-showcases";
+import { ChapterTabsPanel } from "@/components/chapter/chapter-tabs-panel";
 import { LOCALES, resolveLocale } from "@/lib/types";
 
 export function generateStaticParams() {
@@ -37,6 +38,8 @@ export default async function ChapterPage({
   const { prev, next } = getAdjacentChapters(locale, slug);
   const moduleMeta = MODULES.find((m) => m.id === chapter.module);
   const showcase = getChapterShowcase(slug);
+  const decisions = getDesignDecisions(slug);
+  const availableTabs = getAvailableTabs(slug);
 
   return (
     <div className="flex gap-10">
@@ -58,9 +61,17 @@ export default async function ChapterPage({
           </div>
         </header>
 
-        <DocBody html={chapter.html} />
-
-        {showcase ? <ChapterShowcasePanel showcase={showcase} /> : null}
+        <ChapterTabsPanel
+          locale={locale}
+          chapterHtml={chapter.html}
+          showcase={showcase}
+          decisions={decisions}
+          availableTabs={availableTabs}
+          readLabel={t("tabs.read")}
+          visualizeLabel={t("tabs.visualize")}
+          playLabel={t("tabs.play")}
+          deepDiveLabel={t("tabs.deepDive")}
+        />
 
         {chapter.sources && chapter.sources.length > 0 ? (
           <section className="mt-10 border-t border-[--color-border] pt-6">

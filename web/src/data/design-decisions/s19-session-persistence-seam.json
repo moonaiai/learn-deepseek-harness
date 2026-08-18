@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "persist-session-event-verbatim",
+      "title": {
+        "en": "Persist the existing SessionEvent verbatim, including assistant/chunk deltas",
+        "zh": "原样持久化现有 SessionEvent，包括 assistant/chunk 增量"
+      },
+      "description": {
+        "en": "Persistence persists the canonical SessionEvent ({ type, seq, time, data }) unchanged, with no parallel \"persisted message\" type to keep in sync with the live log. The JSONL backend may pack a run of consecutive assistant/chunk deltas into one storage row, but logical reads rebuild the exact event boundaries, seqs, and timestamps, so every event survives faithfully.",
+        "zh": "持久化直接原样持久化规范的 SessionEvent（{ type, seq, time, data }），不引入需要与实时日志来回转换的并行「持久化消息」类型。JSONL 后端可将一段连续的 assistant/chunk 增量打包成一条存储行，但逻辑读取方会重建精确的事件边界、序号与时间戳，因此每个事件都被无损保留。"
+      },
+      "alternatives": {
+        "en": "Filtering chunk deltas out of the canonical log (as Codex's policy.rs does) was considered and rejected: because seq = log.length and events[i].seq === i are validated invariants, dropping chunks would leave holes that break both the contiguous-seq contract and crash recovery. Chunk-filtered projections can be added later as derived views with their own renumbering, but they are not the canonical log.",
+        "zh": "曾考虑在规范日志中过滤掉 chunk 增量（如 Codex 的 policy.rs 的做法），但被否决：由于 seq = log.length 与 events[i].seq === i 是被校验的不变量，过滤掉增量会留下空洞，同时破坏连续 seq 约定与崩溃恢复。基于分片过滤的投影可在后续作为派生视图（带有自己的重新编号）实现，但它不是规范日志。"
+      }
+    },
+    {
+      "id": "close-not-truncate-crashed-turns",
+      "title": {
+        "en": "Append-only with crashed turns closed, never truncated",
+        "zh": "仅追加；崩溃的轮次被关闭，而非截断"
+      },
+      "description": {
+        "en": "Flushed events are never rewritten. On reload after a crash, an open turn/start with no matching turn/end is repaired by synthesizing risk-classified error tool results, a missing step/end, and a turn/end { kind: 'interrupted' }, making the log balanced again; only a genuinely torn tail fragment is dropped. Because an interrupted turn may hold a large amount of valid durably-appended work, it is closed rather than discarded.",
+        "zh": "已刷写的事件永不被重写。崩溃后重新加载时，一个没有匹配 turn/end 的开放 turn/start 会通过合成按风险分类的错误 tool 结果、补一个缺失的 step/end，以及带 { kind: 'interrupted' } 的 turn/end 来修复，使日志重新配平；只有真正损坏的尾部片段会被丢弃。由于一个被中断的轮次可能包含大量有效的、已持久追加的工作，因此它被关闭而非丢弃。"
+      },
+      "alternatives": {
+        "en": "Truncating the crashed turn was rejected because it would silently destroy real work in long autonomous runs. Discarding anything beyond the torn final fragment (a parse error or seq gap at or before the last real turn/end) is treated as data corruption and makes the session unloadable rather than silently repaired.",
+        "zh": "截断崩溃的轮次被否决，因为它会在长时间自主运行中静默销毁真实工作。丢弃超出损坏的最后一条记录之外的任何内容（在最后一个真实 turn/end 处或之前出现解析错误或序号间隙）被视为数据损坏，会使该会话不可加载，而非被静默修复。"
+      }
+    },
+    {
+      "id": "shared-write-coordinator-composition",
+      "title": {
+        "en": "One shared write coordinator, composed not inherited",
+        "zh": "一个共享写入协调器，组合而非继承"
+      },
+      "description": {
+        "en": "The JSONL and SQLite backends duplicated correctness-heavy write-path orchestration (per-session state, write-behind, per-id serialization, crash-tail repair, dispose drains), receiving the same fixes twice. A backend-agnostic PersistenceCoordinator was extracted into dsh-session-persistence to own that orchestration once; each backend composes one instance and implements only the small PersistenceBackend<TornMarker> storage-hook interface (loadStored / appendBatch / commitRepair / list, optional close). The crash-repair torn-tail token is opaque to the coordinator — it only tests tornMarker !== undefined and passes the value back, so it knows neither byte offsets nor frame state.",
+        "zh": "JSONL 与 SQLite 后端重复实现了对正确性要求很高的写入路径编排（每会话状态、write-behind、按 id 串行化、崩溃尾部修复、dispose 排空），同样的修复被应用了两次。因此将一个后端无关的 PersistenceCoordinator 提取到 dsh-session-persistence 中统一拥有这些编排；每个后端组合一个实例，只需实现小型 PersistenceBackend<TornMarker> 存储钩子接口（loadStored / appendBatch / commitRepair / list，可选 close）。崩溃修复的 torn-tail token 对协调器是不透明的——它只测试 tornMarker !== undefined 并将值原样传回，因此既不了解字节偏移，也不了解帧恢复状态。"
+      },
+      "alternatives": {
+        "en": "A base class the backends extend was rejected in favor of composition: a backend exposes only the hooks and cannot reach the coordinator's private orchestration state, and a third-party backend may still implement the abstract service directly without the coordinator at all. A wider hook API was also rejected — each candidate folds away (no separate materialize hook, since the first batch must commit atomically with materialization; no separate create-collision probe, since it is just loadStored(id) !== undefined; no coordinator pass-through for list()).",
+        "zh": "后端继承的基类被否决，改用组合：后端只暴露钩子、无法触及协调器的私有编排状态，且第三方后端仍可完全不使用协调器、直接实现抽象服务。更宽的钩子 API 也被否决——每个候选钩子都被折叠掉（没有单独的 materialize 钩子，因为首批事件必须与物化原子提交；没有单独的创建碰撞探测，因为它就是 loadStored(id) !== undefined；list() 也不经由协调器透传）。"
+      }
+    }
+  ]
+}

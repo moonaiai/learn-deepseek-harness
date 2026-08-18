@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "waterfall-answerers-over-provider-registry",
+      "title": {
+        "en": "Answerers are approval/request waterfall listeners, not a registered provider",
+        "zh": "应答者是 approval/request waterfall 监听器，而非注册的单一提供方"
+      },
+      "description": {
+        "en": "The approval seam keeps only the mechanism (vocabulary, dispatch, abort racing, audit) in dsh-user-approval; the policy of who answers lives in plugins that register a listener on the approval/request waterfall. This reuses the runtime's existing composition, dispose-on-unload, and fail-closed-when-empty semantics instead of inventing a provider registry.",
+        "zh": "审批 seam 只在 dsh-user-approval 中保留机制（词汇表、派发、中止竞速、审计）；谁来应答的策略由在 approval/request waterfall 上注册监听器的插件承担。这直接复用运行时已有的组合、随 fiber 释放和空链失败关闭语义，而非另造一个提供方注册表。"
+      },
+      "alternatives": {
+        "en": "A single registerProvider() API was rejected because it forces every composition concern (allow-list prefiltering, external hook deciders, scripted test answers, policy gates) into one provider implementation. Inlining the permission gate in the ACP bridge was rejected because it hardcodes request policy into the transport and cannot serve a second caller like sandbox escalation. A three-package Service Definition/Provider/Consumer split was rejected because the variable part is the listener in each channel-owner plugin, so the split would only create an empty Service Provider package. Static Inject in dsh-tools was rejected because vendored Cordis Inject has no optional flag, so ctx.get('approval') is the documented opportunistic-consumption pattern.",
+        "zh": "否决了单一 registerProvider() API：它迫使所有组合问题（允许列表预过滤、外部钩子决策者、脚本化测试应答、策略门禁）都塞进一个提供方实现。否决了在 ACP 桥中内联权限门禁：它会把请求策略硬编码进传输层，且无法服务第二个发起方（如沙箱升级）。否决了 Service Definition/Provider/Consumer 三包拆分：可变部分是各通道拥有者插件里的监听器，拆分只会制造一个空的 Service Provider 包。否决了 dsh-tools 中的静态 Inject：vendored Cordis 的 Inject 没有 optional 标志，因此 ctx.get('approval') 是文档化的机会性消费模式。"
+      }
+    },
+    {
+      "id": "closed-one-shot-fail-closed-vocabulary",
+      "title": {
+        "en": "A closed, one-shot, fail-closed outcome vocabulary with no durable grant",
+        "zh": "封闭、一次性、失败关闭的结果词汇表，且无持久授权"
+      },
+      "description": {
+        "en": "Every ApprovalOutcome is one of allowed-once, rejected, cancelled, or unavailable, where allowed-once is the only grant and authorizes exactly the asked action. A missing, throwing, or invalid answerer and a missing channel all normalize to unavailable rather than silently becoming a grant, so a deployment with no answerer deterministically fails closed.",
+        "zh": "每个 ApprovalOutcome 都是 allowed-once、rejected、cancelled、unavailable 四者之一，其中 allowed-once 是唯一的授权，且只授权本次所问操作。缺失、抛异常或返回非法值的应答者以及缺失的通道都统一归为 unavailable，而不会静默变成授权，因此没有应答者的部署会确定性地失败关闭。"
+      },
+      "alternatives": {
+        "en": "Shipping allow_always now was rejected: the protocol can express it, but honoring it means designing grant storage, scope identity (call? path? prefix? session? time window?), and revocation, so offering an option the harness cannot honor would only create grants destined to fail. Reusing the generic ctx.userQuestions seam for approval was rejected because approval's contract is narrower in every dimension that matters — a closed outcome vocabulary rather than free text, a protocol-native prompt attached to the tool call, and a mandatory fail-closed default.",
+        "zh": "否决了现在就提供 allow_always：协议虽能表达它，但兑现它需要设计授权存储、作用域标识（调用？路径？前缀？会话？时间窗口？）和撤销；展示 harness 无法兑现的选项只会制造注定失败的授权。否决了复用通用 ctx.userQuestions seam 实现审批：审批的约定在每个关键维度上都更窄——封闭的结果词汇而非自由文本、附着在工具调用上的协议原生提示、以及强制的失败关闭默认值。"
+      }
+    },
+    {
+      "id": "permission-presets-core-not-a-seam",
+      "title": {
+        "en": "ctx.permissionPresets is classified core, explicitly not a third seam",
+        "zh": "ctx.permissionPresets 被归类为 core，明确不是第三个 seam"
+      },
+      "description": {
+        "en": "PermissionPresetService bundles two independent knobs — sandbox mode and approval policy — into named presets a client renders as one selector, and writes each knob through the canonical setter the owning seam already exposes. The generated classification in docs/capability-seams.md lists it as Role = core (one fixed owner, no alternate providers, nothing to swap) right beside ctx.approval's Role = seam.",
+        "zh": "PermissionPresetService 把两个独立的旋钮——沙箱模式与审批策略——打包成命名预设，供客户端渲染为单一选择器，并通过各所属 seam 已有的规范 setter 写入每个旋钮。docs/capability-seams.md 的生成分类将它列为 Role = core（单一固定拥有者、无可替换提供方、无可换实现），紧邻 ctx.approval 的 Role = seam。"
+      },
+      "alternatives": {
+        "en": "Calling it a third seam was rejected as the exact terminology mistake the glossary warns against: it never enforces anything, never answers anything, and owns no execution-time decision — every model-visible or execution-time fact still originates from ctx.approval or dsh-sandbox-policy. There is exactly one implementation and no second one waiting to compose in its place, so reserving 'seam' for the complete three-role capability keeps the composition point honest.",
+        "zh": "否决了把它称为第三个 seam：这正是术语表所警告的命名错误——它从不执行任何强制、从不应答任何问题、也不拥有任何执行期决策；所有模型可见或执行期事实仍源自 ctx.approval 或 dsh-sandbox-policy。它只有一个实现，也没有第二个实现等待组合进来，因此把 seam 一词保留给完整的三角色能力，才能让这个组合点保持诚实。"
+      }
+    }
+  ]
+}

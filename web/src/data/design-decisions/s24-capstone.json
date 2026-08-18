@@ -1,0 +1,34 @@
+{
+  "decisions": [
+    {
+      "id": "headless-direct-core-entry-point",
+      "title": {
+        "en": "Headless as a direct core entry point, not a slimmed-down Web surface",
+        "zh": "Headless 作为直接的核心入口，而非精简版 Web 界面"
+      },
+      "description": {
+        "en": "The shipped headless profile (dsh-base + dsh-headless) mounts no Host, ApiProxy, HTTP server, Web runtime, or browser plugin: headless-runner drives one fresh persisted Agent through the same ctx.agents.create / followup / whenIdle / sessions.flush path every surface uses, so local completion never depends on an unrelated transport tree. It also reads the shared ctx.agentDefaultModel selection rather than a headless-specific provider/model default, so direct and Web-created Agents share one deployment answer.",
+        "zh": "发布的 headless profile（dsh-base + dsh-headless）不挂载任何 Host、ApiProxy、HTTP 服务器、Web 运行时或浏览器插件：headless-runner 通过所有界面共用的 ctx.agents.create / followup / whenIdle / sessions.flush 路径驱动一个新持久化 Agent，因此本地任务完成不依赖无关的传输树。它还读取共享的 ctx.agentDefaultModel 选择，而非 headless 专属的 provider/model 默认值，使直接创建与 Web 创建的 Agent 共享同一份部署答案。"
+      },
+      "alternatives": {
+        "en": "Keep dsh-web-app but suppress its observation line (the process would still open a port and carry the Host/Web/browser trees); build a Host-only one-shot bundle around ApiProxy (a client protocol gateway with no client boundary to serve); use InProcessApiClient for product-level protocol coverage (execution would depend on an unrelated protocol just to exercise it); give headless a separate provider/model config (two independent defaults and persistence paths); omit Code Mode and Session persistence (both belong to one-shot Agent execution, not Web presentation).",
+        "zh": "保留 dsh-web-app 但抑制其观察输出（进程仍会打开端口并携带 Host/Web/浏览器树）；围绕 ApiProxy 构建仅含 Host 的一次性 bundle（ApiProxy 是客户端协议网关，一次性入口没有客户端边界）；使用 InProcessApiClient 获得产品级协议覆盖（执行将仅仅为了演练某个无关协议而依赖它）；为 headless 配置独立的 provider/model（会产生两套独立默认值和持久化路径）；省略 Code Mode 和 Session 持久化（二者属于一次性 Agent 执行而非 Web 展示）。"
+      }
+    },
+    {
+      "id": "app-owned-task-argument",
+      "title": {
+        "en": "The headless bundle owns its task argument through ctx.cmdlineArgs",
+        "zh": "Headless bundle 通过 ctx.cmdlineArgs 拥有自己的任务参数"
+      },
+      "description": {
+        "en": "The launcher parses only its own flags (--profile, --patch, config dumps) and hands everything after them to the booted tree verbatim; the headless bundle's headless-startup provider injects ctx.cmdlineArgs, reads the positional task, and the headless-runner row reads it through lazy config (task: !!js ctx.headlessStartup.task). The task text therefore threads through Cordis's own dependency graph instead of any headless-specific argv parsing inside apps/cli, and a missing or whitespace-only task is rejected as a usage error before the runner activates.",
+        "zh": "启动器只解析自己的标志（--profile、--patch、配置导出），并将其后的所有内容原样交给已启动的树；headless bundle 的 headless-startup provider 注入 ctx.cmdlineArgs、读取位置任务参数，headless-runner 行通过惰性配置（task: !!js ctx.headlessStartup.task）读取它。因此任务文本经由 Cordis 自身的依赖图传递，而非 apps/cli 内部任何 headless 专属的 argv 解析；缺失或纯空白任务会在 runner 激活前作为用法错误被拒绝。"
+      },
+      "alternatives": {
+        "en": "Launcher writes the resolved value into each row's config (patches would travel from app to launcher and back, two mechanisms for one fact); launcher-managed two-pass mounting (duplicates the composition and hides the Loader interpolation defect); launcher runs each bundle's command function before boot (a second plugin protocol outside the tree); a launcher-enforced command-line owner rejecting zero or multiple readers (normal composition may legitimately need several app-owned services sharing the immutable snapshot).",
+        "zh": "由启动器将解析后的值写入每行配置（补丁会在应用与启动器之间往返，一个事实两套机制）；启动器管理的两阶段挂载（重复组合过程并掩盖 Loader 插值缺陷）；启动器在启动前运行各 bundle 的命令函数（在树之外形成第二套插件协议）；由启动器强制指定命令行属主并拒绝零个或多个读取者（正常组合可能合法地需要多个应用级服务共享同一不可变快照）。"
+      }
+    }
+  ]
+}

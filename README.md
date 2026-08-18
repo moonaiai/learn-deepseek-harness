@@ -1,12 +1,14 @@
 # learn-deepseek-harness
 
-深入 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 内部架构的双语（中/英）课程：24 章，5 个模块，围绕这个项目自己的核心组织概念——**能力接缝（capability seam）**——展开，而不是按子系统逐个扫一遍。
+一个用来系统学习 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 内部架构的双语（中/英）文档库：24 章，5 个模块，不是把包逐个扫一遍，而是围绕这个项目自己最重要的组织概念——**能力接缝（capability seam）**——展开，同时如实讲清楚哪些东西**不是**接缝、为什么不是。
 
 **在线阅读**：<https://moonaiai.github.io/learn-deepseek-harness/>
 
-## 组织方式：能力接缝画廊，而非子系统清单
+这不是对源码的复读机式罗列，而是**精引 + 深链**式的讲解：每一章都指向 deepseek-harness 真实源码文件的具体行号（锚定在固定 commit，链接永不失效），并把项目自己的设计记录（`.agents/notes/implemented/` 下的 Agent Note）提炼成每章的"深挖"内容——为什么这样设计、考虑过什么备选方案、为什么拒绝它们。
 
-一个能力接缝（`docs/glossary.md`、`.agents/notes/implemented/architecture/2026-06-13-capability-seams.md`）是 Service Definition + 一或多个 Service Provider + 一或多个 Consumer 三元组——deepseek-harness 用它让能力后端可替换而不影响调用方。本课程先讲清楚**不是接缝的核心脊柱**（Cordis、Profile/Bundle、会话日志、Turn/Step 循环、工具管线与提示词组装），再用一整章讲透接缝模式本身（以 shell 接缝为范例），然后按接缝性质分组做**接缝画廊**：
+## 学什么
+
+一个能力接缝（`docs/glossary.md`、`.agents/notes/implemented/architecture/2026-06-13-capability-seams.md`）是 Service Definition + 一或多个 Service Provider + 一或多个 Consumer 三元组——deepseek-harness 用它让能力后端可替换而不影响调用方。课程的组织方式是：先讲清楚**不是接缝的核心脊柱**，再用一整章讲透接缝模式本身，然后按接缝的性质分组做**接缝画廊**，每一组里明确标注哪些是真接缝、哪些故意不是。
 
 | 模块 | 章节 |
 |---|---|
@@ -16,15 +18,14 @@
 | 扩展与记忆接缝 | s16 Subagent 接缝 · s17 技能接缝 · s18 压缩接缝 · s19 会话持久化接缝 |
 | 编排与综合实战 | s20 任务与工作流接缝 · s21 Agent Preset 与自我修改 · s22 MCP 与自动化层 · s23 错误恢复 · s24 综合实战 |
 
-**每一章都明确标注它讲的机制是不是真接缝**：`ctx.permissionPresets`、`schedule`、`mcp-client`、todo_write/plan mode、hooks 家族——这些看起来像接缝，但项目自己的生成文档（`docs/capability-seams.md`）把它们归为 `core`/非接缝角色,或它们压根没有 `ctx` key。课程如实讲这些"为什么不需要做成接缝"的例子，而不是把所有东西都塞进同一个模式里。
+## 每一章的四个阅读层次
 
-这不是对 deepseek-harness 源码的复刻，而是**精引 + 深链**式的讲解：每一章都指向真实源码文件的具体行号（锚定在固定 commit，链接永不失效）。
+- **阅读** — 该章的正文讲解，直接引用真实源码。
+- **图解**（旗舰章节）— 一张可分步播放的动态图，把该章的机制一步步走给你看。
+- **实战**（旗舰章节）— 一次真实机制的回放，比如一次 bash 调用如何被接缝分派到 local 还是 sandbox 的 provider。
+- **深挖** — 该项目自己的设计记录（Agent Note）提炼出的决策清单：为什么这样设计、考虑过什么备选方案、为什么拒绝。
 
-## 渲染基座：三个可交互组件
-
-- **StepDiagram** — 分步动态 SVG 图解，播放/暂停/单步/重置控制，节点与边随步骤高亮变色（Motion 驱动过渡动画），边的路由由通用算法自动计算（不逐图手写坐标）。用于 s04（Turn/Step 时序）、s07（Definition/Provider/Consumer 三元组结构）、s16（Subagent 委派家族）等章节。
-- **SeamSimulator** — 可回放的时间线模拟器，逐条消息浮现回放一次真实机制（如一次 bash 调用如何被接缝分派到 local/sandbox provider），播放速度可调。
-- **SourceViewer** — 终端风格源码摘录：macOS 红绿灯头部 + 行号 + 语法高亮。高亮渲染复用既有的 `rehype-highlight` 管线（而非手写 TS 分词器——TypeScript 语法远比原型参考项目的 Python 复杂，手搓分词器质量必然更差），只负责外观复刻。
+`ctx.permissionPresets`、`schedule`、`mcp-client`、`todo_write`/`plan mode`、hooks 家族——这些看起来像接缝，但项目自己的生成文档（`docs/capability-seams.md`）把它们归为 `core` 或非接缝角色，甚至压根没有 `ctx` key。课程如实讲这些"为什么不需要做成接缝"的例子，而不是把所有东西都硬塞进同一个模式里。
 
 ## 本地运行
 
@@ -33,15 +34,6 @@ cd web
 npm install
 npm run dev   # http://localhost:3000
 ```
-
-```sh
-npm run build   # 静态导出到 web/out/
-```
-
-## 内容组织
-
-- `content/chapters/sNN-slug/README.zh.md` / `README.md`（中英文双版本，统一 frontmatter：`title`、`summary`、`module`、`order`、`sources`）——详见 `content/README.md` 的写作纪律。
-- `web/` 是渲染基座：Next.js 16（App Router，静态导出）+ Tailwind v4 + `unified`/`remark`/`rehype` Markdown 管线 + Mermaid 图 + Minisearch 全文搜索 + 本地阅读进度追踪 + 上述三个可交互组件。
 
 ## 引用锚定
 

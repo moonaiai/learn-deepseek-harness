@@ -1,0 +1,40 @@
+{
+  "decisions": [
+    {
+      "id": "layered-registry-nearest-wins",
+      "title": { "en": "Layer the registry per scope with nearest-wins precedence", "zh": "按作用域分层注册表并采用就近优先" },
+      "description": {
+        "en": "SkillRegistry holds host plus per-scope layers (the same shape ctx.tools established over dsh-scope) rather than one flat process-wide table. A duplicate skill name is resolved by the nearest layer to the viewing scope outright — a preset's own layer shadows a global-layer skill of the same name with no rank comparison crossing the boundary — while rank arbitrates only ties within a single layer.",
+        "zh": "SkillRegistry 持有宿主层加按作用域划分的层（与 ctx.tools 在 dsh-scope 上建立的形态相同），而非一张扁平的进程级表。重名技能由离观察作用域最近的层直接决定——preset 自己的层会屏蔽同名的全局层技能，跨层不做 rank 比较——而 rank 只裁决同一层内的平局。"
+      },
+      "alternatives": {
+        "en": "Pooling ranks across all visible layers was rejected: ranks were designed to order sources that already know about each other. Under a global pool, a later-installed repository plugin could silently displace a preset's own same-named skill purely by registration-order tiebreak, changing the preset's behavior from outside its own composition. Nearest-wins keeps a composition's effective skill set decided by whoever authored that composition.",
+        "zh": "否决了在所有可见层之间共用 rank 池：rank 的设计初衷是给本就互相知晓的来源排序。若用全局池，一个后安装的仓库插件可能仅凭注册顺序平局裁决就悄悄顶替 preset 自己的同名技能，从其组合之外改变该 preset 的行为。就近优先让一个组合的有效技能集由该组合的编写者决定。"
+      }
+    },
+    {
+      "id": "split-host-registry-from-agent-consumption",
+      "title": { "en": "Split the host-held registry from per-agent consumption", "zh": "将宿主持有的注册表与按 agent 的消费分离" },
+      "description": {
+        "en": "The skill capability separates 'which skills a deployment supplies' (a host-plane registry, the global layer) from 'whether an agent consumes them' (whether that agent's composition mounts dsh-tool-skill at all). This resolved a real deadlock: an earlier version moved the entire registry into each preset's isolated realm, which starved a repository plugin wrapper that declares inject: ['skills'] of a host registry to attach to, and left a cold session with no live agent unable to answer a UI's skill-listing request.",
+        "zh": "技能能力把“部署提供哪些技能”（宿主层注册表，即全局层）与“某个 agent 是否消费它们”（该 agent 的组合是否挂载 dsh-tool-skill）分开。这解决了一个真实的死锁：早期版本把整个注册表搬进每个 preset 的隔离 realm，导致声明 inject: ['skills'] 的仓库插件包装器没有可依附的宿主注册表而永远等待，且没有存活 agent 的冷会话也无法应答 UI 的技能列表请求。"
+      },
+      "alternatives": {
+        "en": "Moving the entire skill capability — registry included — into each preset's isolated realm was tried and rejected on the theory that 'which skills an agent has' is purely an agent-plane decision. It broke the repository wrapper's inject: ['skills'] expectation and removed any registry for a cold session to query, so the split was introduced while preserving per-preset override through the scope chain.",
+        "zh": "曾尝试把整个技能能力（含注册表）搬进每个 preset 的隔离 realm，理由是“一个 agent 拥有哪些技能”纯属 agent 面决策，但被否决。它破坏了仓库包装器对 inject: ['skills'] 的预期，也让冷会话没有任何注册表可查，因此引入了该拆分，同时通过作用域链保留按 preset 覆盖的能力。"
+      }
+    },
+    {
+      "id": "separate-catalog-membership-from-body",
+      "title": { "en": "Separate catalog membership from instruction-body loading", "zh": "将目录成员资格与指令正文加载分离" },
+      "description": {
+        "en": "ctx.skills.snapshot() returns summaries plus a completeness bit, keeping catalog membership distinct from the expensive instruction body. Local skills can appear, disappear, or be renamed mid-session by IDEs, Git, or shell commands, so the catalog hot-refreshes via registration-scoped invalidate() while bodies keep progressive disclosure — every skill(name) call rereads and parses the current file with no body cache, hash, or revision. A completeness bit lets the consumer preserve its last-good catalog across a transient read failure instead of publishing an authoritative empty one.",
+        "zh": "ctx.skills.snapshot() 返回摘要加一个完整性位，把目录成员资格与昂贵的指令正文区分开。本地技能可能在会话中被 IDE、Git 或 shell 命令新增、删除或改名，因此目录通过注册域 invalidate() 热刷新，而正文保持渐进式披露——每次 skill(name) 调用都重新读取并解析当前文件，无正文缓存、哈希或版本。完整性位让消费者在瞬时读失败时保留最近一次完好的目录，而不是发布一个权威的空目录。"
+      },
+      "alternatives": {
+        "en": "Several options were rejected: putting the live catalog in World State (catalog replacements are model-visible session inputs that must be reconstructable from the event log); relying only on fs/observed (IDEs, Git, and external processes do not cross that seam); hashing or versioning every SKILL.md body (the model initially sees only names and descriptions, and the provider already rereads the body each call); and publishing partial or failed discovery as the new catalog (a transient read failure is not evidence of deletion).",
+        "zh": "否决了若干方案：把实时目录放进 World State（目录替换是模型可见的会话输入，必须能从事件日志重建）；只依赖 fs/observed（IDE、Git 和外部进程不经过该接缝）；对每个 SKILL.md 正文做哈希或版本（模型最初只看到名字和描述，且 provider 每次调用本就会重读正文）；以及把部分或失败的发现发布为新目录（瞬时读失败并非删除的证据）。"
+      }
+    }
+  ]
+}

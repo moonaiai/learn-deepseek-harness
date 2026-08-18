@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "mcp-plain-consumer-not-seam",
+      "title": {
+        "en": "dsh-mcp-client is a plain Consumer of ctx.tools, not a capability seam",
+        "zh": "dsh-mcp-client 是 ctx.tools 的普通 Consumer，而非能力接缝"
+      },
+      "description": {
+        "en": "MCP looks like a seam because it is a rich protocol for pluggable tool servers, but it fails the three-role test: no Service Definition of its own, no sibling Service Providers, and not swappable. It only consumes the existing ctx.tools seam (Role: core, owned by dsh-tools) by discovering ToolDefinitions at runtime and registering them through the ordinary ctx.tools.register() call every other tool plugin uses.",
+        "zh": "MCP 看似是接缝，因为它是用于可插拔工具服务器的丰富协议，但它未通过三角色测试：没有自己的 Service Definition、没有并列的 Service Provider、也不可替换。它只是消费现有的 ctx.tools 接缝（Role 为 core，由 dsh-tools 拥有），在运行时发现 ToolDefinition 并通过每个工具插件都使用的普通 ctx.tools.register() 调用注册它们。"
+      },
+      "alternatives": {
+        "en": "Treating MCP as a capability seam with its own Service Definition and swappable providers was rejected; one MCP server config is one plugin instance (a configuration cardinality), not a role split.",
+        "zh": "将 MCP 视为拥有自己的 Service Definition 和可替换 Provider 的能力接缝的方案被否决；一个 MCP 服务器配置就是一个插件实例（配置基数），而非角色拆分。"
+      }
+    },
+    {
+      "id": "mcp-fetch-then-swap-atomicity",
+      "title": {
+        "en": "Tool registration is a fetch-then-swap, never a partial state",
+        "zh": "工具注册采用获取后交换，绝不留部分状态"
+      },
+      "description": {
+        "en": "syncTools runs in two phases on every connect and list_changed re-sync: fetch a full new generation of ToolDefinitions, then swap (dispose old, register new). A duplicate name, network failure, or namespace collision rolls back the whole attempted generation, so the model sees either the complete tool set or none of it.",
+        "zh": "syncTools 在每次连接和 list_changed 重新同步时分两个阶段运行：获取一整代新的 ToolDefinition，然后交换（释放旧的、注册新的）。重复名称、网络失败或命名空间冲突会回滚整个尝试的代，因此模型要么看到完整的工具集，要么什么都看不到。"
+      },
+      "alternatives": {
+        "en": "Incremental per-tool registration was rejected because a half-registered generation is worse than none: the model could see three of five tools with no way to know two are missing.",
+        "zh": "按工具逐个增量注册的方案被否决，因为部分注册的代比完全没有更糟：模型可能看到五个工具中的三个，却无法知道缺少两个。"
+      }
+    },
+    {
+      "id": "acp-automation-only-transport",
+      "title": {
+        "en": "ACP is an automation-only transport, not an editor UI",
+        "zh": "ACP 是仅用于自动化的传输，而非编辑器 UI"
+      },
+      "description": {
+        "en": "dsh-acp deliberately keeps a narrow protocol: session/new, prompt, cancel, committed assistant text updates, and one-shot session/request_permission. Editor features (cards, navigation, commands, modes, pickers, elicitation) were removed; committed-message-only output trades token-by-token latency for a clean automation result.",
+        "zh": "dsh-acp 故意保持狭窄的协议：session/new、prompt、cancel、已提交的助手文本更新以及一次性 session/request_permission。编辑器功能（卡片、导航、命令、模式、选择器、引出）已被移除；仅输出已提交消息，用逐 token 延迟换取干净的自动化结果。"
+      },
+      "alternatives": {
+        "en": "Keeping the feature-rich editor bridge behind disciplined service boundaries, or replacing ACP with a private subagent RPC, were both rejected. ACP already supplies a typed, interoperable process protocol used by the out-of-process subagent backend; an automated parent must answer a child's one-shot policy decision, which is control flow between agents, not presentation.",
+        "zh": "保留在规范服务边界之后的功能丰富的编辑器桥接，或用私有子代理 RPC 替换 ACP，这两个方案都被否决。ACP 已提供类型化、可互操作的进程协议，供进程外子代理后端使用；自动化父代理必须回答子代理的一次性策略决策，这是代理之间的控制流，而非呈现。"
+      }
+    }
+  ]
+}

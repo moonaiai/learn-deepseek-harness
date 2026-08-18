@@ -1,0 +1,64 @@
+{
+  "decisions": [
+    {
+      "id": "named-provider-registry",
+      "title": {
+        "en": "A named-provider registry, not one executor per context",
+        "zh": "命名提供方注册表，而非每上下文单一执行器"
+      },
+      "description": {
+        "en": "Multiple subagent implementations must coexist at runtime: one session may want a cheap in-process child for a scoped subtask and an isolated out-of-process child (over ACP) at the same time. So `ctx.subagents` is a named-provider registry where each implementation registers under a unique name and a caller picks one by name, deliberately mirroring the LLM adapter registry (`LlmRuntime.registerAdapter`).",
+        "zh": "多种 subagent 实现必须在运行时共存:同一个会话可能同时需要一个廉价的进程内子 agent 处理有限范围的子任务,以及一个隔离的进程外子 agent(通过 ACP)。因此 `ctx.subagents` 是一个命名提供方注册表——每个实现以唯一名称注册,调用方按名称选择——刻意镜像 LLM 适配器注册表(`LlmRuntime.registerAdapter`)。"
+      },
+      "alternatives": {
+        "en": "The bash seam's shape was explicitly rejected: it registers exactly one `ShellExecutor` per context and a second load throws. That is correct for bash (one machine, one way to run a command) but wrong here, because coexistence is the actual requirement, not a hypothetical.",
+        "zh": "明确否决了 bash seam 的形状:它在每个上下文中只注册恰好一个 `ShellExecutor`,加载第二个会抛异常。这对 bash 是正确的(一台机器、一种执行命令的方式),但对这里是错误的,因为共存才是真实需求,而非假设。"
+      }
+    },
+    {
+      "id": "fork-vs-spawn-two-providers",
+      "title": {
+        "en": "Fork and spawn are two providers, not a flag on one",
+        "zh": "Fork 与 spawn 是两个提供方,而非一个 flag"
+      },
+      "description": {
+        "en": "A fresh child and a forked child are separate providers rather than a boolean on a single request. `dsh-subagent-spawn-in-process` starts an isolated child; `dsh-subagent-fork-in-process` seeds a balanced prefix containing only completed parent turns. The in-flight turn is excluded because its subagent call has no result yet and cannot form valid replay history.",
+        "zh": "全新子 agent 与 fork 子 agent 是独立的提供方,而非请求中的一个布尔 flag。`dsh-subagent-spawn-in-process` 启动隔离的子 agent;`dsh-subagent-fork-in-process` 用一个仅包含已完成父轮次的平衡前缀初始化子 agent。进行中的轮次被排除,因为其 subagent 调用尚无结果,无法构成有效的回放历史。"
+      },
+      "alternatives": {
+        "en": "Modeling fork-versus-fresh as a flag or option on one provider was rejected; the note is explicit that the two are independent backends sharing run mechanics, differing only in the session seed.",
+        "zh": "否决了将 fork 与 fresh 建模为单个提供方上的一个 flag 或选项的做法;该 Agent Note 明确指出两者是独立后端,共享运行机制,仅在会话种子上不同。"
+      }
+    },
+    {
+      "id": "two-capability-discovery-mechanisms",
+      "title": {
+        "en": "Two kinds of optional capability, discovered two different ways",
+        "zh": "两类可选能力,用两种不同方式发现"
+      },
+      "description": {
+        "en": "Start-time features (`outputSchema`, `depthLimit`, `toolFilter`, `persona`) ride on a static `provider.capabilities` descriptor that the service checks before delegating, rejecting loud with `UNSUPPORTED_CAPABILITY` rather than accepting-then-ignoring. Continuable creation instead uses the optional `prepareContinuable` method, whose mere presence is the capability, with TypeScript narrowing as the discovery mechanism.",
+        "zh": "启动时功能(`outputSchema`、`depthLimit`、`toolFilter`、`persona`)挂在静态的 `provider.capabilities` 描述符上,服务在委派之前检查,若不支持则以 `UNSUPPORTED_CAPABILITY` 响亮拒绝,绝不接受后静默忽略。可继续创建则使用可选的 `prepareContinuable` 方法,方法是否存在本身即为能力,TypeScript 类型收窄即为发现机制。"
+      },
+      "alternatives": {
+        "en": "Start-time features could not be runtime methods, because they must be checked before a run exists — the only point where 'reject, don't create the child' is representable. For continuable creation a separate boolean flag was rejected because it could drift out of sync with whether the method actually exists.",
+        "zh": "启动时功能不能是运行时方法,因为它们必须在 run 存在之前检查——那是唯一能表达「拒绝,不创建子 agent」的时机。对于可继续创建,否决了独立的布尔 flag,因为它可能与方法是否真正实现失同步。"
+      }
+    },
+    {
+      "id": "provider-selection-is-config",
+      "title": {
+        "en": "Provider selection is configuration, not model-facing",
+        "zh": "提供方选择是配置,不面向模型"
+      },
+      "description": {
+        "en": "Each `dsh-tool-subagent` instance binds to exactly one provider name via `Config.provider`; the model sees only `{ description, prompt }` (plus optional `run_in_background`). The service holds the multi-provider registry while the tool picks one, so the model-facing schema carries no provider/type parameter and reveals nothing about what runs underneath.",
+        "zh": "每个 `dsh-tool-subagent` 实例通过 `Config.provider` 绑定到恰好一个提供方名称;模型只看到 `{ description, prompt }`(以及可选的 `run_in_background`)。服务持有多提供方注册表,而工具选择其中一个,因此面向模型的 schema 不含提供方/type 参数,也不暴露底层运行的是什么。"
+      },
+      "alternatives": {
+        "en": "Exposing a provider selector in the tool's arguments was rejected. To expose more than one transport, a deployment loads the same tool plugin multiple times, each bound to a different provider and a distinct `toolName` (the tool registry rejects a duplicate name, so it can never silently collide).",
+        "zh": "否决了在工具参数中暴露提供方选择器的做法。若要暴露多种传输方式,部署需多次加载同一个工具插件,每次绑定不同的提供方和不同的 `toolName`(工具注册表拒绝重名,因此绝不会静默冲突)。"
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "decisions": [
+    {
+      "id": "one-signal-per-turn",
+      "title": {
+        "en": "One explicit AbortSignal per turn, owned by the loop",
+        "zh": "每个 turn 一个显式的 AbortSignal，由循环持有"
+      },
+      "description": {
+        "en": "AgentLoop privately owns one TurnCancellation per prospective turn, installs its single AbortController before agent/status=running, and retains it through inbox claim, agent/pre-step, prompt assembly, every step, and tool execution, clearing it immediately before publishing turn/end. The next turn receives a fresh signal, so cancellation authority ends exactly with the turn.",
+        "zh": "AgentLoop 为每个潜在的 turn 私有持有一个 TurnCancellation，在 agent/status=running 之前安装其唯一的 AbortController，并在收件箱认领、agent/pre-step、提示词组装、每个 step 以及工具执行期间一直持有，在发布 turn/end 之前立即清除。下一个 turn 获得全新的 signal，因此取消权限恰好随该 turn 结束而终止。"
+      },
+      "alternatives": {
+        "en": "Storing the signal in AsyncLocalStorage was rejected: ALS follows asynchronous descendants for the entire driver lifetime, while cancellation authority ends with one turn, so a leaked callback could observe a stale signal. Exposing public turn/step context wrappers was also rejected: it would widen every API, duplicate ownership, and tempt callers to treat a captured object as durable authority.",
+        "zh": "曾考虑把 signal 存入 AsyncLocalStorage，但被否决：ALS 会沿异步后代贯穿整个 driver 生命周期，而取消权限只随单个 turn 结束，泄漏的回调可能观察到过期的 signal。也曾考虑暴露公开的 turn/step 上下文包装对象，但同样被否决：这会扩大每一个 API、造成所有权重复，并诱导调用方把捕获到的对象当作持久权限。"
+      }
+    },
+    {
+      "id": "cooperative-cancellation-no-abandon",
+      "title": {
+        "en": "Cooperative cancellation — never race or abandon in-process work",
+        "zh": "协作式取消——绝不 race 或抛弃进程内工作"
+      },
+      "description": {
+        "en": "The loop checks interruption before and after awaited boundaries but never uses Promise.race to abandon an in-process listener, adapter, or tool promise; once a tool body starts, the registry awaits it and delivers cancellation only through the fused signal. Work that ignores the signal must still settle before whenIdle(), handle disposal, and scope teardown report quiescence.",
+        "zh": "循环在 await 边界前后检查中断，但绝不使用 Promise.race 去抛弃进程内的监听器、适配器或工具 Promise；一旦工具体开始执行，注册表会等待它完成，并只通过融合后的 signal 传递取消。无视 signal 的工作也必须先 settle，whenIdle()、句柄 dispose 与作用域 teardown 才能报告静默。"
+      },
+      "alternatives": {
+        "en": "Racing a tool promise against cancellation, or abandoning uncooperative work after a grace period, was rejected: it reports completion while side effects may still be live, breaking teardown and the quiescent-disposal guarantee. Hard termination requires a worker or process isolation boundary, which sits outside this control boundary.",
+        "zh": "曾考虑让工具 Promise 与取消 race，或在宽限期过后抛弃不协作的工作，但被否决：这会在副作用仍存活时报告完成，破坏 teardown 与静默处置（quiescent-disposal）保证。硬终止需要 worker 或进程隔离边界，而这超出本控制边界。"
+      }
+    },
+    {
+      "id": "required-tool-signal-stage-mutability",
+      "title": {
+        "en": "Required readonly AbortSignal at the tool boundary, mutable only at dispatch",
+        "zh": "工具边界上必填的只读 AbortSignal，仅在 dispatch 处可变"
+      },
+      "description": {
+        "en": "ToolExecutionInput.signal is a required readonly AbortSignal with no registry fallback, default controller, or never-abort sentinel, so every typed caller supplies the signal it owns. Mutability follows the pipeline stage: only the tools/execute waterfall sees a mutable signal (ToolDispatchExecution), while pre/post-policy, observers, and tool bodies receive readonly views, letting an around-dispatch wrapper add a deadline without detaching the caller's signal.",
+        "zh": "ToolExecutionInput.signal 是必填的只读 AbortSignal，注册表不提供回退、默认 controller 或永不中止的哨兵，因此每个有类型的调用方都提供自己持有的 signal。可变性随流水线阶段而定：只有 tools/execute waterfall 看到可变的 signal（ToolDispatchExecution），而前置/后置策略、观察者与工具体都拿到只读视图，从而让 around-dispatch 包装器能加截止期限，又不会脱离调用方的 signal。"
+      },
+      "alternatives": {
+        "en": "Keeping the signal optional with a synthesized fallback was rejected because a registry-owned fallback has no caller lifetime to represent. Runtime AbortSignal validation was rejected because this is a typed same-process boundary, not a serialization boundary. supportsCancellation metadata or signal-use linting was rejected because none proves asynchronous work actually observes the signal. Exposing one mutable execution type to every stage was rejected because observers only borrow the signal.",
+        "zh": "曾考虑让 signal 保持可选并合成回退值，但被否决，因为注册表持有的回退没有可代表调用方的生命周期。也曾考虑运行时校验 AbortSignal，但被否决，因为这是有类型的同进程边界，而非序列化边界。还曾考虑 supportsCancellation 元数据或 signal 使用 lint，但被否决，因为它们都无法证明异步工作确实观察了 signal。也曾考虑向每个阶段暴露同一个可变执行类型，但被否决，因为观察者只是借用 signal。"
+      }
+    },
+    {
+      "id": "coarse-aborted-outcome",
+      "title": {
+        "en": "Durable turns record a coarse aborted outcome, not the caller's cause",
+        "zh": "持久化的 turn 只记录粗粒度的 aborted 结局，不记录调用方原因"
+      },
+      "description": {
+        "en": "An interrupted live turn ends with the coarse durable { kind: 'aborted' } outcome: the terminal event records what happened to the turn while the runtime signal identifies who requested cancellation. Durable events carry no stack, signal, error object, free-form text, or backend-private detail, and session seed/load rejects legacy aborted records that bear a reason or any extra field.",
+        "zh": "被中断的存活 turn 以粗粒度、可持久化的 { kind: 'aborted' } 结局收场：终止事件记录 turn 发生了什么，而运行时 signal 标识是谁请求了取消。持久化事件不携带堆栈、signal、错误对象、自由文本或后端私有细节，并且 session 的 seed/load 会拒绝带 reason 或任何额外字段的旧式 aborted 记录。"
+      },
+      "alternatives": {
+        "en": "Persisting the typed caller cause (user vs parent) in turn/end was rejected because no production replay, UI, ACP, telemetry, or workflow consumer distinguishes them; copying the request source into the terminal result would conflate two facts and add Session-specific validation without a consumer. Persisting a free-form string reason was rejected because strings admit spelling drift and prevent exhaustive switching.",
+        "zh": "曾考虑把有类型的调用方原因（user 与 parent）持久化到 turn/end，但被否决，因为没有任何生产环境的 replay、UI、ACP、遥测或 workflow 消费者区分二者；把请求来源复制进终止结果会混淆两个事实，并在没有消费者的情况下增加 Session 专属校验。也曾考虑持久化自由文本原因，但被否决，因为字符串容易产生拼写漂移，且无法做到穷尽式 switch。"
+      }
+    }
+  ]
+}

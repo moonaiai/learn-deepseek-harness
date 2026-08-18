@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "per-call-policy-seam",
+      "title": {
+        "en": "One ctx.sandbox seam with policy carried per call, not per provider",
+        "zh": "单一 ctx.sandbox seam，策略随每次调用而非提供方携带"
+      },
+      "description": {
+        "en": "The seam exposes a deliberately narrow vocabulary — confine this exact argv under this file-effect policy — and each call carries its own SandboxPolicy, so two consumers can confine under different policies at the same instant and an approved escalation is just a new call with a wider policy. Policy is resolved via an explicit resolve() step before run(), never a hidden default.",
+        "zh": "该 seam 只暴露刻意收窄的词汇——在此文件效果策略下约束这条精确的 argv——且每次调用自带 SandboxPolicy，因此两个消费方可在同一时刻以不同策略约束，一次获批的升级只是一次带更宽策略的新调用。策略在执行前经显式 resolve() 步骤解析，绝不用隐藏的默认值。"
+      },
+      "alternatives": {
+        "en": "Rejected: a config-fixed mode on the provider (one mode per process — cannot serve concurrent consumers with different policies or express a one-shot widened retry); keeping the mechanism inside dsh-bash-sandbox (blocks a second consumer and cannot express escalation); a generic ToolRuntime wrapper for any tool (mechanically impossible for in-process tools closing over ctx).",
+        "zh": "已否决：在提供方上配置固定模式（每进程一个模式——无法服务策略不同的并发消费方，也无法表达一次性放宽重试）；将机制保留在 dsh-bash-sandbox 内部（阻塞第二个消费方，且无法表达升级）；用通用 ToolRuntime 包装任意工具（对闭包了 ctx 的进程内工具在机械上不成立）。"
+      }
+    },
+    {
+      "id": "platform-chain-fail-closed",
+      "title": {
+        "en": "Per-platform runner chain, selected once per provider lifetime, failing closed",
+        "zh": "按平台的 runner 链，提供方生命周期内选定一次并缓存，失败关闭"
+      },
+      "description": {
+        "en": "dsh-sandbox-local selects by platform first and functionally probes only when a platform has more than one candidate (Linux prefers bwrap, falls back to the bundled Landlock launcher), then caches the verdict for the provider's whole lifetime. A platform with no chain, or a chain where every candidate probes unusable, throws the fail-closed SANDBOX_UNAVAILABLE — never a silent unconfined passthrough.",
+        "zh": "dsh-sandbox-local 先按平台选择，仅当某平台有多于一个候选时才做功能性探测（Linux 优先 bwrap，回退到随附的 Landlock launcher），然后将结论在提供方整个生命周期内缓存。平台无链、或链上每个候选都探测不可用时，抛出失败关闭的 SANDBOX_UNAVAILABLE——绝不静默放行无约束执行。"
+      },
+      "alternatives": {
+        "en": "Rejected: probing even a sole candidate (probing arbitrates between candidates; with one there is no decision and the probe taxes every session's first confined command); bwrap-or-fail with no fallback (concentrates failure on exactly the hosts where a sandbox matters most, ending in danger-full-access by abandonment); committing a built launcher binary (unreviewable in a diff, bloats history) or compiling at install time (forces a C toolchain onto every consumer).",
+        "zh": "已否决：即使平台仅有一个候选也功能性探测（探测用于在候选间仲裁；只有一个时无需决策，且探测对每个会话的首次约束命令征税）；无备选的 bwrap 或失败（把失败集中在沙箱最重要的主机上，最终因放弃而降级到 danger-full-access）；提交构建好的 launcher 二进制（diff 中不可审查、膨胀历史）或安装时编译（把 C 工具链强加给每个消费方）。"
+      }
+    },
+    {
+      "id": "windows-acl-restricted-token",
+      "title": {
+        "en": "Windows rung on raw ACL restricted tokens, reporting partial enforcement honestly",
+        "zh": "Windows 档基于原始 ACL 受限令牌，并诚实报告 partial 强制执行"
+      },
+      "description": {
+        "en": "With no Landlock/Seatbelt equivalent on Windows, the rung builds on CreateRestrictedToken with the WRITE_RESTRICTED flag: the caller's token is duplicated with restricting SIDs carrying separate workspace and private-temp capabilities, so Windows intersects write access against both the normal and restricting SIDs. Reads pass on ambient access, so no wholesale host DACL writes are needed. Because Everyone must stay in the restricting list and NTFS ACLs belong to file objects (hard links), the provider reports enforcement: 'partial' rather than an absolute promise.",
+        "zh": "Windows 没有 Landlock/Seatbelt 等价物，该档直接基于带 WRITE_RESTRICTED 标志的 CreateRestrictedToken：把调用者令牌复制为受限令牌，其 restricting SID 携带彼此独立的工作区与私有临时目录能力，Windows 于是对写访问同时按正常 SID 与 restricting SID 做交集检查。读凭环境访问即可通过，因此无需全盘改写宿主 DACL。由于 Everyone 必须留在 restricting 列表中、且 NTFS ACL 属于文件对象（硬链接），提供方报告 enforcement: 'partial'，而非绝对承诺。"
+      },
+      "alternatives": {
+        "en": "Rejected: mxc/Microsoft xContainer (OS floor of Windows 11 24H2, BaseContainer tier only on 25H2+, and arbitrary-path reads still require wholesale host DACL mutation); AppContainer (its token carries no ambient read access, so every readable path needs a pre-grant — the same wholesale-grant cost); landstrip (rejected before implementation as not battle-tested, and its Windows backend is AppContainer-shaped, inheriting the same arbitrary-read problem).",
+        "zh": "已否决：mxc/Microsoft xContainer（OS 下限为 Windows 11 24H2，BaseContainer 档仅在 25H2+ 存在，且任意路径读仍需全盘改写宿主 DACL）；AppContainer（其令牌没有环境读访问，每条可读路径都需预先授予——同样的全盘授予代价）；landstrip（实现前已被否决，因未经实战检验，且其 Windows 后端是 AppContainer 形态，继承同样的任意路径读问题）。"
+      }
+    }
+  ]
+}

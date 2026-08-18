@@ -29,6 +29,12 @@
     "onThisPage": "On this page",
     "moduleLabel": "Module"
   },
+  "tabs": {
+    "read": "Read",
+    "visualize": "Visualize",
+    "play": "Play",
+    "deepDive": "Deep-Dive"
+  },
   "sidebar": {
     "title": "Course outline",
     "progress": "completed"

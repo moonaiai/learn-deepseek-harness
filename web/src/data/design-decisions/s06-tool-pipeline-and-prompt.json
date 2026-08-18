@@ -1,0 +1,52 @@
+{
+  "decisions": [
+    {
+      "id": "one-fact-one-owner",
+      "title": { "en": "Every prompt fact has exactly one owner", "zh": "提示词中的每个事实都有唯一所有者" },
+      "description": {
+        "en": "The assembled prompt mixes facts from many plugins, so the design assigns each kind of fact to a single owner: per-tool semantics live in the tool's schema description, cross-call habits live in that tool package's section, runtime facts the harness already knows (model name, cwd) are exposed as {{variables}}, and role/behavior lives only in the persona. This cured drift where the model name and tool guidance were hand-copied into deployment persona YAML and silently diverged from the real config.",
+        "zh": "组装后的提示词混合了来自众多插件的事实，因此该设计为每类事实指定唯一所有者：每个工具的语义放在工具 schema 的 description 中，跨调用习惯放在该工具包的 section 中，harness 已知的运行时事实（模型名、cwd）以 {{变量}} 形式暴露，角色/行为只放在 persona 中。这治愈了漂移问题——此前模型名和工具指引被手工复制到部署的 persona YAML 中，与真实配置悄然脱节。"
+      },
+      "alternatives": {
+        "en": "Hand-writing the model name into each persona (duplicates the model: config key and lies after any edit); injecting the model name via the agent/request waterfall (prompt text composed in two places, so the rendered persona could disagree with the routed header); the loop composing its own identity line (hardcodes prose in the one package that must stay thin).",
+        "zh": "把模型名手工写进每个 persona（复制了 model: 配置键，编辑后就会产生不一致）；通过 agent/request waterfall 注入模型名（提示词文本在两处组合，渲染出的 persona 可能与路由头部不一致）；由循环自己组合身份行（在必须保持精简的那个包里硬编码散文）。"
+      }
+    },
+    {
+      "id": "strict-prompt-interpolation",
+      "title": { "en": "Strict, fail-loud {{variable}} interpolation", "zh": "严格且大声失败的 {{变量}} 插值" },
+      "description": {
+        "en": "renderPrompt()'s interpolation is deliberately strict: an unknown own-property reference, a registered variable whose provider returned undefined, a malformed reference, and an unbalanced reference that still contains a closing }} all throw at render, naming the section. A persona referencing {{cwd}} on a cwd-less agent fails that turn loudly instead of silently rendering nothing, because a bad prompt reference is an authoring error the design wants surfaced.",
+        "zh": "renderPrompt() 的插值被刻意设计为严格：未知的自有属性引用、provider 返回 undefined 的已注册变量、格式错误的引用、以及仍含闭合 }} 的不平衡引用，都会在渲染时抛出并指明所在 section。引用 {{cwd}} 的 persona 在无 cwd 的 agent 上会大声失败该轮，而不是静默渲染为空，因为错误的提示词引用是设计希望暴露的编写错误。"
+      },
+      "alternatives": {
+        "en": "Lenient interpolation that leaves unknown references verbatim or substitutes an empty string — a typo like {{modle}} (or a hole) would ship to the model and go unnoticed until transcript review.",
+        "zh": "宽松插值，即原样保留未知引用或替换为空串——像 {{modle}} 这样的笔误（或空洞）会被发给模型，直到审查 transcript 才会被发现。"
+      }
+    },
+    {
+      "id": "code-mode-presentation-mode",
+      "title": { "en": "Code Mode is a first-class presentation mode of ToolRuntime", "zh": "Code Mode 是 ToolRuntime 的一等呈现模式" },
+      "description": {
+        "en": "Instead of sending every tool as its own JSON function schema (one tool-call block per step, every intermediate result re-entering context), the registry gains a validated mode config — native (default), code, or both — that can expose a single reserved run_code tool plus a generated SDK, letting the model write a program that loops, branches, and combines several tool results locally while only its printed/returned output re-enters the conversation. The registry owns the mode because which tools the model is offered, and in which representation, is a single concern: native schemas and the SDK are two projections of one visible tool store.",
+        "zh": "注册表新增了经校验的 mode 配置——native（默认）、code 或 both——而不是把每个工具作为独立 JSON 函数 schema 发送（每步一个 tool-call 块，每个中间结果都重新进入上下文）。code 模式可暴露单个保留的 run_code 工具加一份生成的 SDK，让模型编写一个程序在局部循环、分支、组合多个工具结果，只有它 print/return 的输出才重新进入对话。注册表拥有该模式，因为向模型提供哪些工具、以何种表示形式提供是单一关注点：原生 schema 和 SDK 是同一个可见工具存储的两种投影。"
+      },
+      "alternatives": {
+        "en": "An add-on consumer plugin with zero core changes (rejected: transforming an assembled tool list would depend on waterfall listener order and fight reconstructable requests); result elision/summarization over native tool-calling (addresses only context bloat, still one round-trip per call, cannot express loops/branches/joins); always-exclusive code mode with no native option (taxes the common single-call case like bash/read/edit).",
+        "zh": "零核心改动的附加消费方插件（否决：变换已组装的工具列表会依赖 waterfall 监听器顺序，并与可重建请求冲突）；在原生工具调用上做结果省略/摘要（只解决上下文膨胀，每次调用仍需一次往返，无法表达循环/分支/汇合）；始终排他的 code 模式、不设原生选项（给 bash/read/edit 这类常见单次调用增加负担）。"
+      }
+    },
+    {
+      "id": "code-execution-seam-worker-thread",
+      "title": { "en": "Code execution as a capability seam with a worker-thread runtime", "zh": "代码执行作为能力 seam，采用 worker 线程运行时" },
+      "description": {
+        "en": "Code execution is split into a capability seam (@deepseek-ai/dsh-code-runtime owns ctx.codeRuntime; dsh-tools is the Consumer) that is handed a program and named async bindings and reports { value, logs, error? } while knowing nothing about tools. The shipped provider, dsh-code-runtime-worker-thread, spawns one fresh Node worker thread per run — separate isolate, empty environment, heap/output/time caps, and hard termination — at bash-equivalent trust, so a future Python or container backend is just another Service Provider behind the same seam.",
+        "zh": "代码执行被拆分为一个能力 seam（@deepseek-ai/dsh-code-runtime 拥有 ctx.codeRuntime；dsh-tools 是消费方），它接收一段程序和命名的异步绑定并报告 { value, logs, error? }，对工具一无所知。交付的提供方 dsh-code-runtime-worker-thread 每次运行 spawn 一个全新的 Node worker 线程——独立 isolate、空环境、堆/输出/时间上限以及硬终止——信任等级等同于 bash，因此未来的 Python 或容器后端只是同一 seam 背后的另一个 Service Provider。"
+      },
+      "alternatives": {
+        "en": "node:vm as the reference runtime (rejected: it is not isolation — prototype-chain escapes reach the host realm — and cannot interrupt a hot loop); a REPL-style persistent kernel whose state survives across run_code calls (rejected for the MVP: cross-call state would be invisible to the session log, breaking the reconstructability guarantee that every request is a pure function of the log).",
+        "zh": "以 node:vm 作为参考运行时（否决：它不是隔离——原型链逃逸可达宿主 realm——且无法中断热循环）；REPL 风格的持久内核，状态跨 run_code 调用存活（MVP 中否决：跨调用状态对会话日志不可见，破坏了「每个请求是日志的纯函数」这一可重建性保证）。"
+      }
+    }
+  ]
+}

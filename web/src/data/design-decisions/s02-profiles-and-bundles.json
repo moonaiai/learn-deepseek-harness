@@ -1,0 +1,49 @@
+{
+  "decisions": [
+    {
+      "id": "explicit-ordered-bundles-list",
+      "title": {
+        "en": "One explicit, ordered dsh.profile.bundles list",
+        "zh": "一份显式、有序的 dsh.profile.bundles 列表"
+      },
+      "description": {
+        "en": "A profile composes its layers from a single explicit ordered list in its manifest, so the whole composition is fully deterministic and inspectable. Installing a library with pnpm add never activates a patch layer until it is added to bundles by name.",
+        "zh": "profile 通过其 manifest 中一份显式有序的列表来组合各层，因此整个组合完全确定、可检视。用 pnpm add 安装一个库绝不会激活任何 patch 层，除非把它按名字加进 bundles。"
+      },
+      "alternatives": {
+        "en": "Dependency-scan plus partial patchOrder: scanning dependencies for bundles and ordering unlisted ones alphabetically. Rejected because it has two sources of truth and an implicit tie-break, and a raw pnpm add could silently activate a patch layer.",
+        "zh": "依赖扫描加部分 patchOrder：扫描 dependencies 找出组合包、未列出者按字母序排列。被否决，因为它有两个真源和一条隐式决胜规则，而且直接 pnpm add 可能会悄悄激活一个 patch 层。"
+      }
+    },
+    {
+      "id": "two-anchor-bundle-resolution",
+      "title": {
+        "en": "Two-anchor resolution instead of link: entries",
+        "zh": "用双锚点解析取代 link: 条目"
+      },
+      "description": {
+        "en": "Bundle names in dsh.profile.bundles resolve from the dsh installation first, then the profile directory, with a healed $DSH_HOME/profiles/node_modules symlink fallback. This guarantees in-box bundles always come from the same installation as the running dsh while pnpm never manages them.",
+        "zh": "dsh.profile.bundles 中的名称先从 dsh 安装目录解析，再从 profile 目录解析，并辅以每次启动修复的 $DSH_HOME/profiles/node_modules 符号链接回退。这保证内置组合包始终来自与运行中 dsh 相同的安装，同时 pnpm 从不管理它们。"
+      },
+      "alternatives": {
+        "en": "link: entries for in-box bundles. Rejected because pnpm cannot version, install, or update a link: pointed at the installation, it embeds a machine-specific path in a user file, and it breaks when the installation moves.",
+        "zh": "内置组合包使用 link: 条目。被否决，因为 pnpm 无法对指向安装目录的 link: 做版本管理、安装或更新，它会把机器特定路径嵌进用户文件，并且在安装目录移动后失效。"
+      }
+    },
+    {
+      "id": "no-transitive-bundle-application",
+      "title": {
+        "en": "Only directly named bundles contribute layers",
+        "zh": "只有直接列名的组合包才贡献层"
+      },
+      "description": {
+        "en": "Only bundles named directly in dsh.profile.bundles contribute a patch layer; a bundle that wants to re-export another bundle's rows must do so explicitly in its own patch file. This keeps the composition free of implicit, transitive activation through the dependency graph.",
+        "zh": "只有直接列在 dsh.profile.bundles 中的组合包才贡献 patch 层；想重新导出另一个组合包配置行的组合包，必须在自己的 patch 文件中显式完成。这使组合摆脱经由依赖图的隐式、传递式激活。"
+      },
+      "alternatives": {
+        "en": "Transitive bundle auto-application, where a bundle silently pulls in another bundle's patch through its own dependency graph. Rejected in favor of explicit, directly named layers only.",
+        "zh": "组合包的传递式自动应用，即一个组合包通过自己的依赖图悄悄拉入另一个组合包的 patch。被否决，改为只允许显式、直接列名的层。"
+      }
+    }
+  ]
+}
