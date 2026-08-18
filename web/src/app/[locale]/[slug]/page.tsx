@@ -8,6 +8,8 @@ import { MODULES } from "@/lib/modules";
 import { ChapterProgressToggle } from "@/components/chapter/chapter-progress-toggle";
 import { ChapterPager } from "@/components/chapter/chapter-pager";
 import { TableOfContents } from "@/components/chapter/table-of-contents";
+import { ChapterShowcasePanel } from "@/components/diagram/chapter-showcase-panel";
+import { getChapterShowcase } from "@/data/chapter-showcases";
 import { LOCALES, resolveLocale } from "@/lib/types";
 
 export function generateStaticParams() {
@@ -34,6 +36,7 @@ export default async function ChapterPage({
   const t = getTranslator(locale);
   const { prev, next } = getAdjacentChapters(locale, slug);
   const moduleMeta = MODULES.find((m) => m.id === chapter.module);
+  const showcase = getChapterShowcase(slug);
 
   return (
     <div className="flex gap-10">
@@ -56,6 +59,8 @@ export default async function ChapterPage({
         </header>
 
         <DocBody html={chapter.html} />
+
+        {showcase ? <ChapterShowcasePanel showcase={showcase} /> : null}
 
         {chapter.sources && chapter.sources.length > 0 ? (
           <section className="mt-10 border-t border-[--color-border] pt-6">

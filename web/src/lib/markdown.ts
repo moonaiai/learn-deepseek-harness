@@ -7,6 +7,7 @@ import rehypeSlug from "rehype-slug";
 import rehypeExternalLinks from "rehype-external-links";
 import rehypeHighlight from "rehype-highlight";
 import rehypeStringify from "rehype-stringify";
+import { remarkSourceViewerMeta } from "./remark-source-viewer-meta";
 import type { TocEntry } from "./types";
 
 export type { TocEntry };
@@ -19,11 +20,16 @@ export type { TocEntry };
  * Mermaid fences (```mermaid) are deliberately left as plain
  * `<code class="language-mermaid">` text — {@link MermaidDiagram} finds and
  * hydrates them client-side rather than the server pre-rendering SVG, since
- * mermaid's renderer needs a DOM.
+ * mermaid's renderer needs a DOM. Fenced code blocks with a `filename="..."`
+ * meta string (see `remarkSourceViewerMeta`) get a `data-filename` attribute
+ * picked up the same way by `SourceViewerHydrator`, which swaps them for a
+ * terminal-styled `SourceViewer` — the highlighted spans `rehype-highlight`
+ * produces are reused as-is, not re-tokenized.
  */
 const pipeline = unified()
   .use(remarkParse)
   .use(remarkGfm)
+  .use(remarkSourceViewerMeta)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   .use(rehypeSlug)

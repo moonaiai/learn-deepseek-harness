@@ -2,12 +2,14 @@
 
 import { useRef } from "react";
 import { MermaidHydrator } from "@/components/diagram/mermaid-hydrator";
+import { SourceViewerHydrator } from "@/components/code/source-viewer-hydrator";
 
 /**
  * Renders pre-built chapter/doc HTML (produced server-side by
  * `lib/markdown.ts` at build time) and hydrates any embedded Mermaid code
- * fences in place. This is the only place `dangerouslySetInnerHTML` is used
- * in the app — the HTML source is our own Markdown content, not user input.
+ * fences or `filename="..."` source excerpts in place. This is the only
+ * place `dangerouslySetInnerHTML` is used in the app — the HTML source is
+ * our own Markdown content, not user input.
  */
 export function DocBody({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -15,6 +17,7 @@ export function DocBody({ html }: { html: string }) {
     <>
       <div className="prose-course" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
       <MermaidHydrator containerRef={ref} />
+      <SourceViewerHydrator containerRef={ref} />
     </>
   );
 }

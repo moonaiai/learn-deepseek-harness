@@ -3,7 +3,7 @@ id: s04
 slug: s04-agent-loop
 title: "Turn/Step: Anatomy of the Agent Loop"
 summary: "The turn/step driver: claiming input, running the pre-step waterfall, streaming a model request, dispatching tool calls, and closing the turn — traced against the concrete ReactLoopAgent."
-module: loop
+module: foundations
 order: 4
 sources:
   - path: docs/architecture.md

@@ -17,6 +17,7 @@
     "lucide-react": "^0.564.0",
     "mermaid": "^11.16.1",
     "minisearch": "^7.2.0",
+    "motion": "^13.1.0",
     "next": "^16.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -28,10 +29,12 @@
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^22.19.0",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.4",

@@ -1,6 +1,6 @@
 /**
- * Shared content types for the course site. A "chapter" is one of the 20
- * numbered lessons (s01..s20); a "doc" is a standalone reference page
+ * Shared content types for the course site. A "chapter" is one of the 24
+ * numbered lessons (s01..s24); a "doc" is a standalone reference page
  * (glossary, concept map) that lives outside the chapter sequence.
  */
 
@@ -19,7 +19,12 @@ export function resolveLocale(value: string): Locale {
   return value === "en" ? "en" : DEFAULT_LOCALE;
 }
 
-export type ModuleId = "foundations" | "loop" | "collab" | "memory" | "ops";
+export type ModuleId =
+  | "foundations"
+  | "execution-seams"
+  | "world-and-collab-seams"
+  | "extension-memory-seams"
+  | "orchestration-and-capstone";
 
 /** One row in a chapter's frontmatter `sources` list — a precise, checkable
  * pointer into the deepseek-harness repository at the anchored commit. */

@@ -3,7 +3,7 @@ id: s04
 slug: s04-agent-loop
 title: "Turn/Step：Agent Loop 剖析"
 summary: "轮次与步骤驱动器：领取输入、跑完 pre-step waterfall、流式发起模型请求、调度工具调用、关闭轮次——对照具体的 ReactLoopAgent 逐行核对。"
-module: loop
+module: foundations
 order: 4
 sources:
   - path: docs/architecture.zh.md

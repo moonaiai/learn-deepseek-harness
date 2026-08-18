@@ -3,7 +3,7 @@ id: s05
 slug: s05-agent-interface
 title: "Agent 接口与注册表"
 summary: "循环无关的 Agent 契约、AgentRegistry 工厂模式，以及进程本地的发起方作用域"
-module: loop
+module: foundations
 order: 5
 sources:
   - path: packages/core/agent/README.zh.md

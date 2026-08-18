@@ -3,7 +3,7 @@ id: s05
 slug: s05-agent-interface
 title: "The Agent Interface and Registry"
 summary: "The loop-independent Agent contract, the AgentRegistry factory pattern, and process-local initiator scope"
-module: loop
+module: foundations
 order: 5
 sources:
   - path: packages/core/agent/README.md
