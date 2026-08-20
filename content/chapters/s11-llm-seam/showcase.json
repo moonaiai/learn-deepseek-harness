@@ -1,0 +1,30 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 306,
+    "nodes": [
+      { "id": "loop", "label": "dsh-agent-loop\n(Consumer, folded)", "x": 112, "y": 36, "width": 184, "height": 40 },
+      { "id": "compaction", "label": "dsh-compaction-basic\n(aux Consumer)", "x": 348, "y": 36, "width": 184, "height": 40 },
+      { "id": "svc", "label": "ctx.llm : LlmRuntime\nregistry + StreamChunk", "x": 230, "y": 116, "width": 220, "height": 44 },
+      { "id": "deepseek", "label": "dsh-llm-deepseek\nroute: deepseek-official", "x": 112, "y": 196, "width": 196, "height": 40 },
+      { "id": "piai", "label": "dsh-llm-pi-ai\nroutes: openai, anthropic, ...", "x": 348, "y": 196, "width": 196, "height": 40 },
+      { "id": "ds_wire", "label": "direct fetch\n+ eventsource-parser SSE", "x": 112, "y": 268, "width": 184, "height": 38 },
+      { "id": "piai_sdk", "label": "@earendil-works/pi-ai\nmulti-provider SDK", "x": 348, "y": 268, "width": 184, "height": 38 }
+    ],
+    "edges": [
+      { "from": "loop", "to": "svc", "label": "ctx.llm.stream()" },
+      { "from": "compaction", "to": "svc" },
+      { "from": "svc", "to": "deepseek", "label": "named route" },
+      { "from": "svc", "to": "piai", "label": "named route" },
+      { "from": "deepseek", "to": "ds_wire" },
+      { "from": "piai", "to": "piai_sdk" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["loop", "compaction"], "activeEdgeIds": [], "title": "Consumers", "desc": "dsh-agent-loop and dsh-compaction-basic call ctx.llm directly — no tool package sits between them and the service." },
+      { "activeNodeIds": ["svc"], "activeEdgeIds": ["loop->svc", "compaction->svc"], "title": "Folded service", "desc": "LlmRuntime folds Service Definition and Consumer into dsh-llm and claims ctx.llm; it owns the StreamChunk protocol." },
+      { "activeNodeIds": ["deepseek", "piai"], "activeEdgeIds": ["svc->deepseek", "svc->piai"], "title": "Route dispatch", "desc": "The registry is a named-route dispatch table; deepseek-official and pi-ai's profile routes coexist without conflict." },
+      { "activeNodeIds": ["ds_wire"], "activeEdgeIds": ["deepseek->ds_wire"], "title": "Hand-rolled wire", "desc": "dsh-llm-deepseek speaks DeepSeek's exact SSE wire format via direct fetch, hand-translating reasoning_content." },
+      { "activeNodeIds": ["piai_sdk"], "activeEdgeIds": ["piai->piai_sdk"], "title": "Wrapped SDK", "desc": "dsh-llm-pi-ai wraps @earendil-works/pi-ai, inheriting its multi-provider reach; a new gateway is config, not code." }
+    ]
+  }
+}

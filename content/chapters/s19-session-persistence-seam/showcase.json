@@ -1,0 +1,28 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "session", "label": "Session\n(in-memory log)", "x": 230, "y": 30, "width": 200, "height": 44 },
+      { "id": "seam", "label": "ctx.sessionPersistence\n(Service Definition)", "x": 230, "y": 105, "width": 230, "height": 44 },
+      { "id": "backend", "label": "which backend\nis mounted?", "x": 230, "y": 180, "width": 180, "height": 44 },
+      { "id": "jsonl", "label": "session.jsonl.zstd\n(one file per session)", "x": 110, "y": 255, "width": 200, "height": 44 },
+      { "id": "sqlite", "label": "events / sessions tables\n(one shared database)", "x": 350, "y": 255, "width": 210, "height": 44 }
+    ],
+    "edges": [
+      { "from": "session", "to": "seam", "label": "session/event" },
+      { "from": "seam", "to": "backend" },
+      { "from": "backend", "to": "jsonl", "label": "jsonl provider" },
+      { "from": "backend", "to": "sqlite", "label": "sqlite provider" },
+      { "from": "jsonl", "to": "session", "label": "load() on resume" },
+      { "from": "sqlite", "to": "session", "label": "load() on resume" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["session"], "activeEdgeIds": [], "title": "Live log", "desc": "Session holds the in-memory append-only log of typed SessionEvents." },
+      { "activeNodeIds": ["seam"], "activeEdgeIds": ["session->seam"], "title": "Persist seam", "desc": "ctx.sessionPersistence receives the session/event stream to make it durable." },
+      { "activeNodeIds": ["backend"], "activeEdgeIds": ["seam->backend"], "title": "Which backend?", "desc": "The Service Definition routes to whichever interchangeable provider is mounted." },
+      { "activeNodeIds": ["jsonl", "sqlite"], "activeEdgeIds": ["backend->jsonl", "backend->sqlite"], "title": "Durable store", "desc": "JSONL: one file per session; SQLite: one shared events/sessions database." },
+      { "activeNodeIds": ["session"], "activeEdgeIds": ["jsonl->session", "sqlite->session"], "title": "Resume", "desc": "load() on resume replays the durable log back into the live Session." }
+    ]
+  }
+}

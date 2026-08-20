@@ -1,0 +1,28 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 320,
+    "nodes": [
+      { "id": "tool", "label": "dsh-tool-web\n(web_search / web_fetch)", "x": 230, "y": 36, "width": 220, "height": 44 },
+      { "id": "runtime", "label": "WebRuntime\nsearch() / fetch()", "x": 230, "y": 128, "width": 200, "height": 44 },
+      { "id": "resolve", "label": "resolveProvider\n(per-call selection)", "x": 230, "y": 218, "width": 210, "height": 44 },
+      { "id": "search", "label": "search providers\nExa / Perplexity / DeepSeek", "x": 100, "y": 296, "width": 200, "height": 44 },
+      { "id": "fetch", "label": "fetch provider\ndsh-web-fetch-http", "x": 360, "y": 296, "width": 190, "height": 44 }
+    ],
+    "edges": [
+      { "from": "tool", "to": "runtime", "label": "ctx.web" },
+      { "from": "runtime", "to": "resolve", "label": "per call" },
+      { "from": "resolve", "to": "search", "label": "search map" },
+      { "from": "resolve", "to": "fetch", "label": "fetch map" },
+      { "from": "search", "to": "runtime", "label": "capSources" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["tool"], "activeEdgeIds": [], "title": "One consumer", "desc": "dsh-tool-web registers web_search and web_fetch; it never imports a concrete provider." },
+      { "activeNodeIds": ["tool", "runtime"], "activeEdgeIds": ["tool->runtime"], "title": "Into the seam", "desc": "ctx.web.search()/fetch() is the tool's only path into the WebRuntime." },
+      { "activeNodeIds": ["runtime", "resolve"], "activeEdgeIds": ["runtime->resolve"], "title": "Resolve per call", "desc": "resolveProvider selects fresh on every call, not once at boot." },
+      { "activeNodeIds": ["resolve", "search"], "activeEdgeIds": ["resolve->search"], "title": "Pick a provider", "desc": "Configured id wins; several usable providers with no config throw WEB_PROVIDER_AMBIGUOUS." },
+      { "activeNodeIds": ["search", "runtime"], "activeEdgeIds": ["search->runtime"], "title": "Seam-side cap", "desc": "capSources truncates sources[] to maxResults and sets truncated, regardless of vendor." },
+      { "activeNodeIds": ["resolve", "fetch"], "activeEdgeIds": ["resolve->fetch"], "title": "Fetch branch", "desc": "dsh-web-fetch-http retrieves an arbitrary URL directly — a live SSRF boundary." }
+    ]
+  }
+}

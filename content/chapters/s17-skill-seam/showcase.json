@@ -1,0 +1,25 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "provider", "label": "FileSystemSkillProvider", "x": 90, "y": 40, "width": 170, "height": 44 },
+      { "id": "registry", "label": "ctx.skills\nSkillRegistry", "x": 340, "y": 40, "width": 180, "height": 44 },
+      { "id": "consumer", "label": "dsh-tool-skill\n(Consumer)", "x": 340, "y": 240, "width": 170, "height": 44 },
+      { "id": "model", "label": "Model", "x": 90, "y": 240, "width": 150, "height": 44 }
+    ],
+    "edges": [
+      { "from": "provider", "to": "registry", "label": "registerProvider" },
+      { "from": "registry", "to": "consumer", "label": "snapshot / get" },
+      { "from": "consumer", "to": "model", "label": "catalog" },
+      { "from": "model", "to": "consumer", "label": "skill(name)" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["provider", "registry"], "activeEdgeIds": ["provider->registry"], "title": "Discovery", "desc": "The provider scans rank-ordered roots and registers on ctx.skills during apply()." },
+      { "activeNodeIds": ["registry", "consumer"], "activeEdgeIds": ["registry->consumer"], "title": "Snapshot", "desc": "The consumer snapshots ctx.skills for the session cwd and agent scope." },
+      { "activeNodeIds": ["consumer", "model"], "activeEdgeIds": ["consumer->model"], "title": "Catalog", "desc": "A durable system-reminder publishes name/description pairs only." },
+      { "activeNodeIds": ["model", "consumer"], "activeEdgeIds": ["model->consumer"], "title": "Load on demand", "desc": "The model calls the skill tool with the exact catalog name." },
+      { "activeNodeIds": ["consumer", "registry"], "activeEdgeIds": ["registry->consumer"], "title": "Full body", "desc": "registry.get returns the SkillDefinition content as skill_content." }
+    ]
+  }
+}

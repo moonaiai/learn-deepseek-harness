@@ -1,0 +1,31 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "entry", "label": "/plan [message]", "x": 130, "y": 40, "width": 170, "height": 40 },
+      { "id": "active", "label": "plan:policy section\n(prompt order 50)", "x": 130, "y": 115, "width": 180, "height": 44 },
+      { "id": "propose", "label": "exit_plan_mode(plan)", "x": 130, "y": 190, "width": 180, "height": 40 },
+      { "id": "review", "label": "ctx.userQuestions\nplan-review intent", "x": 130, "y": 265, "width": 190, "height": 44 },
+      { "id": "approved", "label": "silent pending exit\n{ approved: true }", "x": 335, "y": 265, "width": 190, "height": 44 },
+      { "id": "boundary", "label": "agent/pre-step appends\nplan/mode {active:false}", "x": 335, "y": 190, "width": 200, "height": 44 },
+      { "id": "implement", "label": "plan:policy empty\nproceed with plan", "x": 335, "y": 115, "width": 180, "height": 44 }
+    ],
+    "edges": [
+      { "from": "entry", "to": "active", "label": "/plan" },
+      { "from": "active", "to": "propose" },
+      { "from": "propose", "to": "review", "label": "valid plan" },
+      { "from": "review", "to": "approved", "label": "Approve" },
+      { "from": "approved", "to": "boundary" },
+      { "from": "boundary", "to": "implement" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["entry", "active"], "activeEdgeIds": ["entry->active"], "title": "Enter plan mode", "desc": "/plan logs the stance; the plan:policy section renders at prompt order 50." },
+      { "activeNodeIds": ["propose"], "activeEdgeIds": ["active->propose"], "title": "Model proposes", "desc": "The model submits a complete plan through exit_plan_mode(plan)." },
+      { "activeNodeIds": ["review"], "activeEdgeIds": ["propose->review"], "title": "Human review", "desc": "ctx.userQuestions asks plan-review; only an exact Approve passes." },
+      { "activeNodeIds": ["approved"], "activeEdgeIds": ["review->approved"], "title": "Silent pending exit", "desc": "Approve records a silent pending exit and returns { approved: true }." },
+      { "activeNodeIds": ["boundary"], "activeEdgeIds": ["approved->boundary"], "title": "Commit at boundary", "desc": "Next accepted agent/pre-step appends plan/mode { active: false }." },
+      { "activeNodeIds": ["implement"], "activeEdgeIds": ["boundary->implement"], "title": "Proceed with plan", "desc": "plan:policy section empties; the model carries out the plan." }
+    ]
+  }
+}

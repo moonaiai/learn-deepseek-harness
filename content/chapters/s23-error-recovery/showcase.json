@@ -1,0 +1,28 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "step", "label": "ReactLoopAgent.step()\nwhile(true)", "x": 110, "y": 42, "width": 190, "height": 44 },
+      { "id": "request", "label": "model request\n(stream)", "x": 350, "y": 42, "width": 180, "height": 44 },
+      { "id": "waterfall", "label": "agent/request-error\nwaterfall", "x": 230, "y": 140, "width": 200, "height": 44 },
+      { "id": "retryPlugin", "label": "dsh-llm-retry\nplugin", "x": 110, "y": 240, "width": 180, "height": 44 },
+      { "id": "throw", "label": "throw LlmError\n(terminal)", "x": 350, "y": 240, "width": 180, "height": 44 }
+    ],
+    "edges": [
+      { "from": "step", "to": "request", "label": "buildRequest" },
+      { "from": "request", "to": "waterfall", "label": "finish error/aborted" },
+      { "from": "waterfall", "to": "retryPlugin", "label": "{kind:'retry'}" },
+      { "from": "retryPlugin", "to": "step", "label": "continue" },
+      { "from": "waterfall", "to": "throw", "label": "undefined" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["step"], "activeEdgeIds": [], "title": "Step loop", "desc": "ReactLoopAgent.step() runs the model request inside an inner while(true) so a failure can retry without leaving the step." },
+      { "activeNodeIds": ["step", "request"], "activeEdgeIds": ["step->request"], "title": "Stream request", "desc": "buildRequest() assembles the call; the loop streams chunks until assembler.finish resolves." },
+      { "activeNodeIds": ["waterfall"], "activeEdgeIds": ["request->waterfall"], "title": "Request fails", "desc": "finish.kind is error or aborted, so the loop fires the agent/request-error waterfall while the turn signal is still live." },
+      { "activeNodeIds": ["retryPlugin"], "activeEdgeIds": ["waterfall->retryPlugin"], "title": "Plugin decides", "desc": "dsh-llm-retry reads retryPolicy and returns {kind:'retry'} without next(), short-circuiting the waterfall." },
+      { "activeNodeIds": ["step"], "activeEdgeIds": ["retryPlugin->step"], "title": "Retry new step", "desc": "continue rebuilds and resends from durable history; every retry opens a new step in the same turn." },
+      { "activeNodeIds": ["throw"], "activeEdgeIds": ["waterfall->throw"], "title": "Terminal error", "desc": "No listener retries: the default handler returns undefined and the loop throws LlmError, closing step and turn." }
+    ]
+  }
+}

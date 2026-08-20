@@ -1,0 +1,30 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "mcpServer", "label": "External MCP server\n(github, memory, ...)", "x": 10, "y": 30, "width": 130, "height": 44 },
+      { "id": "mcpClient", "label": "dsh-mcp-client\n(MCP client)", "x": 175, "y": 30, "width": 130, "height": 44 },
+      { "id": "ctxTools", "label": "ctx.tools registry", "x": 330, "y": 30, "width": 120, "height": 44 },
+      { "id": "model", "label": "Model in the\nagent loop", "x": 175, "y": 140, "width": 130, "height": 44 },
+      { "id": "extProcess", "label": "External process\n(script, IDE, parent)", "x": 10, "y": 250, "width": 130, "height": 44 },
+      { "id": "sdkServer", "label": "dsh-sdk-jsonrpc-server\n/ dsh-acp", "x": 175, "y": 250, "width": 140, "height": 44 },
+      { "id": "agents", "label": "ctx.agents", "x": 350, "y": 250, "width": 100, "height": 44 }
+    ],
+    "edges": [
+      { "from": "mcpServer", "to": "mcpClient", "label": "tools/list, tools/call" },
+      { "from": "mcpClient", "to": "ctxTools", "label": "register(mcp__server__tool)" },
+      { "from": "ctxTools", "to": "model" },
+      { "from": "extProcess", "to": "sdkServer", "label": "initialize, session/prompt" },
+      { "from": "sdkServer", "to": "agents", "label": "agents.create / followup" },
+      { "from": "agents", "to": "model" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["mcpServer", "mcpClient"], "activeEdgeIds": ["mcpServer->mcpClient"], "title": "Connect out", "desc": "dsh-mcp-client spawns the external MCP server and drains tools/list over the wire." },
+      { "activeNodeIds": ["mcpClient", "ctxTools"], "activeEdgeIds": ["mcpClient->ctxTools"], "title": "Fetch-then-swap", "desc": "A full new generation registers atomically as mcp__server__tool on ctx.tools." },
+      { "activeNodeIds": ["ctxTools", "model"], "activeEdgeIds": ["ctxTools->model"], "title": "Model calls in", "desc": "MCP tools reach the model indistinguishable from native bash or read." },
+      { "activeNodeIds": ["extProcess", "sdkServer"], "activeEdgeIds": ["extProcess->sdkServer"], "title": "Driven instead", "desc": "An external process speaks JSON-RPC initialize / session/prompt to the harness." },
+      { "activeNodeIds": ["sdkServer", "agents", "model"], "activeEdgeIds": ["sdkServer->agents", "agents->model"], "title": "Agent runs", "desc": "agents.create / followup drives the same ctx.agents loop a human would." }
+    ]
+  }
+}

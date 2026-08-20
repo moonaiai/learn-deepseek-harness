@@ -1,0 +1,27 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "caller", "label": "Caller\n(UI / ACP / hook)", "x": 230, "y": 26, "width": 200, "height": 42 },
+      { "id": "registry", "label": "AgentRegistry\n(ctx.agents)", "x": 230, "y": 118, "width": 210, "height": 46 },
+      { "id": "factory", "label": "AgentFactory\n(setFactory)", "x": 110, "y": 218, "width": 160, "height": 44 },
+      { "id": "loop", "label": "AgentLoop\n(implements)", "x": 350, "y": 218, "width": 160, "height": 44 },
+      { "id": "agent", "label": "Agent\n(AgentHandle)", "x": 230, "y": 268, "width": 180, "height": 42 }
+    ],
+    "edges": [
+      { "from": "caller", "to": "registry", "label": "create / resume" },
+      { "from": "registry", "to": "factory", "label": "forward" },
+      { "from": "factory", "to": "loop", "label": "implemented by" },
+      { "from": "registry", "to": "agent", "label": "register(agent)" },
+      { "from": "loop", "to": "agent", "label": "enter+announce" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["caller"], "activeEdgeIds": ["caller->registry"], "title": "Caller invokes", "desc": "Any UI / ACP bridge / hook calls ctx.agents.create() or resume() without importing the loop." },
+      { "activeNodeIds": ["registry", "factory"], "activeEdgeIds": ["registry->factory"], "title": "Factory re-traced", "desc": "Registry forwards through the caller's own context to the one registered AgentFactory." },
+      { "activeNodeIds": ["factory", "loop"], "activeEdgeIds": ["factory->loop"], "title": "One factory", "desc": "AgentLoop registers itself via ctx.agents.setFactory(this); a second registration throws." },
+      { "activeNodeIds": ["loop", "agent"], "activeEdgeIds": ["loop->agent"], "title": "Ordered lifecycle", "desc": "setup() runs first, then enter() id-check + announce() emits agent/created exactly once." },
+      { "activeNodeIds": ["registry", "agent"], "activeEdgeIds": ["registry->agent"], "title": "Plain register", "desc": "A custom driver hands an already-built Agent to ctx.agents.register() directly, bypassing the factory." }
+    ]
+  }
+}

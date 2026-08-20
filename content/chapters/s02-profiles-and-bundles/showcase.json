@@ -1,0 +1,29 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 320,
+    "nodes": [
+      { "id": "root", "label": "Empty profile root\n(cordis.yml: [])", "x": 120, "y": 35, "width": 190, "height": 44 },
+      { "id": "bundles", "label": "dsh.profile.bundles\ndsh-base + mode", "x": 340, "y": 35, "width": 210, "height": 44 },
+      { "id": "profilepatch", "label": "profile's own\ncordis.patch.yml", "x": 120, "y": 150, "width": 200, "height": 44 },
+      { "id": "homepatch", "label": "home-level\n$DSH_HOME/cordis.patch.yml", "x": 340, "y": 150, "width": 220, "height": 44 },
+      { "id": "overlay", "label": "--patch overlay(s)\nargv order", "x": 120, "y": 265, "width": 190, "height": 44 },
+      { "id": "composed", "label": "Composed tree\n(--dump-config)", "x": 340, "y": 265, "width": 210, "height": 44 }
+    ],
+    "edges": [
+      { "from": "root", "to": "bundles" },
+      { "from": "bundles", "to": "profilepatch", "label": "insert / override" },
+      { "from": "profilepatch", "to": "homepatch" },
+      { "from": "homepatch", "to": "overlay" },
+      { "from": "overlay", "to": "composed" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["root"], "activeEdgeIds": [], "title": "Empty root", "desc": "profile-boot.ts writes a fresh empty entry list; the whole tree patches over []." },
+      { "activeNodeIds": ["bundles"], "activeEdgeIds": ["root->bundles"], "title": "Bundle layers", "desc": "dsh-base inserts its rows first; the mode bundle (web-app / headless) stacks over it." },
+      { "activeNodeIds": ["profilepatch"], "activeEdgeIds": ["bundles->profilepatch"], "title": "Profile patch", "desc": "The profile's own cordis.patch.yml overrides or inserts rows by id." },
+      { "activeNodeIds": ["homepatch"], "activeEdgeIds": ["profilepatch->homepatch"], "title": "Home patch", "desc": "$DSH_HOME/cordis.patch.yml outranks the profile file with machine-local preferences." },
+      { "activeNodeIds": ["overlay"], "activeEdgeIds": ["homepatch->overlay"], "title": "Patch overlays", "desc": "--patch overlay(s) apply last, in argv order, on top of every file layer." },
+      { "activeNodeIds": ["composed"], "activeEdgeIds": ["overlay->composed"], "title": "Composed tree", "desc": "composeEntries yields the final tree — exactly what --dump-config prints." }
+    ]
+  }
+}

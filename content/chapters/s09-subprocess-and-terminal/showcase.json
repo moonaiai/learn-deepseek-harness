@@ -1,0 +1,29 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 330,
+    "nodes": [
+      { "id": "providers", "label": "subprocess-local\n/ subprocess-e2b", "x": 230, "y": 36, "width": 210, "height": 44 },
+      { "id": "subprocess", "label": "ctx.subprocess\nSubprocessRuntime", "x": 230, "y": 118, "width": 210, "height": 44 },
+      { "id": "consumers", "label": "bash · lsp-stdio\nsubagent-*", "x": 108, "y": 210, "width": 180, "height": 48 },
+      { "id": "terminalbash", "label": "terminal-bash\nPTY backend", "x": 348, "y": 210, "width": 170, "height": 48 },
+      { "id": "terminals", "label": "ctx.terminals\nsession registry", "x": 348, "y": 292, "width": 180, "height": 44 },
+      { "id": "toolterminal", "label": "tool-terminal\nterminal_* tools", "x": 108, "y": 292, "width": 180, "height": 44 }
+    ],
+    "edges": [
+      { "from": "providers", "to": "subprocess", "label": "provides" },
+      { "from": "subprocess", "to": "consumers", "label": "spawn()" },
+      { "from": "subprocess", "to": "terminalbash", "label": "spawnTerminal()" },
+      { "from": "terminalbash", "to": "terminals", "label": "provides backend" },
+      { "from": "terminals", "to": "toolterminal", "label": "six tools" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["providers"], "activeEdgeIds": [], "title": "Pick a provider", "desc": "subprocess-local (or remote subprocess-e2b) is mounted as the one execution world." },
+      { "activeNodeIds": ["subprocess"], "activeEdgeIds": ["providers->subprocess"], "title": "One substrate", "desc": "ctx.subprocess SubprocessRuntime owns resolveExecutable, spawn, spawnTerminal." },
+      { "activeNodeIds": ["consumers"], "activeEdgeIds": ["subprocess->consumers"], "title": "Pipe consumers", "desc": "bash, lsp-stdio, and three subagent transports all spawn() through the seam." },
+      { "activeNodeIds": ["terminalbash"], "activeEdgeIds": ["subprocess->terminalbash"], "title": "PTY backend", "desc": "terminal-bash calls spawnTerminal() — the one non-pipe primitive." },
+      { "activeNodeIds": ["terminals"], "activeEdgeIds": ["terminalbash->terminals"], "title": "Sessions seam", "desc": "terminal-bash registers on ctx.terminals as its persistent-session backend." },
+      { "activeNodeIds": ["toolterminal"], "activeEdgeIds": ["terminals->toolterminal"], "title": "Model tools", "desc": "tool-terminal exposes six terminal_* tools over owner-scoped sessions." }
+    ]
+  }
+}

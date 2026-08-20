@@ -1,0 +1,33 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 320,
+    "nodes": [
+      { "id": "boot", "label": "host cordis.yml\n(process boot)", "x": 120, "y": 40, "width": 200, "height": 40 },
+      { "id": "setup", "label": "agent factory\nsetup(agentCtx)", "x": 120, "y": 120, "width": 200, "height": 40 },
+      { "id": "preset", "label": "agent.cordis.yml\nminimal|standard|code|cordis", "x": 120, "y": 200, "width": 200, "height": 40 },
+      { "id": "standing", "label": "standing mount\n(per preset / process)", "x": 120, "y": 280, "width": 200, "height": 40 },
+      { "id": "session", "label": "session scope\nagent→preset→global", "x": 340, "y": 280, "width": 200, "height": 40 },
+      { "id": "define", "label": "cordis_define\n/ cordis_run", "x": 340, "y": 200, "width": 200, "height": 40 },
+      { "id": "fiber", "label": "cordis-dynamic fiber\n(node:vm host half)", "x": 340, "y": 120, "width": 200, "height": 40 },
+      { "id": "stop", "label": "cordis_stop / undefine\nfiber disposal", "x": 340, "y": 40, "width": 200, "height": 40 }
+    ],
+    "edges": [
+      { "from": "boot", "to": "setup" },
+      { "from": "setup", "to": "preset", "label": "mount" },
+      { "from": "preset", "to": "standing" },
+      { "from": "standing", "to": "session", "label": "bindScopeParent" },
+      { "from": "session", "to": "define" },
+      { "from": "define", "to": "fiber", "label": "node:vm + defineTool" },
+      { "from": "fiber", "to": "stop", "label": "fiber disposal" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["boot"], "activeEdgeIds": [], "title": "Host boot", "desc": "Process boots one host cordis.yml: registries, persistence, model route." },
+      { "activeNodeIds": ["setup", "preset"], "activeEdgeIds": ["boot->setup", "setup->preset"], "title": "Mount preset", "desc": "setup(agentCtx) mounts the preset's agent.cordis.yml into the agent scope." },
+      { "activeNodeIds": ["standing"], "activeEdgeIds": ["preset->standing"], "title": "Standing mount", "desc": "One composition per preset per process, under a synthetic standing scope." },
+      { "activeNodeIds": ["session"], "activeEdgeIds": ["standing->session"], "title": "Session joins", "desc": "bindScopeParent chains the session scope: agent→preset→global." },
+      { "activeNodeIds": ["define", "fiber"], "activeEdgeIds": ["session->define", "define->fiber"], "title": "Self-modify", "desc": "cordis_define records a package; cordis_run evaluates its host half in node:vm." },
+      { "activeNodeIds": ["fiber", "stop"], "activeEdgeIds": ["fiber->stop"], "title": "Dispose", "desc": "cordis_stop / cordis_undefine tear down via ordinary fiber disposal." }
+    ]
+  }
+}

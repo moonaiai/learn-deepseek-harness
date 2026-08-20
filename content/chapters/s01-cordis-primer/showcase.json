@@ -1,0 +1,24 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "provider", "label": "Provider plugin\nGreeterService extends Service", "x": 110, "y": 45, "width": 190, "height": 50 },
+      { "id": "ctx", "label": "ctx\nshared context", "x": 240, "y": 150, "width": 150, "height": 46 },
+      { "id": "consumer", "label": "Consumer plugin\ninject + apply(ctx)", "x": 360, "y": 45, "width": 180, "height": 50 },
+      { "id": "events", "label": "typed events\nctx.on('some/event')", "x": 360, "y": 255, "width": 180, "height": 46 }
+    ],
+    "edges": [
+      { "from": "provider", "to": "ctx", "label": "super(ctx, 'greeter')" },
+      { "from": "ctx", "to": "consumer", "label": "wakes from PENDING" },
+      { "from": "consumer", "to": "events", "label": "ctx.on (effect)" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["provider"], "activeEdgeIds": [], "title": "Provider plugin", "desc": "A Service subclass; super(ctx, 'greeter') registers the instance (idea 1 & 2)." },
+      { "activeNodeIds": ["provider", "ctx"], "activeEdgeIds": ["provider->ctx"], "title": "Register on ctx", "desc": "The registration is itself an effect, so it vanishes if the provider unloads (idea 5)." },
+      { "activeNodeIds": ["consumer"], "activeEdgeIds": [], "title": "inject waits", "desc": "Consumer declares inject = ['greeter']; its fiber is held PENDING until the service exists (idea 3)." },
+      { "activeNodeIds": ["ctx", "consumer"], "activeEdgeIds": ["ctx->consumer"], "title": "Woken to apply", "desc": "Once 'greeter' exists the fiber leaves PENDING and apply(ctx) runs with ctx.greeter ready." },
+      { "activeNodeIds": ["consumer", "events"], "activeEdgeIds": ["consumer->events"], "title": "Events as effects", "desc": "ctx.on(...) registers a typed listener that unwinds automatically on unload (idea 4 & 5)." }
+    ]
+  }
+}

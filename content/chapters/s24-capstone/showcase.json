@@ -1,0 +1,31 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 320,
+    "nodes": [
+      { "id": "cli", "label": "dsh --profile headless\n\"task\"", "x": 130, "y": 30, "width": 220, "height": 44 },
+      { "id": "compose", "label": "Compose\ndsh-base + dsh-headless", "x": 130, "y": 100, "width": 210, "height": 44 },
+      { "id": "boot", "label": "Cordis Loader\nmounts the tree", "x": 130, "y": 170, "width": 210, "height": 44 },
+      { "id": "runner", "label": "headless-runner\ncreates one Agent", "x": 130, "y": 240, "width": 200, "height": 44 },
+      { "id": "turn", "label": "One turn\nagent.followup loop", "x": 130, "y": 305, "width": 200, "height": 30 },
+      { "id": "tools", "label": "ctx.tools dispatch\nsubagent / workflow", "x": 350, "y": 200, "width": 200, "height": 44 },
+      { "id": "persist", "label": "sessions.flush\nJSONL persistence", "x": 350, "y": 285, "width": 200, "height": 44 }
+    ],
+    "edges": [
+      { "from": "cli", "to": "compose", "label": "resolve profile" },
+      { "from": "compose", "to": "boot", "label": "patch overlays" },
+      { "from": "boot", "to": "runner", "label": "ctx.agents.create" },
+      { "from": "runner", "to": "turn", "label": "agent.followup" },
+      { "from": "turn", "to": "tools", "label": "tool/call" },
+      { "from": "turn", "to": "persist", "label": "sessions.flush" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["cli"], "activeEdgeIds": [], "title": "Invoke", "desc": "dsh --profile headless \"task\" — no special code path, just a resolved profile." },
+      { "activeNodeIds": ["compose"], "activeEdgeIds": ["cli->compose"], "title": "Compose profile", "desc": "dsh-base stacked with dsh-headless, patched in list order (back to s02)." },
+      { "activeNodeIds": ["boot"], "activeEdgeIds": ["compose->boot"], "title": "Boot tree", "desc": "Cordis Loader mounts settings, llm-deepseek, bash, fs, tools, agent-loop." },
+      { "activeNodeIds": ["runner", "turn"], "activeEdgeIds": ["boot->runner", "runner->turn"], "title": "Run one turn", "desc": "headless-runner creates one Agent via ctx.agents, then agent.followup drives the turn." },
+      { "activeNodeIds": ["tools"], "activeEdgeIds": ["turn->tools"], "title": "Dispatch tools", "desc": "Tool calls go through ctx.tools to bash, fs, subagent and workflow (s06/s16/s20)." },
+      { "activeNodeIds": ["persist"], "activeEdgeIds": ["turn->persist"], "title": "Flush & persist", "desc": "sessions.flush drains writes; JSONL lands under .sessions/--cwd--/<id>/ (s19)." }
+    ]
+  }
+}

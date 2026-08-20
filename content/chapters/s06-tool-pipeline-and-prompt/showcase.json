@@ -1,0 +1,29 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "pre", "label": "tools/pre-execute\nallow/deny/ask", "x": 230, "y": 30, "width": 200, "height": 42 },
+      { "id": "guards", "label": "registered guards\n(final deny)", "x": 230, "y": 118, "width": 210, "height": 42 },
+      { "id": "execute", "label": "tools/execute\naround dispatch", "x": 230, "y": 206, "width": 210, "height": 42 },
+      { "id": "body", "label": "tool execute()\nbody", "x": 110, "y": 268, "width": 140, "height": 40 },
+      { "id": "post", "label": "tools/post-execute\naccept/block/replace", "x": 350, "y": 118, "width": 200, "height": 42 },
+      { "id": "result", "label": "finalizeContent\n→ tools/result", "x": 350, "y": 268, "width": 190, "height": 40 }
+    ],
+    "edges": [
+      { "from": "pre", "to": "guards", "label": "allow" },
+      { "from": "guards", "to": "execute" },
+      { "from": "execute", "to": "body" },
+      { "from": "body", "to": "post" },
+      { "from": "post", "to": "result" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["pre"], "activeEdgeIds": [], "title": "Pre-execute", "desc": "tools/pre-execute waterfall: hooks, permission, sandbox return allow/deny/ask." },
+      { "activeNodeIds": ["guards"], "activeEdgeIds": ["pre->guards"], "title": "Guards", "desc": "Monotonic ctx.tools.guard() checks run after pre-execute; they can only deny or abstain." },
+      { "activeNodeIds": ["execute"], "activeEdgeIds": ["guards->execute"], "title": "Execute wrapper", "desc": "tools/execute wraps dispatch — the documented home for timeout, retry, and metrics." },
+      { "activeNodeIds": ["body"], "activeEdgeIds": ["execute->body"], "title": "Tool body", "desc": "The registered execute() body runs, carrying the caller-owned AbortSignal." },
+      { "activeNodeIds": ["post"], "activeEdgeIds": ["body->post"], "title": "Post-execute", "desc": "tools/post-execute may accept, block, replace content, or attach model-facing context." },
+      { "activeNodeIds": ["result"], "activeEdgeIds": ["post->result"], "title": "Finalize and observe", "desc": "finalizeContent enforces the content-only invariant; tools/result then observes the frozen outcome." }
+    ]
+  }
+}

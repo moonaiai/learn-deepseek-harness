@@ -1,0 +1,28 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 310,
+    "nodes": [
+      { "id": "jobsProducer", "label": "background bash /\nsubagent", "x": 85, "y": 45, "width": 140, "height": 44 },
+      { "id": "jobsRegistry", "label": "ctx.jobs\nJobRegistry", "x": 245, "y": 45, "width": 160, "height": 44 },
+      { "id": "wfTool", "label": "workflow /\nralph tool", "x": 85, "y": 150, "width": 140, "height": 44 },
+      { "id": "wfEngine", "label": "ctx.workflowEngine\nworker thread", "x": 245, "y": 150, "width": 160, "height": 44 },
+      { "id": "wfChildren", "label": "subagents\n(fan-out)", "x": 395, "y": 150, "width": 120, "height": 44 },
+      { "id": "schedCreate", "label": "schedule_create", "x": 85, "y": 255, "width": 140, "height": 44 },
+      { "id": "schedLog", "label": "Session log\nschedule/change", "x": 245, "y": 255, "width": 160, "height": 44 }
+    ],
+    "edges": [
+      { "from": "jobsProducer", "to": "jobsRegistry", "label": "ctx.jobs.start()" },
+      { "from": "wfTool", "to": "wfEngine", "label": "WorkflowEngine.start()" },
+      { "from": "wfEngine", "to": "wfChildren", "label": "agent()" },
+      { "from": "schedCreate", "to": "schedLog", "label": "schedule/change event" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["jobsProducer", "jobsRegistry"], "activeEdgeIds": ["jobsProducer->jobsRegistry"], "title": "Jobs seam", "desc": "run_in_background bash or subagent registers via ctx.jobs.start() — a real seam (Definition/Provider/Consumer), fire-and-forget." },
+      { "activeNodeIds": ["wfTool", "wfEngine"], "activeEdgeIds": ["wfTool->wfEngine"], "title": "Workflow seam", "desc": "The workflow or ralph tool starts a model-written script in the ctx.workflowEngine worker thread." },
+      { "activeNodeIds": ["wfChildren"], "activeEdgeIds": ["wfEngine->wfChildren"], "title": "Fan out and settle", "desc": "agent() spawns subagents via parallel()/pipeline(); the parent tool call blocks until the whole run settles." },
+      { "activeNodeIds": ["schedCreate", "schedLog"], "activeEdgeIds": ["schedCreate->schedLog"], "title": "Schedule: no seam", "desc": "schedule_create appends a versioned schedule/change event straight into the session log — no ctx key, no Provider." },
+      { "activeNodeIds": ["jobsRegistry", "wfEngine", "schedLog"], "activeEdgeIds": [], "title": "Two seams, one not", "desc": "Jobs and Workflow are swappable seams on ctx; Schedule is only the log plus a process-local timer owner." }
+    ]
+  }
+}

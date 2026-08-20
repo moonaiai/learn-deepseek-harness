@@ -1,0 +1,29 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 320,
+    "nodes": [
+      { "id": "config", "label": "hooks.json\n(CC / Codex)", "x": 230, "y": 36, "width": 200, "height": 44 },
+      { "id": "bridge", "label": "Bridge plugin\n(hooks-claude-code / codex)", "x": 110, "y": 116, "width": 200, "height": 44 },
+      { "id": "protocol", "label": "dsh-hook-protocol\nmatcher·runner·codec·merge", "x": 340, "y": 116, "width": 220, "height": 44 },
+      { "id": "shell", "label": "ctx.shell\n(dsh-shell)", "x": 110, "y": 196, "width": 180, "height": 40 },
+      { "id": "persist", "label": "ctx.sessionPersistence\n(optional)", "x": 340, "y": 196, "width": 200, "height": 44 },
+      { "id": "points", "label": "Typed interception points\npre-step · pre/post-execute · stopping", "x": 230, "y": 272, "width": 280, "height": 40 }
+    ],
+    "edges": [
+      { "from": "config", "to": "bridge", "label": "parse at load" },
+      { "from": "bridge", "to": "protocol", "label": "imports" },
+      { "from": "protocol", "to": "shell", "label": "runHook" },
+      { "from": "bridge", "to": "persist", "label": "ctx.get (optional)" },
+      { "from": "bridge", "to": "points", "label": "typed Decision" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["config"], "activeEdgeIds": [], "title": "Load hooks.json", "desc": "A user's existing Claude Code or Codex hooks.json, parsed once at load." },
+      { "activeNodeIds": ["config", "bridge"], "activeEdgeIds": ["config->bridge"], "title": "Bridge plugin", "desc": "dsh-hooks-claude-code / hooks-codex read the config; inject = ['shell']." },
+      { "activeNodeIds": ["bridge", "protocol"], "activeEdgeIds": ["bridge->protocol"], "title": "Shared protocol", "desc": "Both dialects reuse dsh-hook-protocol's matcher, codec, and merge." },
+      { "activeNodeIds": ["protocol", "shell"], "activeEdgeIds": ["protocol->shell"], "title": "Run via ctx.shell", "desc": "runHook spawns the hook command through the shell executor seam." },
+      { "activeNodeIds": ["bridge", "persist"], "activeEdgeIds": ["bridge->persist"], "title": "Locate transcript", "desc": "ctx.get('sessionPersistence') fills session_id / transcript_path, best-effort." },
+      { "activeNodeIds": ["bridge", "points"], "activeEdgeIds": ["bridge->points"], "title": "Typed decisions", "desc": "Merged HookOutput maps onto the harness's typed interception points." }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      { "id": "producer", "label": "Producer\n(loop / tool)", "x": 90, "y": 40, "width": 160, "height": 44 },
+      { "id": "validate", "label": "validate\n(lossless JSON)", "x": 330, "y": 40, "width": 200, "height": 44 },
+      { "id": "log", "label": "Session.log\n(appended, frozen)", "x": 210, "y": 130, "width": 220, "height": 44 },
+      { "id": "surface", "label": "SurfaceManager", "x": 90, "y": 225, "width": 170, "height": 40 },
+      { "id": "messages", "label": "deriveMessages()\n→ model", "x": 330, "y": 225, "width": 200, "height": 44 }
+    ],
+    "edges": [
+      { "from": "producer", "to": "validate", "label": "session.append" },
+      { "from": "validate", "to": "log" },
+      { "from": "log", "to": "surface", "label": "surface-eligible" },
+      { "from": "surface", "to": "messages", "label": "project once" }
+    ],
+    "steps": [
+      { "activeNodeIds": ["producer"], "activeEdgeIds": [], "title": "Producer", "desc": "The agent loop, a tool, or compaction calls session.append(type, data, opts?)." },
+      { "activeNodeIds": ["validate"], "activeEdgeIds": ["producer->validate"], "title": "Validate once", "desc": "Lossless-JSON snapshot + surface metadata checked at the append site." },
+      { "activeNodeIds": ["log"], "activeEdgeIds": ["validate->log"], "title": "Commit log", "desc": "deepFreeze then push into the append-only Session.log." },
+      { "activeNodeIds": ["surface"], "activeEdgeIds": ["log->surface"], "title": "Project surface", "desc": "SurfaceManager applies append / replace(start,end); log-only events skip this." },
+      { "activeNodeIds": ["messages"], "activeEdgeIds": ["surface->messages"], "title": "Derive messages", "desc": "deriveMessages() projects surface nodes once into the model request." }
+    ]
+  }
+}
