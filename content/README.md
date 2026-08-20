@@ -131,3 +131,19 @@ A chapter's StepDiagram and/or SeamSimulator data — only a handful of chapters
   ````
   The path in `filename=` should match a `sources.{locale}.json` entry for the same chapter. Use this sparingly — one genuinely representative excerpt per chapter, not every code block — since its visual weight is meant to mark "the one snippet worth lingering on."
 - No editorializing about the writing process itself (no "as we saw earlier", no meta-commentary about the course) — write as current-state technical prose, same register as the rest of the deepseek-harness documentation it draws from.
+
+## Structured content blocks
+
+The render pipeline (`web/src/lib/remark-content-blocks.ts`, registered in `web/src/lib/markdown.ts`) turns a small set of Markdown conventions into styled, sometimes interactive blocks. Use them to break the uniform prose wall — but only where they genuinely fit; substance over quantity.
+
+- **Callout** — a blockquote whose first line is a marker: `> [!WHY]` (reasoning), `> [!LIMITATION]` (constraint), `> [!NOTE]` (aside), `> [!PITFALL]` (gotcha). The marker is stripped and the blockquote is color-coded and labelled. Use for the "why was it built this way" / "watch out" / "note that" sentences.
+- **Concept card** — `:::concept{term="X"}` … `:::` lifts a defined term out of the prose into a labelled card. Use for dense "a X is…" vocabulary definitions.
+- **Decision card** — `:::decision` … `:::` for an inline "we chose X over Y" rationale, placed where the topic arises (the in-flow counterpart to the bottom-of-chapter Deep-Dive `decisions.json`).
+- **Timeline** — `:::timeline` containing a `- title — caption` list … `:::` renders as a caption-synced step-through (play/pause/step) for an ordered process. Use ONLY for genuinely ordered mechanisms (append → validate → commit → notify); skip if the chapter has no ordered flow.
+- **Fold** — `:::fold[Summary]` … `:::` renders as a collapsible `<details>`; the bracket label (no space before `[`) becomes the summary. Use to bury secondary deep-dives and tangents.
+
+Authoring rules:
+
+- Every directive block opens with `:::name` and closes with a bare `:::` — keep them balanced. `:::fold` uses a bracket label with **no space** (`:::fold[Text]`); `:::concept` uses curly-brace attrs (`:::concept{term="…"}`).
+- Both locale files must use the same blocks in the same places (translated text where natural).
+- Do not change meaning, citations, code, or source links when re-wrapping text into blocks — this is a presentation transformation, not a content rewrite.
