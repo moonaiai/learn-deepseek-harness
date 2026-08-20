@@ -11,7 +11,7 @@
     "toggleSidebar": "切换侧栏"
   },
   "home": {
-    "kicker": "20 章 · 5 个模块 · 中英双语",
+    "kicker": "24 章 · 5 个模块 · 中英双语",
     "title": "深入 DeepSeek Harness",
     "subtitle": "从 Cordis 插件内核到 Agent Loop、工具调用、能力接缝、Subagent、技能、压缩与后台任务 —— 一次系统性的架构深潜，每一章都指向真实源码。",
     "cta": "开始阅读",
@@ -30,15 +30,15 @@
     "onThisPage": "本页目录",
     "moduleLabel": "模块"
   },
-  "tabs": {
+  "sidebar": {
+    "title": "课程目录",
+    "progress": "已完成"
+  },
+  "section": {
     "read": "阅读",
     "visualize": "图解",
     "play": "实战",
     "deepDive": "深挖"
-  },
-  "sidebar": {
-    "title": "课程目录",
-    "progress": "已完成"
   },
   "glossary": {
     "title": "术语表",

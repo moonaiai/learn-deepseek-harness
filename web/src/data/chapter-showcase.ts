@@ -7,9 +7,9 @@ import type { SeamScenario } from "@/hooks/use-seam-simulator";
  * Per-chapter StepDiagram/SeamSimulator data, keyed by chapter slug, read
  * from the chapter's own `showcase.json` inside its data package under
  * `content/chapters/sNN-slug/`. Only a handful of chapters have this file —
- * consumers treat absence as "no showcase data for that tab" (see
- * `lib/chapter-tabs.ts`). Read directly from disk at build time (Node-only),
- * exactly like `lib/content.ts` reads chapter markdown.
+ * consumers treat absence as "no showcase data for that section." Read
+ * directly from disk at build time (Node-only), exactly like `lib/content.ts`
+ * reads chapter markdown.
  *
  * Every node label, event name, and provider name inside a showcase entry
  * must be traceable to the corresponding chapter's own citations — this is

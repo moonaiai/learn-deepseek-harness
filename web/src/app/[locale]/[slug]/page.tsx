@@ -1,14 +1,17 @@
 import { notFound } from "next/navigation";
 import { getTranslator } from "@/i18n/i18n-server";
 import { getAllChapters, getChapter, getAdjacentChapters } from "@/lib/content";
-import { getAvailableTabs } from "@/lib/chapter-tabs";
 import { getChapterShowcase } from "@/data/chapter-showcase";
 import { getDesignDecisions } from "@/data/design-decisions";
-import { getRelatedChapters } from "@/lib/related";
 import { ChapterAnchor } from "@/components/chapter/chapter-anchor";
-import { ChapterTabsPanel } from "@/components/chapter/chapter-tabs-panel";
 import { ChapterPager } from "@/components/chapter/chapter-pager";
-import { RelatedChapters } from "@/components/chapter/related-chapters";
+import { ChapterToc } from "@/components/chapter/chapter-toc";
+import { DocBody } from "@/components/docs/doc-body";
+import { DocSection } from "@/components/docs/doc-section";
+import { SourceBadge } from "@/components/docs/source-badge";
+import { StepDiagram } from "@/components/diagram/step-diagram";
+import { SeamSimulator } from "@/components/diagram/seam-simulator";
+import { DesignDecisions } from "@/components/chapter/design-decisions";
 import { LOCALES, resolveLocale } from "@/lib/types";
 
 export function generateStaticParams() {
@@ -35,13 +38,11 @@ export default async function ChapterPage({
   const { prev, next } = getAdjacentChapters(resolvedLocale, slug);
   const showcase = getChapterShowcase(slug);
   const decisions = getDesignDecisions(slug);
-  const availableTabs = getAvailableTabs(slug, chapter.sources.length);
-  const all = getAllChapters(resolvedLocale);
-  const related = getRelatedChapters(resolvedLocale, chapter, all);
+  const sources = chapter.sources;
 
   return (
     <div className="flex gap-10">
-      <article className="min-w-0 flex-1">
+      <article className="min-w-0 max-w-3xl flex-1">
         <ChapterAnchor
           chapter={chapter}
           locale={resolvedLocale}
@@ -49,19 +50,42 @@ export default async function ChapterPage({
           incompleteLabel={t("chapter.markIncomplete")}
         />
 
-        <ChapterTabsPanel
-          locale={resolvedLocale}
-          chapterHtml={chapter.html}
-          showcase={showcase}
-          decisions={decisions}
-          sources={chapter.sources}
-          availableTabs={availableTabs}
-          readLabel={t("tabs.read")}
-          visualizeLabel={t("tabs.visualize")}
-          playLabel={t("tabs.play")}
-          deepDiveLabel={t("tabs.deepDive")}
-          sourcesTitle={t("chapter.sourcesTitle")}
-        />
+        {/* The chapter's prose is the primary content — it's the untitled
+         * lead, not a tab, and never unmounts. */}
+        <DocBody html={chapter.html} />
+
+        {/* The remaining reading modes are inline sections that follow the
+         * prose in the document flow, so the whole chapter is one scrollable
+         * document rather than four mutually-hidden fragments. */}
+        {showcase?.diagram ? (
+          <DocSection overtitle={t("section.visualize")}>
+            <StepDiagram data={showcase.diagram} />
+          </DocSection>
+        ) : null}
+
+        {showcase?.simulator ? (
+          <DocSection overtitle={t("section.play")}>
+            <SeamSimulator scenario={showcase.simulator} />
+          </DocSection>
+        ) : null}
+
+        {decisions.length > 0 || sources.length > 0 ? (
+          <DocSection overtitle={t("section.deepDive")}>
+            {decisions.length > 0 ? <DesignDecisions decisions={decisions} locale={resolvedLocale} /> : null}
+            {sources.length > 0 ? (
+              <div className="mt-8">
+                <h3 className="mb-3 text-sm font-semibold text-[--color-text-muted]">
+                  {t("chapter.sourcesTitle")}
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {sources.map((source, i) => (
+                    <SourceBadge key={`${source.path}-${i}`} source={source} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </DocSection>
+        ) : null}
 
         <ChapterPager
           locale={resolvedLocale}
@@ -72,7 +96,7 @@ export default async function ChapterPage({
         />
       </article>
 
-      <RelatedChapters locale={resolvedLocale} chapters={related} title={t("chapter.relatedChaptersTitle")} />
+      <ChapterToc entries={chapter.toc} title={t("chapter.onThisPage")} />
     </div>
   );
 }

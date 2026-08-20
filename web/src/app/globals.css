@@ -49,14 +49,13 @@ body {
 }
 
 /* ---------------------------------------------------------------------- */
-/* prose-course: styling for server-rendered chapter/doc Markdown bodies  */
-/* (generated once server-side by lib/markdown.ts, then hydrated for       */
-/* Mermaid diagrams and SourceViewer excerpts client-side).              */
+/* prose-course: styling for the rendered chapter/doc Markdown bodies.    */
+/* The goal is readability of long, dense technical prose: a clear heading  */
+/* hierarchy, generous spacing, and inline structures (callouts, code,     */
+/* lists) that guide the eye instead of a wall of uniform text.            */
 /* ---------------------------------------------------------------------- */
 
 .prose-course {
-  max-width: 72ch;
-  line-height: 1.75;
   color: var(--color-text);
 }
 
@@ -64,47 +63,63 @@ body {
   margin-top: 0;
 }
 
+/* The page renders its own <h1> from frontmatter title; Markdown h1 is
+ * suppressed. h2/h3 form the in-page hierarchy that the TOC scroll-spy
+ * tracks, so they get clear separation and anchor-scroll offset. */
 .prose-course h1 {
-  display: none; /* the page template renders its own <h1> from frontmatter title */
+  display: none;
 }
 
 .prose-course h2 {
-  margin-top: 2.5rem;
-  margin-bottom: 1rem;
-  font-size: 1.375rem;
+  margin-top: 2.75rem;
+  margin-bottom: 1.1rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
   scroll-margin-top: 5rem;
 }
 
 .prose-course h3 {
-  margin-top: 2rem;
-  margin-bottom: 0.75rem;
-  font-size: 1.125rem;
+  margin-top: 2.1rem;
+  margin-bottom: 0.6rem;
+  font-size: 1.2rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  scroll-margin-top: 5rem;
+}
+
+.prose-course h4 {
+  margin-top: 1.6rem;
+  margin-bottom: 0.4rem;
+  font-size: 1.02rem;
   font-weight: 600;
-  letter-spacing: -0.005em;
   scroll-margin-top: 5rem;
 }
 
 .prose-course p {
-  margin-top: 0;
-  margin-bottom: 1.1rem;
+  margin: 0 0 1.05rem;
+  line-height: 1.78;
   color: var(--color-text);
+  font-size: 1.02rem;
 }
 
 .prose-course a {
-  color: #3b82f6;
+  color: #2563eb;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
 }
 .dark .prose-course a {
-  color: #60a5fa;
+  color: #7db4ff;
 }
 
 .prose-course ul,
 .prose-course ol {
   margin-bottom: 1.1rem;
-  padding-left: 1.5rem;
+  padding-left: 1.6rem;
+  line-height: 1.7;
 }
 .prose-course ul {
   list-style: disc;
@@ -113,16 +128,31 @@ body {
   list-style: decimal;
 }
 .prose-course li {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.45rem;
+}
+.prose-course li > p {
+  margin-bottom: 0;
+}
+
+/* Strong/emphasis inside the body copies the eye along the line, so `<em>`
+ * and `<strong>` stay readable rather than italic-hard-to-scan. */
+.prose-course strong {
+  font-weight: 650;
+  color: var(--color-text);
 }
 
 .prose-course blockquote {
   margin: 1.5rem 0;
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid #2563eb;
   border-radius: 0.25rem;
-  background: linear-gradient(to right, rgba(59, 130, 246, 0.08), transparent);
+  background: linear-gradient(to right, rgba(37, 99, 235, 0.07), transparent);
   padding: 0.75rem 1.25rem;
   color: var(--color-text-muted);
+  font-size: 0.97rem;
+}
+.dark .prose-course blockquote {
+  border-left-color: #7db4ff;
+  background: linear-gradient(to right, rgba(125, 180, 255, 0.07), transparent);
 }
 
 .prose-course table {
@@ -181,7 +211,7 @@ body {
 }
 
 .prose-course hr {
-  margin: 2rem 0;
+  margin: 2.25rem 0;
   border: none;
   border-top: 1px solid var(--color-border);
 }

@@ -31,16 +31,18 @@ export function ChapterAnchor({
   const kindLabel = KIND_LABEL[chapter.seamKind][locale];
 
   return (
-    <header className="mb-8 border-b border-[--color-border] pb-8">
+    <header className="mb-10 border-b border-[--color-border] pb-9">
       {moduleMeta ? (
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <ModuleBadge moduleId={chapter.module} label={moduleMeta.title[locale]} />
-          <span className="text-xs text-[--color-text-faint]">· {kindLabel}</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-[--color-surface] px-2.5 py-0.5 text-xs text-[--color-text-muted] ring-1 ring-[--color-border]">
+            {kindLabel}
+          </span>
         </div>
       ) : null}
-      <h1 className="text-3xl font-bold tracking-tight">{chapter.title}</h1>
-      <p className="mt-3 max-w-2xl text-[--color-text-muted]">{chapter.summary}</p>
-      <div className="mt-4">
+      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{chapter.title}</h1>
+      <p className="mt-4 max-w-2xl text-lg leading-relaxed text-[--color-text-muted]">{chapter.summary}</p>
+      <div className="mt-5">
         <ChapterProgressToggle
           chapterId={chapter.id}
           completeLabel={completeLabel}

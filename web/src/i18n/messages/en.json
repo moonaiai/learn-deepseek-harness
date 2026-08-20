@@ -11,7 +11,7 @@
     "toggleSidebar": "Toggle sidebar"
   },
   "home": {
-    "kicker": "20 chapters · 5 modules · Bilingual",
+    "kicker": "24 chapters · 5 modules · Bilingual",
     "title": "Learn DeepSeek Harness",
     "subtitle": "From the Cordis plugin kernel to the agent loop, tool pipeline, capability seams, subagents, skills, compaction, and background work — a systematic architecture deep-dive, every chapter grounded in real source.",
     "cta": "Start reading",
@@ -30,15 +30,15 @@
     "onThisPage": "On this page",
     "moduleLabel": "Module"
   },
-  "tabs": {
+  "sidebar": {
+    "title": "Course outline",
+    "progress": "completed"
+  },
+  "section": {
     "read": "Read",
     "visualize": "Visualize",
     "play": "Play",
     "deepDive": "Deep-Dive"
-  },
-  "sidebar": {
-    "title": "Course outline",
-    "progress": "completed"
   },
   "glossary": {
     "title": "Glossary",

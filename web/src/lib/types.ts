@@ -81,16 +81,6 @@ export interface Doc extends DocFrontmatter {
   toc: TocEntry[];
 }
 
-/**
- * The four reading modes every chapter page exposes as tabs (see
- * `components/ui/tabs.tsx`). Whether a given chapter actually renders each
- * tab depends on whether that tab's data exists for it (see
- * `lib/chapter-tabs.ts`) — `visualize` and `play` are data-driven, `read`
- * always exists, and `deep-dive` appears when the chapter has decision or
- * source data.
- */
-export type ChapterTabId = "read" | "visualize" | "play" | "deep-dive";
-
 /** One entry in a chapter's Deep-Dive design-decision list, from its
  * `decisions.json` — distilled from the corresponding Agent Note in the
  * deepseek-harness repo, keeping its own Problem/Decision/
