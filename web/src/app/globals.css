@@ -155,6 +155,127 @@ body {
   background: linear-gradient(to right, rgba(125, 180, 255, 0.07), transparent);
 }
 
+/* ---------------------------------------------------------------------- */
+/* Structured content blocks (see lib/remark-content-blocks.ts)           */
+/* that replace the chapters' uniform prose wall.                         */
+/* ---------------------------------------------------------------------- */
+
+/* Callout blockquotes: `> [!WHY]` / `> [!LIMITATION]` / `> [!NOTE]` /
+ * `> [!PITFALL]`. The marker is stripped by the remark plugin; each kind is
+ * colour-coded and labelled by an ::before heading so the *type* of note is
+ * visible at a glance — WHY (reasoning), LIMITATION (constraint), NOTE
+ * (aside), PITFALL (gotcha). */
+.callout {
+  margin: 1.5rem 0;
+  border-left: 3px solid;
+  border-radius: 0.375rem;
+  padding: 0.75rem 1.1rem;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+.callout::before {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.callout[data-kind="why"] {
+  border-left-color: #22c55e;
+  background: rgba(34, 197, 94, 0.07);
+}
+.callout[data-kind="why"]::before {
+  content: "Why";
+  color: #22c55e;
+}
+.callout[data-kind="limitation"] {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.07);
+}
+.callout[data-kind="limitation"]::before {
+  content: "Limitation";
+  color: #f59e0b;
+}
+.callout[data-kind="note"] {
+  border-left-color: #2563eb;
+  background: rgba(37, 99, 235, 0.07);
+}
+.callout[data-kind="note"]::before {
+  content: "Note";
+  color: #2563eb;
+}
+.callout[data-kind="pitfall"] {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.07);
+}
+.callout[data-kind="pitfall"]::before {
+  content: "Pitfall";
+  color: #ef4444;
+}
+.callout p:last-child,
+.callout p:only-child {
+  margin-bottom: 0;
+}
+
+/* Fold blocks (`:::fold[Summary]`) → native <details>, styled only. */
+.prose-course details {
+  margin: 1.5rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.prose-course details > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.65rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+.prose-course details > summary::-webkit-details-marker {
+  display: none;
+}
+.prose-course details > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.5rem;
+  transition: transform 0.15s;
+}
+.prose-course details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.prose-course details > summary:hover {
+  color: var(--color-text);
+}
+/* The fold body (everything after <summary>) gets padded via the element the
+ * summary contains — `remarkContentBlocks` moves the directives label into the
+ * summary, and the body paragraphs sit after it. */
+.prose-course details > :not(summary) {
+  padding: 0 1.1rem 0.75rem;
+}
+
+/* Concept & decision card bodies: soften the inner Markdown blocks so a card
+ * reads as one unit, not as a fresh prose section. */
+.concept-body > :first-child,
+.decision-body > :first-child {
+  margin-top: 0;
+}
+.concept-body p,
+.decision-body p {
+  margin-bottom: 0.5rem;
+}
+.concept-body p:last-child,
+.decision-body p:last-child {
+  margin-bottom: 0;
+}
+.concept-body code:not(pre code),
+.decision-body code:not(pre code) {
+  background: var(--color-bg);
+}
+
 .prose-course table {
   display: block;
   overflow-x: auto;

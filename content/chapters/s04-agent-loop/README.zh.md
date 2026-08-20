@@ -13,29 +13,32 @@ order: 4
 
 harness 只定义了两个运行中 agent 的工作单元，整个循环都建立在它们之上：
 
-- **步骤（step）**是一次模型请求加上这次请求触发的工具调用。
-- **轮次（turn）**是零个或多个步骤。它在领取首条输入之前打开，并在不再欠下任何工作——没有存活的工具调用、没有新的 steering——时关闭。
+:::concept{term="步骤 (step)"}
+一次模型请求，加上这次请求触发的工具调用。
+:::
 
-本章剩下的内容全部是「如何打开一个轮次、跑完它的步骤、再把它关掉」的机制细节。这套流程最权威的表述是 `docs/architecture.zh.md`「轮次流程」一节中的 ASCII 时序：
+:::concept{term="轮次 (turn)"}
+零个或多个步骤。它在领取首条输入之前打开，并在不再欠下任何工作——没有存活的工具调用、没有新的 steering——时关闭。
+:::
 
-```text
-turn/start
-  claim next-step input plus one queued message
-  assemble prompt sections + tool schemas
-  -> agent/pre-step                   reject | enter(messages)
-     reject, or a first enter rewritten empty -> close the turn with no step
-     step/start
-     append entered messages as user/message
-     derive model history from the log
-     agent/request -> llm/stream -> assistant/chunk* -> assistant/message
-     tool/call* -> tools/pre-execute -> tools/execute -> tools/post-execute -> tool/result*
-     step/end
-     tools owe another request, or next-step input arrived -> claim -> next step
-  -> agent/turn-stopping
-turn/end
-```
+本章剩下的内容全部是「如何打开一个轮次、跑完它的步骤、再把它关掉」的机制细节。这套流程最权威的表述是 `docs/architecture.zh.md`「轮次流程」一节——这里把它做成一个可以分步运行的序列：
 
-这张图里交织着两套词汇。`turn/*`、`step/*`、`user/message`、`assistant/*` 和 `tool/*` 是**持久会话事件**——每一个都会追加到日志中，可以被回放。`agent/pre-step`、`agent/request`、`llm/stream` 和三个 `tools/*` 事件是**实时扩展点**，不直接落日志；它们是 waterfall（瀑布式事件），因此每个监听器都必须调用 `next()` 才能把控制权委托下去，否则链条就在那里短路。`agent/turn-stopping` 是 `serial` 事件——没有 `next()`，只能通过副作用（steering）来否决。
+:::timeline
+- turn/start — 打开轮次；领取 next-step 输入和一条入队消息
+- assemble prompt — 组装 prompt 段与工具 schema
+- agent/pre-step — reject 或 enter(messages);首个空 enter 会以零 step 关闭该轮
+- step/start — 追加 enter 的消息为 user/message;从日志派生模型历史
+- agent/request → llm/stream — assistant/chunk* → assistant/message
+- tool/call* — tools/pre-execute → tools/execute → tools/post-execute → tool/result*
+- step/end — 工具还欠一个请求，或 next-step 输入已到 → 领取 → 下一个 step
+- agent/turn-stopping — 串行(serial)否决(steering)
+- turn/end — 关闭轮次
+:::
+
+这段时序里交织着两套词汇。`turn/*`、`step/*`、`user/message`、`assistant/*` 和 `tool/*` 是**持久会话事件**——每一个都会追加到日志中，可以被回放。`agent/pre-step`、`agent/request`、`llm/stream` 和三个 `tools/*` 事件是**实时扩展点**,不直接落日志;它们是 waterfall(瀑布式事件),因此每个监听器都必须调用 `next()` 才能把控制权委托下去,否则链条就在那里短路。`agent/turn-stopping` 是 `serial` 事件——没有 `next()`,只能通过副作用(steering)来否决。
+
+> [!NOTE]
+> 持久事件可回放;扩展点是实时 waterfall。这条区分,正是循环既可追踪又可替换的根本原因。
 
 本章会对照具体实现来走一遍这张图：`packages/core/agent-loop/src/agent.ts` 中的 `ReactLoopAgent`，它是 harness 里唯一包含具体循环逻辑的包。除此之外的一切——压缩、重试、权限策略、沙箱——都是挂在本章所指名的扩展点上的插件。
 

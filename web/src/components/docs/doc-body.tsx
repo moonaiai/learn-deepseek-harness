@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { MermaidHydrator } from "@/components/diagram/mermaid-hydrator";
 import { SourceViewerHydrator } from "@/components/code/source-viewer-hydrator";
+import { ContentBlockHydrator } from "@/components/content/content-block-hydrator";
 
 /**
  * Renders pre-built chapter/doc HTML (produced server-side by
@@ -18,6 +19,7 @@ export function DocBody({ html }: { html: string }) {
       <div className="prose-course" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
       <MermaidHydrator containerRef={ref} />
       <SourceViewerHydrator containerRef={ref} />
+      <ContentBlockHydrator containerRef={ref} />
     </>
   );
 }

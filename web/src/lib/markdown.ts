@@ -7,7 +7,9 @@ import rehypeSlug from "rehype-slug";
 import rehypeExternalLinks from "rehype-external-links";
 import rehypeHighlight from "rehype-highlight";
 import rehypeStringify from "rehype-stringify";
+import remarkDirective from "remark-directive";
 import { remarkSourceViewerMeta } from "./remark-source-viewer-meta";
+import { remarkContentBlocks } from "./remark-content-blocks";
 import type { TocEntry } from "./types";
 
 export type { TocEntry };
@@ -29,7 +31,9 @@ export type { TocEntry };
 const pipeline = unified()
   .use(remarkParse)
   .use(remarkGfm)
+  .use(remarkDirective)
   .use(remarkSourceViewerMeta)
+  .use(remarkContentBlocks)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   .use(rehypeSlug)

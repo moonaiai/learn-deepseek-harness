@@ -50,19 +50,19 @@ export default async function ChapterPage({
           incompleteLabel={t("chapter.markIncomplete")}
         />
 
+        {/* Hero: the chapter's stepped mechanism diagram leads the page, so the
+         * first thing seen is the interactive "run" visual, not prose. */}
+        {showcase?.diagram ? (
+          <div className="mb-10">
+            <StepDiagram data={showcase.diagram} />
+          </div>
+        ) : null}
+
         {/* The chapter's prose is the primary content — it's the untitled
          * lead, not a tab, and never unmounts. */}
         <DocBody html={chapter.html} />
 
-        {/* The remaining reading modes are inline sections that follow the
-         * prose in the document flow, so the whole chapter is one scrollable
-         * document rather than four mutually-hidden fragments. */}
-        {showcase?.diagram ? (
-          <DocSection overtitle={t("section.visualize")}>
-            <StepDiagram data={showcase.diagram} />
-          </DocSection>
-        ) : null}
-
+        {/* Remaining interactive/Deep-Dive sections follow the prose inline. */}
         {showcase?.simulator ? (
           <DocSection overtitle={t("section.play")}>
             <SeamSimulator scenario={showcase.simulator} />

@@ -14,29 +14,32 @@ order: 4
 
 The harness defines exactly two units of work inside a running agent, and the whole loop is built out of them:
 
-- A **step** is one model request plus the tool calls that request produced.
-- A **turn** is zero or more steps. It opens before its first input is claimed and closes once nothing is owed — no live tool call, no fresh steering.
+:::concept{term="step"}
+One model request, plus the tool calls that request produced.
+:::
 
-Everything else in this chapter is the mechanics of opening a turn, running its steps, and closing it again. The authoritative statement of the flow is the ASCII sequence in `docs/architecture.md`'s "Turn flow" section:
+:::concept{term="turn"}
+Zero or more steps. It opens before its first input is claimed and closes once nothing is owed — no live tool call, no fresh steering.
+:::
 
-```text
-turn/start
-  claim next-step input plus one queued message
-  assemble prompt sections + tool schemas
-  -> agent/pre-step                   reject | enter(messages)
-     reject, or a first enter rewritten empty -> close the turn with no step
-     step/start
-     append entered messages as user/message
-     derive model history from the log
-     agent/request -> llm/stream -> assistant/chunk* -> assistant/message
-     tool/call* -> tools/pre-execute -> tools/execute -> tools/post-execute -> tool/result*
-     step/end
-     tools owe another request, or next-step input arrived -> claim -> next step
-  -> agent/turn-stopping
-turn/end
-```
+Everything else in this chapter is the mechanics of opening a turn, running its steps, and closing it again. The authoritative statement of the flow is the ASCII sequence in `docs/architecture.md`'s "Turn flow" section — here it is as a step-through you can run:
 
-Two vocabularies are interleaved in that diagram. `turn/*`, `step/*`, `user/message`, `assistant/*`, and `tool/*` are **durable session events** — every one of them is appended to the log and can be replayed. `agent/pre-step`, `agent/request`, `llm/stream`, and the three `tools/*` events are **live extension points**, not logged directly; they are waterfalls, so every listener on them must call `next()` to delegate, or the chain stops there. `agent/turn-stopping` is `serial` — it has no `next()`, only a veto by side effect (steering).
+:::timeline
+- turn/start — open the turn; claim next-step input plus one queued message
+- assemble prompt — build prompt sections and tool schemas
+- agent/pre-step — reject, or enter(messages); a first empty enter closes the turn with no step
+- step/start — append entered messages as user/message; derive model history from the log
+- agent/request → llm/stream — assistant/chunk* → assistant/message
+- tool/call* — tools/pre-execute → tools/execute → tools/post-execute → tool/result*
+- step/end — tools owe another request, or next-step input arrived → claim → next step
+- agent/turn-stopping — serial veto by side effect (steering)
+- turn/end — close the turn
+:::
+
+Two vocabularies are interleaved in that sequence. `turn/*`, `step/*`, `user/message`, `assistant/*`, and `tool/*` are **durable session events** — every one of them is appended to the log and can be replayed. `agent/pre-step`, `agent/request`, `llm/stream`, and the three `tools/*` events are **live extension points**, not logged directly; they are waterfalls, so every listener on them must call `next()` to delegate, or the chain stops there. `agent/turn-stopping` is `serial` — it has no `next()`, only a veto by side effect (steering).
+
+> [!NOTE]
+> Durable events are replayable; extension points are live waterfalls. The distinction is the whole reason the loop is both traceable and swappable.
 
 This chapter walks that diagram against the concrete implementation: `ReactLoopAgent` in `packages/core/agent-loop/src/agent.ts`, the only package in the harness that contains concrete loop logic. Everything else — compaction, retries, permission policy, sandboxing — is a plugin sitting on the extension points this chapter names.
 
