@@ -70,7 +70,17 @@ interface SkillDefinition extends SkillSummary {
 }
 ```
 
-`SkillSummary` 是每个面向模型或人的消费者在不完整加载的情况下被允许看到的内容:名称、描述、以及已解析的调用策略——绝不包含正文或绝对路径。`SkillCandidate` 是发现和合并阶段专用的 provider 到注册表的形状;它的 `locator` 是 provider 拥有的不透明状态,会原样传回给同一个 provider 的 `get()`。`SkillDefinition` 是 `skill` 工具最终返回的完整解析结果。
+:::concept{term="SkillSummary"}
+每个面向模型或人的消费者在不完整加载的情况下被允许看到的内容:名称、描述、以及已解析的调用策略——绝不包含正文或绝对路径。
+:::
+
+:::concept{term="SkillCandidate"}
+发现和合并阶段专用的 provider 到注册表的形状;它的 `locator` 是 provider 拥有的不透明状态,会原样传回给同一个 provider 的 `get()`。
+:::
+
+:::concept{term="SkillDefinition"}
+`skill` 工具最终返回的完整解析结果。
+:::
 
 ### `SkillProvider` 契约
 
@@ -110,9 +120,13 @@ interface SkillProviderControl {
 - **最近层直接赢得重名。** 如果某个 preset 自己的层定义了 `my-skill`,它就会直接遮蔽全局层中同名的技能,句点——rank 比较不会跨越层边界。
 - **rank 只在单层内裁决重名。** 下面的 100/200/…/600 rank 表只用来裁决*同一层*内多个 provider 之间的平手。
 
-[分层 skill 注册表 Agent Note](../../../.agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md) 解释了为什么"跨全部可见层的 rank 合池"这一替代方案被否决:rank 的设计前提是各来源彼此知情。在全局池下,一个后安装的仓库插件可能仅凭注册顺序的平手裁决规则,静默地顶掉某个 preset 自带的同名技能,从而在该组合之外远程改变它的行为。最近层优先让一个组合的实际技能集由编写该组合的作者决定,而不是由进程中恰好挂载的其他东西决定。
+:::decision
+[分层 skill 注册表 Agent Note](../../../.agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md) 解释了为什么"跨全部可见层的 rank 合池"这一替代方案被否决:rank 的设计前提是各来源彼此知情。在全局池下,一个后安装的仓库插件可能仅凭注册顺序的平手裁决规则,静默地顶掉某个 preset 自带的同名技能,从而在该组合之外远程改变它的行为。我们选择最近层优先,让一个组合的实际技能集由编写该组合的作者决定,而不是由进程中恰好挂载的其他东西决定。
+:::
 
+:::fold[促成了这次死锁的设计缘由]
 这个设计源自 Agent Note 记录的一次真实死锁:早期版本曾把整个 skill 能力——连同注册表本身——都搬进每个 preset 的隔离 realm,理由是"agent 拥有哪些技能"纯属 agent 平面的决定。这破坏了一个仓库插件的 wrapper,它声明 `inject: ['skills']` 并期望能挂到一个宿主平面的注册表上;由于没有组合宿主注册表,该 wrapper 永远等待。这也意味着一个没有存活 agent 的冷会话完全无处可以回答 UI 的技能列表请求。把"部署供给哪些技能"(宿主注册表、全局层)与"agent 是否消费它们"(该 agent 的组合是否挂载了 `dsh-tool-skill`)拆成两个独立问题,同时解决了这两个问题,并保留了通过 scope 链实现的按 preset 覆盖行为。
+:::
 
 发现缓存以解析后的 scope 链加一个修订计数为键,因此一次空会话重组——只重设 agent scope key 的父级、不触碰注册表本身——对下一次读取立即可见。
 
@@ -236,6 +250,14 @@ const SKILL_GESTURE = /(^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?=\s|$)/g
 
 ## 目录发布 vs. 按需加载,完整流程
 
+:::timeline
+- 发现 —— 文件系统 provider 按 rank 排序的根目录、按 cwd 限定进行扫描,并在 `apply()` 期间注册到 `ctx.skills`
+- 快照 —— consumer 调用 `ctx.skills.snapshot({ cwd, scope: agent })`,注册表把各 provider 的列表合并成 `SkillCandidate[]`
+- 目录发布 —— consumer 渲染一条只携带名称和描述的 `<system-reminder>`
+- 按需加载 —— 模型调用 `skill({ name })`;工具通过注册表和 provider 解析 `get(name, { cwd, scope: agent })`
+- 完整正文 —— provider 返回 `SkillDefinition`;工具以 `<skill_content><skill_resources/><skill_instructions/></skill_content>` 作答
+:::
+
 ```mermaid
 sequenceDiagram
   participant P as skill-filesystem provider
@@ -264,4 +286,5 @@ sequenceDiagram
 
 ## 为什么是这个形态
 
-目录发布与按需加载的拆分,是让"想装多少技能就装多少"不至于变成"每次请求都要为所有技能付费"的机制。分层注册表则是让"部署供给哪些技能"与"某个 agent preset 是否选择使用它们"成为两个可独立组合的决定的机制,呼应了 `ctx.tools` 已经确立的先例。这两个机制回答的是 harness 对每一个能力接缝都会提出的同一个根本问题:什么在部署时变化,什么在组合时变化,模型真正需要看到什么才能行动——把它们当作三件相互独立、可各自演进的事情来对待。
+> [!WHY]
+> 目录发布与按需加载的拆分,是让"想装多少技能就装多少"不至于变成"每次请求都要为所有技能付费"的机制。分层注册表则是让"部署供给哪些技能"与"某个 agent preset 是否选择使用它们"成为两个可独立组合的决定的机制,呼应了 `ctx.tools` 已经确立的先例。这两个机制回答的是 harness 对每一个能力接缝都会提出的同一个根本问题:什么在部署时变化,什么在组合时变化,模型真正需要看到什么才能行动——把它们当作三件相互独立、可各自演进的事情来对待。

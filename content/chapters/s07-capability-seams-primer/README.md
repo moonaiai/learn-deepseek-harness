@@ -26,15 +26,28 @@ Separate these into three roles, own each in its own package, and a provider swa
 
 A **capability seam** is one swappable capability made of exactly three roles working together:
 
-1. **Service Definition** — the Cordis `Service` that owns `ctx.<key>` and the vocabulary types the contract needs, and nothing else. A definition may be an abstract class (`ShellExecutor`) or a concrete registry service (`WebRuntime`) — it is **never a bare TypeScript `interface`**. This distinction matters because a Cordis `Service` participates in the framework's own lifecycle (mounting, disposal, `inject` gating); a plain interface cannot.
-2. **Service Provider** — a plugin that supplies or registers a concrete implementation of the Service Definition. `dsh-bash-local` runs bash through real subprocesses; sandboxed, remote, or platform-specific providers are sibling packages implementing the same Service Definition.
-3. **Consumer** — what the model and other plugins actually program against: a tool schema, a prompt section, another service's internals. A Consumer injects the service by its `ctx` key and never imports a provider-specific type.
+:::concept{term="Service Definition"}
+The Cordis `Service` that owns `ctx.<key>` and the vocabulary types the contract needs, and nothing else. A definition may be an abstract class (`ShellExecutor`) or a concrete registry service (`WebRuntime`) — it is **never a bare TypeScript `interface`**. This distinction matters because a Cordis `Service` participates in the framework's own lifecycle (mounting, disposal, `inject` gating); a plain interface cannot.
+:::
 
+:::concept{term="Service Provider"}
+A plugin that supplies or registers a concrete implementation of the Service Definition. `dsh-bash-local` runs bash through real subprocesses; sandboxed, remote, or platform-specific providers are sibling packages implementing the same Service Definition.
+:::
+
+:::concept{term="Consumer"}
+What the model and other plugins actually program against: a tool schema, a prompt section, another service's internals. A Consumer injects the service by its `ctx` key and never imports a provider-specific type.
+:::
+
+:::decision
 The [glossary](../../../docs/glossary.md#capability-seam) states the rule for role placement: roles normally occupy separate packages when they evolve independently, but a package may own multiple roles when they are genuinely one concern. The canonical counter-example is `dsh-llm`, which folds Service Definition and Consumer into one package because its Consumer is the agent loop itself — not a swappable schema surface — while adapters (`dsh-llm-deepseek`, `dsh-llm-pi-ai`) remain separate Service Provider packages. Don't split preemptively: a capability with one conceivable provider and one Consumer stays one package until a second provider actually appears.
+:::
 
 ## Terminology: "seam" names the trio, not the interface
 
-This is worth stating precisely because the word invites a common misreading. **"Seam" is reserved for the complete three-role capability — never for one role alone.** Calling the Service Definition package itself "the seam" is imprecise; calling one Service Provider "the seam" is wrong. When naming a constituent, name it by its concrete role, class, service, contract, or extension point — "the `ShellExecutor` Service Definition," "the `dsh-bash-sandbox` provider," "the `dsh-tool-bash` Consumer" — and reserve "seam" for describing the whole swappable unit these three form together.
+This is worth stating precisely because the word invites a common misreading.
+
+> [!PITFALL]
+> **"Seam" is reserved for the complete three-role capability — never for one role alone.** Calling the Service Definition package itself "the seam" is imprecise; calling one Service Provider "the seam" is wrong. When naming a constituent, name it by its concrete role, class, service, contract, or extension point — "the `ShellExecutor` Service Definition," "the `dsh-bash-sandbox` provider," "the `dsh-tool-bash` Consumer" — and reserve "seam" for describing the whole swappable unit these three form together.
 
 The role names themselves use title case — **Service Definition**, **Service Provider**, **Consumer** — while generic, non-role uses of "provider" and "consumer" stay lowercase.
 

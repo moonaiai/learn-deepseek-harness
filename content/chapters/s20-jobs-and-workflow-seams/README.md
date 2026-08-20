@@ -146,7 +146,13 @@ The model submits `meta` (name/description, validated as plain data — never ev
 
 ### Why a worker thread, and what it isn't
 
-One `node:worker_threads` worker per run keeps a synchronous script loop off the host event loop and gives `dispose()` a real final stop (`worker.terminate()`). The [worker-thread engine README](../../../packages/workflow/workflow-worker-thread/README.md) is explicit about the boundary this is *not*: "`node:vm` inside a worker is an API-shaping mechanism, not a security boundary: an escaped script can recover Node capabilities with the host process's privileges." Workflow scripts carry the same trust premise as the model's existing bash access — the isolation buys crash/hang containment and a JSON serialization boundary for values crossing back to the host, not sandboxing against a hostile script.
+:::decision
+One `node:worker_threads` worker per run keeps a synchronous script loop off the host event loop and gives `dispose()` a real final stop (`worker.terminate()`).
+
+:::decision
+Workflow scripts run in a worker thread with `node:vm`, **not** to sandbox against a hostile script, but to keep the synchronous loop off the host event loop, contain crashes/hangs, and force a JSON serialization boundary for values crossing back to the host. The [worker-thread engine README](../../../packages/workflow/workflow-worker-thread/README.md) is explicit about the boundary this is *not*: "`node:vm` inside a worker is an API-shaping mechanism, not a security boundary: an escaped script can recover Node capabilities with the host process's privileges." Workflow scripts carry the same trust premise as the model's existing bash access.
+:::
+:::
 
 Fatal hook misuse — an unknown `agent()` option, a schema outside the supported structured-output subset, a tripped cap, a provider-start failure — throws a `WorkflowError` with `fatal: true`, and `parallel()`/`pipeline()` **re-throw** fatal errors rather than mapping the item to `null`. That's a deliberate strictness choice: a typo'd option must kill the script loudly, not dissolve into something indistinguishable from an ordinary child failure. An ordinary child failure (a subagent that ran but didn't complete) *does* map to `null` — the script is expected to branch on that.
 
@@ -174,9 +180,17 @@ Fatal hook misuse — an unknown `agent()` option, a schema outside the supporte
 
 Ralph is not a fourth capability — it's a specific, hardcoded *policy* built entirely from the workflow and subagent seams already described. The [glossary](../../../docs/glossary.md#ralph-loop) is precise about the vocabulary:
 
-- **Ralph loop** — one foreground fresh-agent workflow run toward an immutable objective. A model-facing tool policy composed from workflow and subagent primitives, not a same-session goal, agent-loop mode, scheduler, or generic workflow-script feature.
-- **Ralph round** — one fresh child session in a Ralph loop. The child receives **no** parent or prior-child conversation seed; the shared workspace and one bounded **Ralph handoff** carry all cross-round state.
-- **Ralph handoff** — the normalized bounded structured report passed from one continuing round to the next: `status`, `summary`, `evidence`, `nextSteps`, `blocker`. It supplements the shared workspace as authority, never replaces it.
+:::concept{term="Ralph loop"}
+One foreground fresh-agent workflow run toward an immutable objective. A model-facing tool policy composed from workflow and subagent primitives, not a same-session goal, agent-loop mode, scheduler, or generic workflow-script feature.
+:::
+
+:::concept{term="Ralph round"}
+One fresh child session in a Ralph loop. The child receives **no** parent or prior-child conversation seed; the shared workspace and one bounded **Ralph handoff** carry all cross-round state.
+:::
+
+:::concept{term="Ralph handoff"}
+The normalized bounded structured report passed from one continuing round to the next: `status`, `summary`, `evidence`, `nextSteps`, `blocker`. It supplements the shared workspace as authority, never replaces it.
+:::
 
 The [loop hierarchy](../../../docs/glossary.md#loop-hierarchy) entry situates this precisely: a **round** is "an outer policy iteration containing a turn, such as a goal round or one fresh-agent Ralph attempt" — round counters belong to the policy (Ralph, or the goal driver), not to every turn in a session.
 

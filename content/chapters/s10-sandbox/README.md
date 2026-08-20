@@ -18,7 +18,25 @@ Linux, macOS, and Windows each expose a different kernel-level mechanism for res
 
 ## The Service Definition: `ctx.sandbox`
 
-[`dsh-sandbox`](../../../packages/sandbox/sandbox/README.md) owns `ctx.sandbox` and the shared confinement vocabulary: `SandboxMode` (`read-only` / `workspace-write` / `danger-full-access`, file effects only), `SandboxEnforcement` (`full` / `partial`), `SandboxExecutionPolicy` / `SandboxPolicy` (the complete per-call mode plus workspace root), and the fail-closed `SANDBOX_UNAVAILABLE` error. It depends only on Cordis and the harness error base — never on a backend.
+[`dsh-sandbox`](../../../packages/sandbox/sandbox/README.md) owns `ctx.sandbox` and the shared confinement vocabulary:
+
+:::concept{term="SandboxMode"}
+`read-only` / `workspace-write` / `danger-full-access` — file effects only.
+:::
+
+:::concept{term="SandboxEnforcement"}
+`full` / `partial`.
+:::
+
+:::concept{term="SandboxExecutionPolicy / SandboxPolicy"}
+The complete per-call mode plus workspace root.
+:::
+
+:::concept{term="SANDBOX_UNAVAILABLE"}
+The fail-closed error thrown when no backend is usable.
+:::
+
+It depends only on Cordis and the harness error base — never on a backend.
 
 ```ts
 // packages/sandbox/sandbox/src/index.ts:158-176
@@ -46,7 +64,8 @@ The contract in one line: `ctx.sandbox.confine(argv, policy)` returns the argv t
 
 Policy rides the call, not the provider: two consumers may confine under different policies at the same instant — bash under `read-only` while a confined child agent keeps its state directory writable — and an approved escalated retry is just a new call with a wider policy.
 
-**Same-world confinement only.** A backend shares the host's filesystem and kernel (`bwrap`, Landlock, Seatbelt, the Windows ACL token); `workspaceRoot` names the filesystem-canonical real host directory. Containers, microVMs, and remote executors are explicitly NOT backends of this seam — they replace whole capability-seam families (`ctx.shell`, `ctx.fs`) as environment-coherent groups, the same way `docs/architecture.md` frames filesystem and subprocess providers as sharing one execution world.
+> [!WHY]
+> **Same-world confinement only.** A backend shares the host's filesystem and kernel (`bwrap`, Landlock, Seatbelt, the Windows ACL token); `workspaceRoot` names the filesystem-canonical real host directory. Containers, microVMs, and remote executors are explicitly NOT backends of this seam — they replace whole capability-seam families (`ctx.shell`, `ctx.fs`) as environment-coherent groups, the same way `docs/architecture.md` frames filesystem and subprocess providers as sharing one execution world.
 
 ## The Service Provider: `dsh-sandbox-local` dispatches by platform
 
@@ -126,9 +145,11 @@ flowchart TD
 
 Three things this walk makes concrete:
 
-- **Linux is the only platform that actually arbitrates.** It has two candidates, so `bwrap` is tried first (spawning a real mount-namespace profile under `--ro-bind` / `--dev` / `--proc`) and Landlock is the fallback only if that probe fails. macOS and Windows each have exactly one candidate in their chain, so `chainVerdict` skips probing entirely and selects it directly — its own execution-time refusal is what fails closed, not a preflight probe.
-- **Selection happens once per provider lifetime**, cached in `this.selectedRunner`. Installing, removing, or repairing a runner requires reloading the plugin before selection changes — the README states this as a known limitation, not an oversight.
-- **A platform absent from `PLATFORM_CHAINS`, or a chain where every candidate probes `unusable`, fails closed** with `SandboxUnavailableError` and the `SANDBOX_UNAVAILABLE` code — never a silent unconfined passthrough.
+:::timeline
+- Linux is the only platform that actually arbitrates — it has two candidates, so `bwrap` is tried first (spawning a real mount-namespace profile under `--ro-bind` / `--dev` / `--proc`) and Landlock is the fallback only if that probe fails; macOS and Windows each have exactly one candidate, so `chainVerdict` skips probing entirely and selects it directly, its own execution-time refusal failing closed rather than a preflight probe.
+- Selection happens once per provider lifetime, cached in `this.selectedRunner` — installing, removing, or repairing a runner requires reloading the plugin before selection changes, a known limitation rather than an oversight.
+- A platform absent from `PLATFORM_CHAINS`, or a chain where every candidate probes `unusable`, fails closed with `SandboxUnavailableError` and the `SANDBOX_UNAVAILABLE` code — never a silent unconfined passthrough.
+:::
 
 ## Enforcement completeness: `full` versus `partial`, reported honestly
 
@@ -156,7 +177,11 @@ Windows has no Landlock or Seatbelt equivalent, so [`dsh-sandbox-windows-acl`](.
 
 > "the caller's token is duplicated into a `WRITE_RESTRICTED` token whose restricting SIDs carry separate workspace and private-temp capabilities... Windows grants a write only where BOTH the caller's normal access AND the restricting-SID intersection allow it."
 
-Two SIDs carry the actual grants. `workspaceWriteSid` is derived deterministically from the canonical workspace path, so its ACE materializes once per workspace per machine and every later session or restart hits an "exact-ACE skip" instead of re-propagating permissions across the whole directory tree. `tempWriteSid` is different by design: every live session/workspace pair gets a fresh, randomly located private temp directory and its own derived SID, so sessions sharing a workspace share its intended write authority without inheriting each other's temp authority. This is a Node.js/[koffi](https://koffi.dev/) port of the mechanism demonstrated in `huoyaoyuan/windows-acl-restrict-poc` (pinned revision `10e4dfb`) — a deliberate design choice recorded against two rejected alternatives: Microsoft's mxc container needs an OS floor of Windows 11 24H2 and would require wholesale host DACL writes for arbitrary-path reads, and AppContainer cannot do arbitrary-path reads at all. The restricted-token approach needs neither, because `WRITE_RESTRICTED` only ever intersects write access — reads pass through on the caller's normal, unrestricted access.
+:::decision
+The restricted-token approach is a deliberate design choice recorded against two rejected alternatives: Microsoft's mxc container needs an OS floor of Windows 11 24H2 and would require wholesale host DACL writes for arbitrary-path reads, and AppContainer cannot do arbitrary-path reads at all. The restricted-token approach needs neither, because `WRITE_RESTRICTED` only ever intersects write access — reads pass through on the caller's normal, unrestricted access.
+:::
+
+`workspaceWriteSid` is derived deterministically from the canonical workspace path, so its ACE materializes once per workspace per machine and every later session or restart hits an "exact-ACE skip" instead of re-propagating permissions across the whole directory tree. `tempWriteSid` is different by design: every live session/workspace pair gets a fresh, randomly located private temp directory and its own derived SID, so sessions sharing a workspace share its intended write authority without inheriting each other's temp authority. This is a Node.js/[koffi](https://koffi.dev/) port of the mechanism demonstrated in `huoyaoyuan/windows-acl-restrict-poc` (pinned revision `10e4dfb`).
 
 The runner it produces is the same architectural shape as the POSIX runners: an argv-prefix wrapper (`node runner.js --workspace <dir> --temp <dir> --mode <mode> [--write-sid ... --temp-write-sid ...] -- <argv...>`) that `dsh-sandbox-local` spawns in place of the caller's command, so `ctx.sandbox.confine()`'s contract needs no per-platform special case at the call site — only inside the dispatcher shown above.
 

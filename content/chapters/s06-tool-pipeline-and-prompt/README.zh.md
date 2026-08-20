@@ -21,10 +21,21 @@ agent loop 的每一个步骤都要做两件谁都不能单独把控全程的事
 
 `SystemPrompt` 服务（`ctx.systemPrompt`，定义于 `packages/core/system-prompt/src/index.ts:338`）暴露四个注册方法，每个方法都返回一个 Cordis effect 的 disposer——插件卸载时，它贡献的内容会自动撤回：
 
-- **`section(section: PromptSection)`**（第 381 行）：注册 `{ name, order, text, complete? }`。各段按 `order` 升序拼接；`text` 既可以是静态字符串，也可以是接受 `AssembleContext` 的函数，每次组装都会重新求值。
-- **`context(context: PromptContext)`**（第 398 行）：注册有序的*动态*上下文，是 section 的「缓存不稳定」对应物。上下文会成为模型历史中独立的 user 角色 runtime-context 快照，而不是留在系统提示词内部，因此它可以逐轮变化而不会使覆盖稳定 section 的 KV-cache 前缀失效。
-- **`tools(provider: (context) => ToolProviderResult)`**（第 430 行）：注册一个工具 schema 提供方。`ToolProviderResult` 是 `{ schemas, knownNames? }`：`schemas` 是限制后模型实际看到的集合；`knownNames` 是限制前的全集，用于把 `toolOrder` 的拼写错误和某个作用域里故意隐藏的工具区分开。
-- **`variable(name, provider: (context) => string | undefined)`**（第 446 行）：注册一个具名值，在 section/context 文本中以 `{{name}}` 引用。名称必须匹配 `[a-z][a-z0-9_]*`。
+:::concept{term="section"}
+注册 `{ name, order, text, complete? }`。各段按 `order` 升序拼接；`text` 既可以是静态字符串，也可以是接受 `AssembleContext` 的函数，每次组装都会重新求值。（第 381 行）
+:::
+
+:::concept{term="context"}
+注册有序的*动态*上下文，是 section 的「缓存不稳定」对应物。上下文会成为模型历史中独立的 user 角色 runtime-context 快照，而不是留在系统提示词内部，因此它可以逐轮变化而不会使覆盖稳定 section 的 KV-cache 前缀失效。（第 398 行）
+:::
+
+:::concept{term="tools"}
+注册一个工具 schema 提供方。`ToolProviderResult` 是 `{ schemas, knownNames? }`：`schemas` 是限制后模型实际看到的集合；`knownNames` 是限制前的全集，用于把 `toolOrder` 的拼写错误和某个作用域里故意隐藏的工具区分开。（第 430 行）
+:::
+
+:::concept{term="variable"}
+注册一个具名值，在 section/context 文本中以 `{{name}}` 引用。名称必须匹配 `[a-z][a-z0-9_]*`。（第 446 行）
+:::
 
 这四种注册都落在一个 `PromptLayer`（第 304 行）里——要么是唯一的全局层，要么是按调用上下文的 Cordis 作用域标识的 per-agent 作用域层。带作用域的注册只为该 agent 遮蔽同名的全局项；同一层内的重复名称会立即抛出，非有限的 `order` 也一样。
 
@@ -45,7 +56,8 @@ agent loop 的每一个步骤都要做两件谁都不能单独把控全程的事
 
 ## 一个事实，一个归属方
 
-Agent Note《提示词变量与工具指导归属》陈述了这整套设计背后的原则：提示词中的每一个事实都恰好有一个归属方。
+> [!WHY]
+> Agent Note《提示词变量与工具指导归属》陈述了这整套设计背后的原则：提示词中的每一个事实都恰好有一个归属方。一个事实只在一个地方声明；该事实的每个消费者都引用它而不是复制它。
 
 - **单个工具的使用事实**（这个工具是做什么的、什么时候该调用它）放在该工具 schema 的 `description` 字段中——不放在 section 里。
 - **description 无法承载的跨调用习惯**（比如「检查每个 bash 结果上的 `[exit code: N]` 标记」）是一个 `tool:*` section，由该工具所在的包拥有：
@@ -79,7 +91,9 @@ persona: |
   Verify your work by running the code or tests. Keep answers brief and factual.
 ```
 
+:::decision
 在这个决策落地之前，模型名称是在每个部署的 persona 字符串里手写的，一旦有人只改了 `model:` 配置键而没有同步改 persona，两者就会静默漂移。把它变成变量之后，这个事实只有一个声明处（`options.model`），该事实的每个消费者都引用它而不是复制它。
+:::
 
 - **部署角色与行为**（「你是一个编码助手……回答简洁扼要」）只属于 persona——除此之外没有任何地方可以声明角色/行为事实。`dsh-persona`（`packages/preset/persona/src/index.ts:60-67`）为某个作用域的 agent preset 注册的正是同一个 `deployment:persona` 段名和 order，所以一个 preset 的 persona 是替换而不是叠加部署默认值。
 
@@ -87,13 +101,15 @@ persona: |
 
 `SystemPrompt.assemble(context: AssembleContext = {})`（第 457-542 行）由 agent loop 在每个步骤调用一次，`context.scope` 设为当前 agent 的作用域。它依次执行：
 
-1. **求值变量**：先是全局层，然后按作用域链依次求值（从最远的祖先开始），使最近的作用域在名称冲突时获胜。
-2. **合并各作用域链上的 section 和 context**，因此作用域内 order 为 0 的 `deployment:persona` 会整体替换掉全局的那个，而不是追加在它后面。
-3. **收集工具 schema**：来自全局及作用域链上每一个已注册的提供方，用 `structuredClone` 克隆 `parameters`，使某个提供方不会受到下游对其自身输出的修改影响，同时构建供 `toolOrder` 校验使用的 `knownNames` 全集。
-4. **按 `order` 排序各 section**（稳定排序），并检测是否存在多个生效的 `complete` 段——若存在则立即抛出，因为 `complete: true` 段是在声称自己就是*整份*提示词，两个这样的声明天然自相矛盾。
-5. **应用 `toolOrder`**，通过 `orderTools()`（第 164-178 行）：已列工具按列表位置排列，其余的按字典序统一插入必须存在的 `'<unlisted-tools>'` 其余项标记处。配置的顺序里出现未知工具名，或某个真实 schema 恰好名为 `<unlisted-tools>`，都会让组装直接拒绝，而不是悄悄猜测。
-6. **运行 `system-prompt/assemble` waterfall**，作用于尚未渲染的 `PromptAssembly`。`core/agent` 的模型选择逻辑就是一个具体的监听器——它先让 `next()` 运行，然后把已解析出的 `provider`/`model` 重新写回 `assembly.variables`，这样一次延迟绑定的模型选择在渲染时依然能被 `{{model}}` 看到。
-7. **恢复 complete 段**（如果有一个生效）：waterfall 运行之后，*原始*的 complete 段会被重新拼回作为唯一的 section——一旦某个作用域被 complete 段约束，waterfall 监听器就无法再向该作用域的提示词添加或替换内容。
+:::timeline
+- 求值变量 — 先是全局层，然后按作用域链依次求值（从最远的祖先开始），使最近的作用域在名称冲突时获胜
+- 合并 section 与 context — 跨作用域链合并，因此作用域内 order 为 0 的 `deployment:persona` 会整体替换全局的那个，而不是追加
+- 收集工具 schema — 用 `structuredClone` 克隆 `parameters`，并构建供 `toolOrder` 校验使用的 `knownNames` 全集
+- 按 `order` 排序 section — 稳定排序；存在多个生效的 `complete` 段会立即抛出（两个声称是*整份*提示词的声明天然自相矛盾）
+- 应用 `toolOrder` — 通过 `orderTools()`；出现未知工具名或恰好名为 `<unlisted-tools>` 的 schema 时，组装直接拒绝而不是悄悄猜测
+- 运行 `system-prompt/assemble` waterfall — 模型选择逻辑把已解析的 `provider`/`model` 写回 `assembly.variables`，让 `{{model}}` 在渲染时可见
+- 恢复 complete 段 — *原始*的 complete 段被重新拼回作为唯一 section，waterfall 监听器无法再添加或替换
+:::
 
 ```mermaid
 flowchart TD
@@ -308,9 +324,11 @@ ctx.tools.register(defineTool({
 
 ### 子调用会重新进入同一条受控流水线
 
+:::fold[Code Mode 子调用如何保持受策略约束且可回放]
 Code Mode 是一种传输方式，不是一条绕过策略的捷径。程序内部每一次 `await tools.name(args)` 调用都会通过 `registry.execute()` 完整地分发——pre-execute、guards、execute、post-execute、result——一步不少，并携带外层 `run_code` 执行的不透明 token 作为它的 `parent`（`ToolExecutionInput.parent`，`packages/core/tools/src/index.ts:326-335`）。并发安全的子调用最多可以重叠到配置的 `maxParallelSubCalls`（默认 10）；被分类为独占的子调用会排空池、单独运行，并阻挡后续调用的启动——与原生循环用的是同一套调度约定。每个子调用在分发进入时记录一条 `tool/code-dispatch-start` 事件，在结算时记录一条 `tool/code-dispatch` 事件（确定性 id 为 `<parent>:code:<n>`），因此即便只有外层程序的输出会抵达模型，会话日志依然保持一份完整、可回放的实际执行记录。
 
 在 `mode: code`（而非 `both`）下，`run_code` 同时也是模型*唯一*可以直接调用的东西：模型直呼其他任何工具的名字，都会在创建执行时——早于 `tools/pre-execute`、早于审批、早于 guards——就解析为 `UNKNOWN_TOOL`，因此没有任何一方会去观察或批准一个注定只会失败的调用。SDK 子分发不受此限制，因为它们始终携带 `parent` token。
+:::
 
 `docs/cookbook/adding-a-tool.md` 直接给工具作者点出了这一点的实践含义：把 `output.schema` 设计成「一个有用的编程 API——直接返回句柄和字段，在标量／数组／null 才是诚实值的时候就允许这些根类型，把面向人类的解释留给 `output.render`」。一个只为原生模式渲染出的散文而构建的工具，会逼着 Code Mode 里的程序去解析文本才能拿到一个 id；而一个规范值本身就已经免费携带这个 id 的工具，在两种传输方式下表现同样出色——因为两者读的是同一个由 `output.schema` 声明的值，一个经由 `render()`，一个经由 SDK 绑定的类型化返回值。
 

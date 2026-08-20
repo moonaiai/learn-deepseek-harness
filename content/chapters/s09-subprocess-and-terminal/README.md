@@ -47,9 +47,17 @@ export abstract class SubprocessRuntime extends Service {
 }
 ```
 
-- `resolveExecutable` verifies an absolute path or resolves a bare name against the provider's own scrubbed `PATH` — the executable lookup happens inside whichever execution world the provider represents, local or remote.
-- `spawn` returns a live handle immediately; its `done` promise resolves at process close with exit facts and never carries output or a cause classification — timeout versus cancellation is a caller concern, not the service's.
-- `spawnTerminal` is called out in its own JSDoc as "the only non-pipe primitive": it is the one method that allocates a real terminal instead of a stream.
+:::concept{term="resolveExecutable"}
+Verifies an absolute path or resolves a bare name against the provider's own scrubbed `PATH` — the executable lookup happens inside whichever execution world the provider represents, local or remote.
+:::
+
+:::concept{term="spawn"}
+Returns a live handle immediately; its `done` promise resolves at process close with exit facts and never carries output or a cause classification — timeout versus cancellation is a caller concern, not the service's.
+:::
+
+:::concept{term="spawnTerminal"}
+Called out in its own JSDoc as "the only non-pipe primitive": it is the one method that allocates a real terminal instead of a stream.
+:::
 
 `LocalSubprocessRuntime` is the one concrete subclass mounted in ordinary compositions:
 
@@ -120,13 +128,18 @@ flowchart LR
   svc_terminals --> pkg_tool_terminal
 ```
 
-(Adapted from the `ctx.subprocess` and `ctx.terminals` rows of the generated `docs/capability-seams.md` graph.) Notice `terminal-bash` appears twice: once as a Consumer of `ctx.subprocess`, once as the Service Provider registering under `ctx.terminals`. A package plays different roles in different seams — the primer's rule against folding roles applies *within* one seam, not across two seams that happen to compose vertically.
+(Adapted from the `ctx.subprocess` and `ctx.terminals` rows of the generated `docs/capability-seams.md` graph.)
+
+> [!NOTE]
+> `terminal-bash` appears twice in the graph: once as a Consumer of `ctx.subprocess`, once as the Service Provider registering under `ctx.terminals`. A package plays different roles in different seams — the primer's rule against folding roles applies *within* one seam, not across two seams that happen to compose vertically.
 
 ## Why `spawnTerminal` is not just another `spawn`
 
+:::decision
 An ordinary `spawn()` hands the caller pipes: bytes in, bytes out, an exit code at the end. That is sufficient for bash and for LSP's JSON-RPC framing, but it cannot express what an interactive shell needs — a real controlling terminal, a foreground process group that can receive `SIGINT`, and cleanup that reaches every process in a PTY session rather than just the direct child.
 
 The Service Definition's JSDoc is explicit that this is deliberately the *only* exception to the pipe model: "ordinary pipes cannot allocate a controlling terminal or clean terminal-session members." `spawnTerminal` returns a `SubprocessTerminalHandle` that owns real PTY allocation, UTF-8 text I/O, foreground-process-group inspection and signalling, and one awaited `terminate()` that reaches quiescence for every session member the provider can still observe. Readiness detection, scrollback retention, and prompt policy are explicitly *not* part of this primitive — "these operations remain one substrate primitive... readiness, scrollback, and owner policy remain in the PTY consumer." That consumer is `dsh-terminal-bash`, covered next.
+:::
 
 ## `ctx.terminals`: a smaller seam for sessions that outlive one tool call
 
@@ -166,6 +179,7 @@ Everything `dsh-terminal-bash` adds on top — a private bash prompt marker for 
 
 ## Where the generated docs lag the source
 
+:::fold[The `tool-bash-persistent` injection the graph missed]
 `docs/capability-seams.md`'s `ctx.terminals` row lists exactly one direct Consumer: `tool-terminal`. But `packages/shell/tool-bash-persistent/` — a different package, in the `shell/` group, not `terminal/` — also injects the service directly:
 
 ```ts
@@ -175,6 +189,7 @@ export const inject = ['tools', 'terminals']
 ```
 
 `dsh-tool-bash-persistent` is a model-facing `bash(command)` tool that keeps one owner-scoped `ctx.terminals` shell alive per Agent — same persistence idea as `dsh-tool-terminal`, but exposed as a single familiar `bash` tool name instead of the six explicit `terminal_*` operations, wrapping each command in start/end markers and parsing the shell's own exit status back out of the scrollback. It is a second, independently-shipped Consumer of `ctx.terminals` that the generated capability-seam graph does not yet enumerate. This is a small, concrete instance of a general fact: `docs/capability-seams.md` is generated from a fixed scan (`pnpm run gen-doc-graphs`), and a new injection site in a package the generator's Consumer-detection did not anticipate can land in source before it lands in that table. The source `inject` array is the ground truth; the generated table is a snapshot of it.
+:::
 
 ## Summary
 

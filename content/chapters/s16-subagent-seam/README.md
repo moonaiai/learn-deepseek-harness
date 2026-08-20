@@ -28,7 +28,7 @@ getProvider(name: string): SubagentProvider | undefined { /* ... */ }
 list(): string[] { /* ... */ }
 ```
 
-Multiple providers register under distinct names (`spawn`, `fork`, `acp`, `codex`, `claude-code`, `dsh-sdk`, ...); a duplicate name fails loud. A caller — in practice the delegation tool — picks one by name and calls `start(name, request)`. This registry shape deliberately mirrors the LLM adapter registry (`LlmRuntime.registerAdapter`) rather than the bash seam's one-executor-per-context rule, because coexistence is the actual requirement here: a session can load several delegation tools, each bound to a different provider name, and the model sees them as distinctly named tools it can pick between.
+Multiple providers register side by side; the delegation tool picks one by name and calls `start(name, request)`. This registry shape deliberately mirrors the LLM adapter registry (`LlmRuntime.registerAdapter`) rather than the bash seam's one-executor-per-context rule, because coexistence is the actual requirement here: a session can load several delegation tools, each bound to a different provider name, and the model sees them as distinctly named tools it can pick between.
 
 The service also owns two things beyond plain registration: the durable `subagent/descriptor` session-event vocabulary that identifies every session-backed child on disk, and — when `ctx.agents` is injected — a **continuation manager** for children whose conversation can be resumed across multiple turns rather than run once and discarded (`packages/subagent/subagent/src/index.ts:183-201`). Both are covered below; the one-shot path is the one worth understanding first.
 

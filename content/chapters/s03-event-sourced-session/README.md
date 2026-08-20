@@ -13,7 +13,11 @@ order: 3
 
 Most agent frameworks represent a conversation as a mutable array of messages: push a user turn, push an assistant turn, splice in a tool result, and hand the array to the provider. It works until something needs to *observe* that history changing — a persistence layer, a telemetry pipeline, a replay tool, a second UI tab — and now you either poll the array or bolt a notification system onto every mutation site. The two representations (the array, and whatever your notifications said happened) can drift. A missed event, a dropped notification, a mutation that forgot to fire one, and your trace lies about what the model actually saw.
 
-`@deepseek-ai/dsh-session` avoids that problem by not having a mutable array at all. A `Session` is an **append-only log of typed `SessionEvent`s** — the single source of truth for everything that happened in an agent's interaction, from turn boundaries and raw provider stream chunks to the assembled messages themselves. There is no separate "current state" to keep in sync: the log **is** the state, and every other view — the LLM message history, the human transcript, the durable storage row — is a *projection* computed from it. Divergence between what happened and what's recorded is not a bug you have to avoid; it's structurally impossible, because there is nothing else to diverge from.
+`@deepseek-ai/dsh-session` avoids that problem by not having a mutable array at all.
+
+:::concept{term="Session"}
+An **append-only log of typed `SessionEvent`s** — the single source of truth for everything that happened in an agent's interaction, from turn boundaries and raw provider stream chunks to the assembled messages themselves. There is no separate "current state" to keep in sync: the log **is** the state, and every other view — the LLM message history, the human transcript, the durable storage row — is a *projection* computed from it. Divergence between what happened and what's recorded is not a bug you have to avoid; it's structurally impossible, because there is nothing else to diverge from.
+:::
 
 ## `SessionEvent`: one append-only, merge-extensible union
 
@@ -99,9 +103,11 @@ A few properties are worth naming explicitly:
 
 ## The surface: which events actually become messages
 
-Not every logged event turns into something the model sees. Only three types — `user/message`, `assistant/message`, `tool/result` — are `SurfaceEventType`s, eligible to join the **surface**: an ordered projection of message-producing events maintained incrementally on top of the raw log. Everything else (turn/step boundaries, raw stream chunks, `todo/write`, `request/header`, `session/end-seed`, and any plugin-merged log-only event) has no surface entry at all — it exists for replay, trace, and durability, and `deriveMessages()` never looks at it directly.
+Not every logged event turns into something the model sees. Only three types — `user/message`, `assistant/message`, `tool/result` — are `SurfaceEventType`s, eligible to join the surface. Everything else (turn/step boundaries, raw stream chunks, `todo/write`, `request/header`, `session/end-seed`, and any plugin-merged log-only event) has no surface entry at all — it exists for replay, trace, and durability, and `deriveMessages()` never looks at it directly.
 
-Each surface-eligible event declares **how** it joins the surface via `surfaceOp`:
+:::concept{term="surface"}
+An ordered projection of message-producing events maintained incrementally on top of the raw log. Each surface-eligible event declares **how** it joins the surface via `surfaceOp`:
+:::
 
 ```ts
 export type SurfaceOp =

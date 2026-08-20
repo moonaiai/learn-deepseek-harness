@@ -35,6 +35,19 @@ flowchart TD
   turn --> stdout["Last non-empty assistant text -> stdout<br/>exit 0 (completed) or 1 (else)"]
 ```
 
+That flowchart is the whole invocation at a glance; here is the same ordered path as a step-through:
+
+:::timeline
+- compose — resolve `headless` = dsh-base + dsh-headless, plus profile/home patch and `--patch` overlays
+- boot — Cordis Loader mounts the tree (settings, credentials, llm-deepseek, subprocess/bash, fs, tools, agent-loop)
+- create — headless-runner creates one fresh Agent through `ctx.agents`
+- turn — one turn: agent/pre-step → agent/request → llm/stream → tool/call* → tool/result*
+- dispatch — tool calls go out through `ctx.tools`: bash, fs, todo_write, subagent, workflow, ralph
+- flush — `sessions.flush(agent.session)` drains the pending write batch
+- persist — JSONL lands at `.sessions/--cwd--/<id>/session.jsonl.zstd`
+- stdout — last non-empty assistant text prints; exit 0 (completed) or 1 (else)
+:::
+
 ## Composing the profile (back to s02)
 
 `dsh --profile headless "task"` resolves `$DSH_HOME/profiles/headless`, whose manifest names two bundles in order: `@deepseek-ai/dsh-base`, then `@deepseek-ai/dsh-headless`. The tree composes over an empty root exactly as Chapter s02 described — each bundle's patch in list order, then the profile's own `cordis.patch.yml`, then the home-level one, then any `--patch` overlays — and you can always inspect the result before booting anything:
@@ -45,7 +58,13 @@ dsh --profile headless --dump-config
 
 `dsh-base`'s patch inserts roughly seventy rows in one block over the empty root: model adapters, the session log and its JSONL persistence backend, sandbox and approval policy, `dsh-tools`/`dsh-agent-loop`/`dsh-system-prompt`, the full tool roster (bash, filesystem, skills, subagents, workflow, todo, goal, web), and telemetry. `dsh-headless` then rides directly over that base and does the three things a patch can do, in under forty lines (`packages/bundle/headless/cordis.patch.yml`): it overrides `system-prompt`'s `persona` row with a coding-agent persona naming `{{model}}` and `{{cwd}}`, it disables `hmr` (a one-shot process has nothing to hot-reload), and it inserts three new rows — `code-runtime` (Code Mode's worker-thread execution capability), `headless-startup` (the provider that reads the positional task argument through `ctx.cmdlineArgs`), and `headless-runner` itself, injected with `headlessStartup` and configured with `task: !!js ctx.headlessStartup.task`.
 
-That `!!js` expression is the same command-line-to-config wiring pattern from the CLI behavior reference: a row's config reads a service the launcher's provider resolved, so `dsh --profile headless "run the tests"` genuinely threads its positional argument through Cordis's own dependency graph rather than through any headless-specific argv parsing inside `apps/cli`. The shipped bundle mounts no Host, HTTP server, Web runtime, or browser plugin at all — this is a direct Agent driver, not a second product entry point wearing a different UI.
+That `!!js` expression is the same command-line-to-config wiring pattern from the CLI behavior reference: a row's config reads a service the launcher's provider resolved, so `dsh --profile headless "run the tests"` genuinely threads its positional argument through Cordis's own dependency graph rather than through any headless-specific argv parsing inside `apps/cli`.
+
+:::decision
+The positional task argument reaches the runner through Cordis's dependency graph — a `headless-startup` provider row plus a `task: !!js ctx.headlessStartup.task` config — not through headless-specific argv parsing in `apps/cli`. We chose the config-row wiring over a bespoke CLI parse because it reuses the same command-line-to-config pattern the launcher already supports, so the headless bundle adds no special code path.
+:::
+
+The shipped bundle mounts no Host, HTTP server, Web runtime, or browser plugin at all — this is a direct Agent driver, not a second product entry point wearing a different UI.
 
 The `examples/headless-agent/cordis.yml` composition used through the rest of this chapter mounts the equivalent rows directly (no `include` of the bundle patches), so its ids match one-to-one with what `--dump-config` would print for the real profile: `settings`, `credentials`, `llm-deepseek`, `subprocess`, `bash`, `agent-spine` (a demo stand-in for `dsh-agent`/`agent-default-model`/`headless-runner`), `persistence`, `checkpoint-policy`, `token-meter`, `compaction-basic`, `session-projection`, the subagent/workflow/todo rows, and the filesystem stack. The generated diagram at `examples/headless-agent/composition.md` renders this same list as a flowchart with every plugin id and package name — worth opening once to see the whole tree at a glance rather than reading it row by row here.
 
@@ -74,6 +93,9 @@ What differs between deployments is which capability seams (Chapter s07) are act
 - `session-projection` is a hard dependency of the subagent catalog, not decoration: the durable subagent identity (mode/label) folds through registered projection units, and `list_agents` fails loud without that capability mounted — a direct illustration of the "misconfiguration fails loud" rule rather than a silent missing feature.
 - `token-meter` and `compaction-basic` (`thresholdRatio: 0.8`, `retainRatio: 0.16`) are what actually keeps a long headless run inside its context window — the same compaction seam Chapter s18 covers, mounted here with concrete numbers rather than left abstract.
 
+> [!WHY]
+> The ordering above is not incidental. `fs-local` is composed ahead of `fs-observation-policy` and `tool-fs` so the observation policy can enforce its read-before-write rule on the model-facing tool; mount them in the other order and the policy has nothing to gate.
+
 Because this is all ordinary Cordis composition, the named overlay files sitting beside `cordis.yml` in `examples/headless-agent/` are worth treating as a menu, not a monolith. Each one takes the base composition and inserts, overrides, or disables exactly the rows needed to demonstrate one feature in isolation:
 
 | Overlay | What it turns on |
@@ -89,7 +111,11 @@ None of these need a live model key to inspect — most disable `llm-deepseek` a
 
 ## Subagents and workflows in this profile (back to s16/s20)
 
-The composition mounts both delegation surfaces from the subagent seam (Chapter s16) side by side. `subagent-spawn-in-process` and `subagent-fork-in-process` register the two in-process backends behind `ctx.subagents`; `tool-subagent` (`provider: spawn`, `toolName: subagent`, `backgroundMode: continuable`, `maxDepth: 1`) exposes ordinary fresh-child delegation to the model, while a second `tool-subagent` registration (`provider: fork`, `toolName: subagent_fork`, `backgroundMode: one-shot`, `enableRunInBackground: false`) exposes completed-prefix forking under a different tool name. The comment on that second row is worth internalizing: fork stays one-shot in this composition because a continuable child's `report` tool and prompt section would have to precede the inherited history a fork already reuses, and this example mounts no task service for `run_in_background` to depend on — both are composition-specific choices, not seam limitations.
+The composition mounts both delegation surfaces from the subagent seam (Chapter s16) side by side. `subagent-spawn-in-process` and `subagent-fork-in-process` register the two in-process backends behind `ctx.subagents`; `tool-subagent` (`provider: spawn`, `toolName: subagent`, `backgroundMode: continuable`, `maxDepth: 1`) exposes ordinary fresh-child delegation to the model, while a second `tool-subagent` registration (`provider: fork`, `toolName: subagent_fork`, `backgroundMode: one-shot`, `enableRunInBackground: false`) exposes completed-prefix forking under a different tool name. The comment on that second row is worth internalizing:
+
+:::decision
+Fork stays one-shot in this composition because a continuable child's `report` tool and prompt section would have to precede the inherited history a fork already reuses, and this example mounts no task service for `run_in_background` to depend on. Both are composition-specific choices, not seam limitations — a deployment that mounts a task service could enable a continuable fork.
+:::
 
 `workflow-worker-thread` plus `tool-workflow` give the model a `workflow` tool: a JavaScript orchestration script whose `agent()` calls fan out through the same `spawn` backend, letting one script coordinate several children with phases and structured results rather than one delegation call at a time. `tool-ralph` sits beside it as a second, independently loaded consumer of the same `ctx.workflowEngine` — it demonstrates a fixed, specialized orchestration policy (immutable objective, fresh child per round, shared workspace as the only cross-round memory) as an ordinary plugin, proving that Ralph-style iteration required no changes to `agent-loop`, the workflow engine, or the same-session goal domain to add.
 
@@ -113,6 +139,7 @@ The `flush()` call inside `headless-runner` is the point where the run's own fin
 
 ## The sibling automation surface (back to s22)
 
+:::fold[The ACP sibling surface]
 `examples/acp-agent/` is the other runnable example in the same neighborhood, and it is worth knowing what it changes relative to headless rather than treating it as unrelated. Where headless is a one-shot process that submits one task and exits, `@deepseek-ai/dsh-acp-demo` is a long-lived JSON-RPC stdio server implementing the [Agent Client Protocol](https://agentclientprotocol.com): it creates one fresh agent per `session/new`, persists sessions to JSONL exactly as headless does, and keeps stdout protocol-pure — no logger writes there, only newline-delimited ACP JSON-RPC, with diagnostics on stderr instead. It is meant for parent agents, subagent providers, and other programmatic clients, not for a human at a terminal.
 
 ```sh
@@ -120,10 +147,19 @@ pnpm run demo:acp             # needs DEEPSEEK_API_KEY
 ```
 
 The two examples share the same DeepSeek adapter, the same sandboxed bash/filesystem stacks, the same compaction and subagent/workflow machinery — what differs is the entry shape (one task versus a session-oriented RPC protocol) and the permission surface (ACP resolves `workspace-write` per session `cwd`, escalating through `session/request_permission` on a model retry, rather than headless's single fixed process-wide sandbox scope).
+:::
 
 ## What actually mounted: seams versus non-seams
 
 Naming the composition's rows against the seam/non-seam vocabulary this course has used throughout makes the inventory concrete rather than abstract. This one `headless` run mounts real capability seams — `ctx.shell` (`dsh-bash-local` as the Service Provider), `ctx.subprocess` (`dsh-subprocess-local`), `ctx.fs` (`dsh-fs-local`), `ctx.subagents` (`dsh-subagent-spawn-in-process` and `dsh-subagent-fork-in-process` side by side), `ctx.workflowEngine` (`dsh-workflow-worker-thread`), `ctx.compaction` (`dsh-compaction-basic`), and `ctx.sessionPersistence` (`dsh-session-persistence-jsonl`) — each swappable for a different Provider (sandboxed bash, E2B filesystem, a different persistence backend) without `dsh-tool-bash`, `dsh-tool-fs`, `dsh-tool-subagent`, `dsh-tool-workflow`, or `headless-runner` itself changing at all, exactly as the `e2b.cordis.yml` overlay demonstrates for three of these seams at once.
+
+:::concept{term="capability seam"}
+A capability seam is a mounted Definition with sibling, swappable Providers — `ctx.shell`, `ctx.fs`, `ctx.subagents`, `ctx.workflowEngine`, `ctx.compaction`, `ctx.sessionPersistence` here. A different Provider (E2B filesystem, a different persistence backend) drops in without the tools or `headless-runner` changing at all.
+:::
+
+:::concept{term="non-seam mechanism"}
+A non-seam mechanism is machinery with no second, swappable implementation: the event-sourced session log (one `Session` per agent), the single `ctx.tools` registry, and `todo_write` — a Consumer sitting on top of the seams, not a seam of its own.
+:::
 
 Just as concretely, this run also depends on mechanisms this course deliberately did not frame as seams: the session log itself (one `Session` per agent, event-sourced, with no alternate "session implementation" to swap); the guarded tool pipeline (`ctx.tools` is a single registry, not a Definition with sibling Providers); and `todo_write`, which — like the rest of the composition's model-facing tools — is a Consumer sitting on top of these seams, not a seam of its own. Telling the two apart is not a pedantic distinction: it is the same test this course has applied to every chapter — does a second, swappable implementation actually exist and matter — and a single `dsh --profile headless` run happens to exercise both kinds side by side.
 

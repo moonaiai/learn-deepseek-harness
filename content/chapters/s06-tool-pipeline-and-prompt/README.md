@@ -22,10 +22,21 @@ A deployment mounts a bash tool, a read/write/edit trio, a web-fetch tool, a sub
 
 The `SystemPrompt` service (`ctx.systemPrompt`, `packages/core/system-prompt/src/index.ts:338`) exposes four registration methods, each returning a Cordis effect disposer — a plugin that unloads automatically retracts what it contributed:
 
-- **`section(section: PromptSection)`** (line 381) — registers `{ name, order, text, complete? }`. Sections concatenate in ascending `order`; `text` is a static string or a function of `AssembleContext` evaluated fresh at every assembly.
-- **`context(context: PromptContext)`** (line 398) — registers ordered *dynamic* context, the cache-unstable counterpart of a section. Contexts become a separate user-role runtime-context snapshot in model history rather than living inside the system prompt, so they can change every turn without invalidating the KV-cache prefix over the stable sections.
-- **`tools(provider: (context) => ToolProviderResult)`** (line 430) — registers a tool-schema provider. `ToolProviderResult` is `{ schemas, knownNames? }`: `schemas` is what the model actually sees after restriction; `knownNames` is the pre-restriction universe, needed to tell a `toolOrder` typo apart from a tool deliberately hidden in one scope.
-- **`variable(name, provider: (context) => string | undefined)`** (line 446) — registers a named value referenced from section/context text as `{{name}}`. Names must match `[a-z][a-z0-9_]*`.
+:::concept{term="section"}
+Registers `{ name, order, text, complete? }`. Sections concatenate in ascending `order`; `text` is a static string or a function of `AssembleContext` evaluated fresh at every assembly. (line 381)
+:::
+
+:::concept{term="context"}
+Registers ordered *dynamic* context, the cache-unstable counterpart of a section. Contexts become a separate user-role runtime-context snapshot in model history rather than living inside the system prompt, so they can change every turn without invalidating the KV-cache prefix over the stable sections. (line 398)
+:::
+
+:::concept{term="tools"}
+Registers a tool-schema provider. `ToolProviderResult` is `{ schemas, knownNames? }`: `schemas` is what the model actually sees after restriction; `knownNames` is the pre-restriction universe, needed to tell a `toolOrder` typo apart from a tool deliberately hidden in one scope. (line 430)
+:::
+
+:::concept{term="variable"}
+Registers a named value referenced from section/context text as `{{name}}`. Names must match `[a-z][a-z0-9_]*`. (line 446)
+:::
 
 All four land in a `PromptLayer` (line 304) — the single global layer, or a per-agent scoped layer keyed by the calling context's Cordis scope. A scoped registration shadows a same-named global one for that agent alone; duplicate names within one layer throw immediately, and so does a non-finite `order`.
 
@@ -46,7 +57,8 @@ Sections sharing an `order` value tie-break by registration order — a plugin-l
 
 ## One fact, one owner
 
-The Agent Note *Prompt variables and tool-guidance ownership* states the rule behind this design: every fact in the prompt has exactly one owner.
+> [!WHY]
+> The Agent Note *Prompt variables and tool-guidance ownership* states the rule behind this design: every fact in the prompt has exactly one owner. One fact asserted in one place; every consumer references it instead of copying it.
 
 - A **per-tool usage fact** ("what does this tool do, when do I call it") lives in the tool's `description` field on its schema — not in a section.
 - A **cross-call habit** a description cannot carry (e.g. "check the `[exit code: N]` marker on every bash result") is a `tool:*` section, owned by that tool's package:
@@ -80,7 +92,9 @@ persona: |
   Verify your work by running the code or tests. Keep answers brief and factual.
 ```
 
+:::decision
 Before this decision shipped, the model name was hand-typed in every deployment's persona string and silently drifted from the real `model:` config key the moment someone edited one without the other. Making it a variable means the fact is asserted in exactly one place (`options.model`), and every consumer references it instead of copying it.
+:::
 
 - **Deployment role and behavior** ("you are a coding assistant… keep answers brief") is the persona, and only the persona — nothing else states role/behavior facts. `dsh-persona` (`packages/preset/persona/src/index.ts:60-67`) registers that same `deployment:persona` section name and order for a scoped agent preset, so a preset's persona replaces rather than duplicates the deployment default.
 
@@ -88,13 +102,15 @@ Before this decision shipped, the model name was hand-typed in every deployment'
 
 `SystemPrompt.assemble(context: AssembleContext = {})` (lines 457-542) is called once per step by the agent loop, with `context.scope` set to the current agent's scope. It performs, in order:
 
-1. **Resolve variables**, global layer first, then each layer in the scope chain (farthest ancestor first) so the nearest scope wins a name collision.
-2. **Merge sections and contexts** across the scope chain, so a scoped `deployment:persona` at order 0 replaces the global one wholesale rather than appending to it.
-3. **Collect tool schemas** from every registered provider, cloning `parameters` with `structuredClone` so a provider cannot be affected by downstream mutation of its own output, and building the `knownNames` universe used for `toolOrder` validation.
-4. **Sort sections by `order`** (stable sort) and detect more than one effective `complete` section, which throws immediately — a `complete: true` section claims to be the *entire* prompt, so two of them contradict each other by construction.
-5. **Apply `toolOrder`** via `orderTools()` (lines 164-178): listed tools take their listed position and everything else lands, lexicographically, at the required `'<unlisted-tools>'` rest marker. An unknown tool name in the configured order, or a real schema literally named `<unlisted-tools>`, makes assembly reject rather than silently guess.
-6. **Run the `system-prompt/assemble` waterfall** over the assembled-but-unrendered `PromptAssembly`. `core/agent`'s model-selection logic is one listener — it lets `next()` run first, then splices the resolved `provider`/`model` back into `assembly.variables` so a late-bound model choice is still visible to `{{model}}` at render time.
-7. **Restore the complete section**, if one was effective: the *original* complete section is spliced back in as the sole section after the waterfall runs, so a waterfall listener cannot add to or replace a scope's prompt once a `complete` section governs it.
+:::timeline
+- resolve variables — global layer first, then each scope-chain layer (farthest ancestor first) so the nearest scope wins a name collision
+- merge sections and contexts — across the scope chain, so a scoped `deployment:persona` at order 0 replaces the global one wholesale rather than appending
+- collect tool schemas — clone `parameters` with `structuredClone` and build the `knownNames` universe used for `toolOrder` validation
+- sort sections by `order` — stable sort; more than one effective `complete` section throws immediately (two claims to be the *entire* prompt contradict by construction)
+- apply `toolOrder` — via `orderTools()`; an unknown tool name or a schema literally named `<unlisted-tools>` rejects assembly rather than guessing
+- run the `system-prompt/assemble` waterfall — model-selection splices the resolved `provider`/`model` back into `assembly.variables` so `{{model}}` sees it at render time
+- restore the complete section — the *original* complete section is spliced back as the sole section, so a waterfall listener cannot add to or replace it
+:::
 
 ```mermaid
 flowchart TD
@@ -309,9 +325,11 @@ Native mode's per-call round trip means every tool result re-enters the model's 
 
 ### Sub-calls re-enter the same guarded pipeline
 
+:::fold[How Code Mode sub-calls stay policy-controlled and replayable]
 Code Mode is a transport, not a bypass. Each `await tools.name(args)` call inside the program is dispatched through `registry.execute()` exactly like a native call — pre-execute, guards, execute, post-execute, result — carrying the outer `run_code` execution's opaque token as its `parent` (`ToolExecutionInput.parent`, `packages/core/tools/src/index.ts:326-335`). Concurrency-safe sub-calls may overlap up to the configured `maxParallelSubCalls` (default 10); an exclusive-classified sub-call drains the pool, runs alone, and blocks later starts — the same scheduling contract the native loop uses. Each sub-call logs a `tool/code-dispatch-start` event at dispatch entry and a `tool/code-dispatch` event at settlement (deterministic id `<parent>:code:<n>`), so the session log stays a complete, replayable record of everything that ran even though only the outer program's output reaches the model.
 
 Under `mode: code` (not `both`), `run_code` is also the *only* thing a model may call directly: a model-direct call naming any other tool resolves to `UNKNOWN_TOOL` at execution creation — before `tools/pre-execute`, before approval, before guards — so nothing observes or approves a call that could only ever fail. SDK sub-dispatches are exempt from this check because they always carry a `parent` token.
+:::
 
 `docs/cookbook/adding-a-tool.md` states the practical implication for tool authors: design `output.schema` "as a useful programmatic API — return handles and fields directly, allow scalar/array/null roots when they are the honest value, and keep human explanation in `output.render`." A tool built only for native mode's rendered prose forces a Code Mode program to parse text to recover an id; a tool whose canonical value already carries that id for free works identically well under both transports, because both read the same `output.schema`-declared value — one through `render()`, one through the SDK binding's typed return.
 

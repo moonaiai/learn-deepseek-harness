@@ -16,8 +16,13 @@ order: 19
 
 Two capability seams answer these questions, and they are deliberately independent of each other:
 
-- **`ctx.sessionPersistence`** (`dsh-session-persistence`) makes one session's log durable — create it, append to it, reload it after a crash.
-- **`ctx.sessionQuery`** (`dsh-session-query`) reads *across* sessions — list, filter, full-text search, and trace relationships between them, over whichever sessions happen to be live plus whatever persistence backend happens to be mounted.
+:::concept{term="ctx.sessionPersistence"}
+(`dsh-session-persistence`) makes one session's log durable — create it, append to it, reload it after a crash.
+:::
+
+:::concept{term="ctx.sessionQuery"}
+(`dsh-session-query`) reads *across* sessions — list, filter, full-text search, and trace relationships between them, over whichever sessions happen to be live plus whatever persistence backend happens to be mounted.
+:::
 
 A third, much smaller pair of services rounds out the "memory" story: **session projection** turns the log into whole, log-derived read models for UI carriers, and **session title** derives a short human-readable label for a session from the same log. Neither of these needs its own storage backend — they ride on persistence or read the log directly.
 
@@ -59,7 +64,16 @@ Every backend honors the same invariants regardless of storage medium: **append-
 
 ### Crash recovery closes, never truncates
 
-If a process crashes mid-turn, the reload finds an open `turn/start` with no matching `turn/end`. Because a single turn can hold a large amount of durably-appended work (many tool calls, large outputs), the backend does not discard it. Instead `load()` synthesizes closing events — a risk-classified error `tool/result` for each assistant call that never got an answer, then `step/end?` and `turn/end { reason: { kind: 'interrupted' } }` — to make the log balanced again. `interrupted` is the one `TurnEndReason` no live loop ever emits itself; it exists purely as this repair marker. Only a genuinely torn tail fragment — bytes that were never fully written — is dropped. Everything durably committed survives, repaired or not.
+If a process crashes mid-turn, the reload finds an open `turn/start` with no matching `turn/end`. Because a single turn can hold a large amount of durably-appended work (many tool calls, large outputs), the backend does not discard it. Instead `load()` synthesizes closing events to make the log balanced again:
+
+:::timeline
+- crash mid-turn — reload finds an open `turn/start` with no matching `turn/end`
+- synthesize error `tool/result` — one risk-classified error result for each assistant call that never got an answer
+- `step/end?` + `turn/end` — close with `{ reason: { kind: 'interrupted' } }` to balance the log
+- torn tail dropped — only bytes that were never fully written are discarded; everything durably committed survives
+:::
+
+`interrupted` is the one `TurnEndReason` no live loop ever emits itself; it exists purely as this repair marker. Only a genuinely torn tail fragment — bytes that were never fully written — is dropped.
 
 Repair only ever touches *cold* sessions. If the id is still bound to a live `Session` object in the current process, `load(id)` waits for the authoritative in-memory snapshot to become durable and returns it once balanced; an open live turn rejects outright rather than getting a synthetic close grafted onto still-active state. `inspect(id)` goes further: it never commits repair or publishes a `Session` at all, so history-reading code (session-query, a title provider, the projection cache) can safely observe a cold interrupted session without racing a live turn or mutating storage.
 

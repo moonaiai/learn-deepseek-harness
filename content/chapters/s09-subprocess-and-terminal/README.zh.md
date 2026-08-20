@@ -46,9 +46,17 @@ export abstract class SubprocessRuntime extends Service {
 }
 ```
 
-- `resolveExecutable` 验证绝对路径,或根据提供方自身清理后的 `PATH` 解析裸名称——可执行文件查找发生在提供方所代表的那个执行世界内部,无论是本地还是远程。
-- `spawn` 立即返回一个活动句柄;其 `done` promise 在进程关闭时以退出事实 resolve,从不携带输出,也不携带原因分类——超时与取消的区分是调用方的事,不属于该服务。
-- `spawnTerminal` 在自己的 JSDoc 中被明确称为「唯一的非管道原语」:它是唯一一个分配真实终端、而非流的方法。
+:::concept{term="resolveExecutable"}
+验证绝对路径,或根据提供方自身清理后的 `PATH` 解析裸名称——可执行文件查找发生在提供方所代表的那个执行世界内部,无论是本地还是远程。
+:::
+
+:::concept{term="spawn"}
+立即返回一个活动句柄;其 `done` promise 在进程关闭时以退出事实 resolve,从不携带输出,也不携带原因分类——超时与取消的区分是调用方的事,不属于该服务。
+:::
+
+:::concept{term="spawnTerminal"}
+在自己的 JSDoc 中被明确称为「唯一的非管道原语」:它是唯一一个分配真实终端、而非流的方法。
+:::
 
 `LocalSubprocessRuntime` 是普通组合中挂载的那个具体子类:
 
@@ -119,13 +127,18 @@ flowchart LR
   svc_terminals --> pkg_tool_terminal
 ```
 
-(改编自生成文件 `docs/capability-seams.md` 关系图中 `ctx.subprocess` 与 `ctx.terminals` 两行。)注意 `terminal-bash` 出现了两次:一次是 `ctx.subprocess` 的 Consumer,一次是注册到 `ctx.terminals` 之下的 Service Provider。同一个包在不同的 seam 里扮演不同角色——入门篇「禁止合并角色」的规则约束的是*同一个* seam 内部,而不是两个纵向组合起来的独立 seam。
+(改编自生成文件 `docs/capability-seams.md` 关系图中 `ctx.subprocess` 与 `ctx.terminals` 两行。)
+
+> [!NOTE]
+> `terminal-bash` 在图中出现了两次:一次是 `ctx.subprocess` 的 Consumer,一次是注册到 `ctx.terminals` 之下的 Service Provider。同一个包在不同的 seam 里扮演不同角色——入门篇「禁止合并角色」的规则约束的是*同一个* seam 内部,而不是两个纵向组合起来的独立 seam。
 
 ## 为什么 `spawnTerminal` 不只是另一个 `spawn`
 
+:::decision
 普通的 `spawn()` 交给调用方的是管道:字节进,字节出,末尾一个退出码。这对 bash 和 LSP 的 JSON-RPC 分帧已经足够,但它无法表达交互式 shell 所需要的东西——一个真正的控制终端、一个能接收 `SIGINT` 的前台进程组,以及能触达整个 PTY 会话中每个进程、而不只是直接子进程的清理机制。
 
 Service Definition 的 JSDoc 明确指出这是刻意保留的、对管道模型的唯一例外:「普通管道无法分配控制终端或清理终端会话成员」。`spawnTerminal` 返回一个 `SubprocessTerminalHandle`,它拥有真实的 PTY 分配、UTF-8 文本 I/O、前台进程组检查与信号发送,以及一项须等待的 `terminate()`——它会让提供方仍可观察到的每一个会话成员都完全停稳。就绪检测、scrollback 保留与提示符策略都明确*不属于*这项原语的一部分——「这些操作保留为一项执行基底原语……就绪状态、scrollback 和所有者策略仍归 PTY 消费方所有。」这个消费方就是下面要讲的 `dsh-terminal-bash`。
+:::
 
 ## `ctx.terminals`:服务于跨越多次工具调用的会话的更小 seam
 
@@ -165,6 +178,7 @@ private readonly spawnTerminal: (
 
 ## 生成文档滞后于真实代码的一处
 
+:::fold[关系图漏掉的 `tool-bash-persistent` 注入]
 `docs/capability-seams.md` 的 `ctx.terminals` 行只列出了一个直接 Consumer:`tool-terminal`。但 `packages/shell/tool-bash-persistent/`——一个不同的包,属于 `shell/` 组而非 `terminal/` 组——也直接注入了该服务:
 
 ```ts
@@ -174,6 +188,7 @@ export const inject = ['tools', 'terminals']
 ```
 
 `dsh-tool-bash-persistent` 是一个面向模型的 `bash(command)` 工具,为每个 Agent 维持一个所有者限定范围的 `ctx.terminals` shell 存活——与 `dsh-tool-terminal` 是同样的持久化思路,但以一个熟悉的单一 `bash` 工具名对外呈现,而不是六个显式的 `terminal_*` 操作,它把每条命令包在起止标记之间,再从 scrollback 中把 shell 自身的退出状态解析出来。它是 `ctx.terminals` 的第二个、独立发布的 Consumer,目前生成的能力-seam 关系图尚未把它列举进去。这是一个具体而微的通例实例:`docs/capability-seams.md` 由一次固定扫描生成(`pnpm run gen-doc-graphs`),而一个生成器 Consumer 检测逻辑未曾预料到的新注入点,完全可能先落地在源码中,后落地在这张表格里。源码中的 `inject` 数组才是最终依据;生成的表格只是它某一时刻的快照。
+:::
 
 ## 小结
 

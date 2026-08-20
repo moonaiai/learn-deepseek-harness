@@ -18,7 +18,11 @@ order: 8
 
 ## The `ctx.fs` seam: Service Definition
 
-`packages/fs/fs/` owns `ctx.fs` and nothing else — no local disk access, no policy, no model-facing schema. It is `FileSystem`, an abstract class extending Cordis `Service`, exposing twelve primitives that describe WHAT a filesystem backend can do without saying HOW:
+`packages/fs/fs/` owns `ctx.fs` and nothing else — no local disk access, no policy, no model-facing schema.
+
+:::concept{term="FileSystem"}
+An abstract class extending Cordis `Service`, exposing twelve primitives that describe WHAT a filesystem backend can do without saying HOW:
+:::
 
 ```ts filename="packages/fs/fs/src/index.ts"
 export abstract class FileSystem extends Service {
@@ -114,7 +118,11 @@ Each tool resolves the path via `ctx.fs.resolve(path, { cwd, signal })`, passing
 
 ## The event gate: policy without a service dependency
 
-Between the provider and the tool sits a policy plugin, `dsh-fs-observation-policy`, that is worth naming precisely because of *how* it participates: not as an injected service, but through three `fs/*` events `dsh-fs` declares and `dsh-tool-fs` dispatches — `fs/write-intent` and `fs/edit-intent` (single-slot decision waterfalls the policy plugin fully decides, never calling `next()`), and `fs/observed` (a fire-and-forget recording event). The tool's default thunks return `undefined` when no listener answers, which is the bare, unconstrained provider behavior; loading the policy plugin makes `write` require a prior `read` at the unchanged version before overwriting, and makes `edit` require the same before mutating. Removing the plugin does not break the tool at any injection boundary — there is no service to inject — it just loses the freshness policy and falls through to the bare provider's unconditional behavior. That graceful degrade is the entire reason this is an event gate rather than a mandatory method service.
+Between the provider and the tool sits a policy plugin, `dsh-fs-observation-policy`, that is worth naming precisely because of *how* it participates: not as an injected service, but through three `fs/*` events `dsh-fs` declares and `dsh-tool-fs` dispatches — `fs/write-intent` and `fs/edit-intent` (single-slot decision waterfalls the policy plugin fully decides, never calling `next()`), and `fs/observed` (a fire-and-forget recording event). The tool's default thunks return `undefined` when no listener answers, which is the bare, unconstrained provider behavior; loading the policy plugin makes `write` require a prior `read` at the unchanged version before overwriting, and makes `edit` require the same before mutating.
+
+:::decision
+An event gate rather than a mandatory method service. Removing the plugin does not break the tool at any injection boundary — there is no service to inject — it just loses the freshness policy and falls through to the bare provider's unconditional behavior. That graceful degrade is the entire reason for the choice.
+:::
 
 ## The documented non-seam: `dsh-tool-fs-search` bypasses `ctx.fs` on purpose
 
@@ -134,7 +142,14 @@ The fs package family ships a fourth model-facing package, `dsh-tool-fs-search`,
  */
 ```
 
-Its `inject` array confirms the claim: `['tools', 'systemPrompt', 'subprocess']` — no `fs`. Every `glob`/`grep` call spawns the packaged `@vscode/ripgrep` binary through `ctx.subprocess`, the same execution-world seam bash executors use, not a filesystem-provider method. The package's own README frames the design choice as deliberate: "putting search on `ctx.fs` would force every filesystem backend to grow a search API." Discovery is naturally a process-backed workflow (parse `rg`'s output, build argv, apply caps) — extending the twelve-primitive `FileSystem` contract with a thirteenth, search-shaped primitive would burden `dsh-fs-sandbox` and `dsh-fs-e2b` with reimplementing ripgrep-equivalent behavior rather than reusing one packaged binary. The cost of that choice is explicit too: returned paths are follow-up-readable with `read` only when the search workdir and the `ctx.fs` root denote the same workspace — a documented co-located-deployment assumption, not something the two packages check against each other at runtime.
+Its `inject` array confirms the claim: `['tools', 'systemPrompt', 'subprocess']` — no `fs`. Every `glob`/`grep` call spawns the packaged `@vscode/ripgrep` binary through `ctx.subprocess`, the same execution-world seam bash executors use, not a filesystem-provider method.
+
+:::decision
+The package's own README frames the design choice as deliberate: "putting search on `ctx.fs` would force every filesystem backend to grow a search API." Discovery is naturally a process-backed workflow (parse `rg`'s output, build argv, apply caps) — extending the twelve-primitive `FileSystem` contract with a thirteenth, search-shaped primitive would burden `dsh-fs-sandbox` and `dsh-fs-e2b` with reimplementing ripgrep-equivalent behavior rather than reusing one packaged binary.
+:::
+
+> [!PITFALL]
+> The cost of that choice is explicit: returned paths are follow-up-readable with `read` only when the search workdir and the `ctx.fs` root denote the same workspace — a documented co-located-deployment assumption, not something the two packages check against each other at runtime.
 
 ## Diagram: the `ctx.fs` seam
 
@@ -163,7 +178,13 @@ flowchart LR
 
 ## The `ctx.lsp` seam: a smaller instance of the same pattern
 
-Language-server navigation is the same three-role shape, scaled down. `packages/lsp/` states its scope directly: "the seam exposes exactly four semantic operations — `goToDefinition`, `findReferences`, `goToImplementation`, `hover` — and no generic JSON-RPC escape hatch." The problem it solves is real language servers (TypeScript, Go, Rust, whatever a deployment configures) speak the Language Server Protocol, an enormous surface with arbitrary requests, notifications, and — critically — mutating capabilities like `workspace/applyEdit` and command execution. `ctx.lsp` deliberately narrows that entire protocol down to four read-only navigation queries, so no protocol payload and no unreviewed mutation ever reaches a provider through the model-facing contract.
+Language-server navigation is the same three-role shape, scaled down. `packages/lsp/` states its scope directly:
+
+:::concept{term="ctx.lsp"}
+Exactly four semantic operations — `goToDefinition`, `findReferences`, `goToImplementation`, `hover` — and no generic JSON-RPC escape hatch.
+:::
+
+The problem it solves is real language servers (TypeScript, Go, Rust, whatever a deployment configures) speak the Language Server Protocol, an enormous surface with arbitrary requests, notifications, and — critically — mutating capabilities like `workspace/applyEdit` and command execution. `ctx.lsp` deliberately narrows that entire protocol down to four read-only navigation queries, so no protocol payload and no unreviewed mutation ever reaches a provider through the model-facing contract.
 
 **Service Definition** — `dsh-lsp` (`packages/lsp/lsp/`) owns `ctx.lsp`, a **provider registry** rather than a single fixed executor (the same registry shape `ctx.subagents` uses, not the one-executor-per-context rule bash uses): `registerProvider` reserves a branded provider id plus every file extension it claims, atomically and exclusively — two providers cannot both claim `.ts`. `query(request, signal?)` selects a provider by the file's extension and runs one normalized request, throwing `LSP_UNAVAILABLE` when nothing matches. The result type is a closed discriminated union (`{ kind: 'locations', ... }` or `{ kind: 'hover', ... }`), so consumers `switch` to exhaustiveness rather than parsing an open-ended payload.
 

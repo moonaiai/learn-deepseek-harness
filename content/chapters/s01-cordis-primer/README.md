@@ -35,22 +35,36 @@ export class MyService extends Service {
 }
 ```
 
-A function plugin needs no `apply` method — Cordis calls the function itself directly, and only uses its `name` for diagnostics. When a plugin is loaded — whether from a `cordis.yml` entry or from `ctx.plugin(child)` inside another plugin's code — Cordis creates a runtime handle for that instance called a **fiber**, and calls `apply(ctx)` (or the class constructor) with a context scoped to that plugin.
+A function plugin needs no `apply` method — Cordis calls the function itself directly, and only uses its `name` for diagnostics. When a plugin is loaded — whether from a `cordis.yml` entry or from `ctx.plugin(child)` inside another plugin's code — Cordis creates a runtime handle for that instance and calls `apply(ctx)` (or the class constructor) with a context scoped to that plugin.
+
+:::concept{term="fiber"}
+The runtime handle Cordis creates for one loaded plugin instance. It is what actually moves through the lifecycle state machine below and what gets disposed when the plugin unloads.
+:::
 
 Fibers move through a small state machine:
 
-```
-PENDING → LOADING → ACTIVE → UNLOADING → DISPOSED
-                 ↘ FAILED
-```
+:::timeline
+- PENDING — a required service (idea 3, below) is not available yet
+- LOADING — the `apply` call is running
+- ACTIVE — `apply` has returned; the plugin is live
+- FAILED — `apply` or config validation threw (a side branch, not a successor)
+- UNLOADING — teardown is running
+- DISPOSED — teardown complete
+:::
 
-`PENDING` means a required service (idea 3, below) is not available yet; `LOADING`/`ACTIVE` bracket the `apply` call; `FAILED` means `apply` or config validation threw; `UNLOADING`/`DISPOSED` bracket teardown. A plugin whose module fails to load throws loudly — a typo'd path is one of the few failures Cordis reports through its logger instead of crashing, which is why a freshly added entry that prints nothing is usually a spelling problem, not a silent skip.
+A plugin whose module fails to load throws loudly — a typo'd path is one of the few failures Cordis reports through its logger instead of crashing, which is why a freshly added entry that prints nothing is usually a spelling problem, not a silent skip.
 
 There is no meaningful ordering in a `cordis.yml` entry list — every entry starts concurrently, and *when* a plugin actually reaches `ACTIVE` is decided entirely by idea 3 (service dependencies), not by file position.
 
 ## Idea 2: a context is a repository of services
 
-The `ctx` argument passed into every plugin is a **context**: a proxy object that resolves a fixed set of built-in properties plus every service any plugin has registered. Reading `ctx.events`, `ctx.logger`, `ctx.registry`, or `ctx.reflect` reaches Cordis's own bootstrap services; reading `ctx.tools`, `ctx.llm`, or `ctx.sessions` reaches harness services registered the exact same way. The `Context` interface itself is declared as an open interface precisely so more services can be added to it:
+The `ctx` argument passed into every plugin is a context:
+
+:::concept{term="context"}
+A proxy object that resolves a fixed set of built-in properties plus every service any plugin has registered. Reading `ctx.events`, `ctx.logger`, `ctx.registry`, or `ctx.reflect` reaches Cordis's own bootstrap services; reading `ctx.tools`, `ctx.llm`, or `ctx.sessions` reaches harness services registered the exact same way.
+:::
+
+The `Context` interface itself is declared as an open interface precisely so more services can be added to it:
 
 ```ts
 export interface Context {

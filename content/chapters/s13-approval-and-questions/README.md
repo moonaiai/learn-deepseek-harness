@@ -32,7 +32,9 @@ The approval seam answers exactly one question — *may this specific action pro
 type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
 ```
 
+:::concept{term="ApprovalOutcome"}
 `allowed-once` is the only grant, authorizing exactly the action described in the request — nothing wider, nothing later. The other three are all denials from the caller's point of view: an explicit human rejection, a withdrawn request (the caller's `AbortSignal` fired), or an answerer that could not produce a decision at all. A missing answerer, a throwing answerer, and an answerer returning something outside the closed vocabulary all normalize to `unavailable` rather than silently becoming a grant. There is no code path where "nobody answered" turns into "proceed."
+:::
 
 ### The three roles, concretely
 
@@ -52,7 +54,12 @@ interface ApprovalRequest {
 }
 ```
 
-Tool arguments are missing deliberately. The request identifies *which* tool call is being decided through `callId` — a UI answerer attaches its prompt to the tool call it already streamed to the user rather than rendering a second copy of arguments that could drift from what actually executed. `agent` routes the question (an answerer only answers for agents it owns) and determines which session receives the audit trail.
+:::decision
+The request identifies *which* tool call is being decided through `callId` — a UI answerer attaches its prompt to the tool call it already streamed to the user rather than rendering a second copy of arguments that could drift from what actually executed. `agent` routes the question (an answerer only answers for agents it owns) and determines which session receives the audit trail.
+:::
+
+> [!WHY]
+> Tool arguments are missing deliberately. The prompt references an already-streamed tool call by `callId`, so no second copy of its arguments is needed — and no chance for the two to drift.
 
 ### Dispatch: policy first, then the waterfall
 

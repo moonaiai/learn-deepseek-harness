@@ -27,7 +27,11 @@ Compaction ships as a [capability seam](../s07-capability-seams-primer/README.md
 | `@deepseek-ai/dsh-compaction-tool-result-pruner` | Optional model-free companion — deterministic head/tail pruning of oversized tool results | `ctx.toolResultPruner` |
 | `@deepseek-ai/dsh-command-compact` | Human Consumer — the `/compact` command over `ctx.commands` | registers on `ctx.commands` |
 
-This is the same three-plus-one shape the bash seam uses (`dsh-shell` / `dsh-bash-local` / `dsh-tool-bash`), but with one deliberate deviation: the Service Definition depends on `dsh-session` and `dsh-llm`. The [capability-seam Agent Note](../../../../deepseek-harness/.agents/notes/implemented/feature/2026-06-18-compaction-capability-seam.md) states why this is not a coupling smell — the contract's verbs act on an agent-owned `Session` (`compactRegion(start, end, agent)`) and its output is `ContentBlock[]` vocabulary from `dsh-llm`. There is no way to state "summarize older history into a session-surface node" without naming those two packages. `dsh-session` and `dsh-llm` are themselves interface/vocabulary packages, not implementations, so the seam's real invariant — implementations and consumers evolve independently behind an abstract service — still holds.
+This is the same three-plus-one shape the bash seam uses (`dsh-shell` / `dsh-bash-local` / `dsh-tool-bash`), but with one deliberate deviation: the Service Definition depends on `dsh-session` and `dsh-llm`.
+
+:::decision
+The [capability-seam Agent Note](../../../../deepseek-harness/.agents/notes/implemented/feature/2026-06-18-compaction-capability-seam.md) states why this is not a coupling smell — the contract's verbs act on an agent-owned `Session` (`compactRegion(start, end, agent)`) and its output is `ContentBlock[]` vocabulary from `dsh-llm`. There is no way to state "summarize older history into a session-surface node" without naming those two packages. `dsh-session` and `dsh-llm` are themselves interface/vocabulary packages, not implementations, so the seam's real invariant — implementations and consumers evolve independently behind an abstract service — still holds.
+:::
 
 ### The abstract `CompactionEngine`
 
@@ -68,7 +72,13 @@ All three are abstract — the interface states *what* compaction does, never *h
 type CompactionTrigger = 'pressure' | 'context-overflow'
 ```
 
-`'pressure'` is proactive — the backend measured the current envelope and it crossed a configured threshold. `'context-overflow'` is reactive — the provider has already rejected a request for exceeding its context window, so the backend bypasses normal threshold/retention policy and forces one useful reduction regardless of scalar pressure.
+:::concept{term="pressure"}
+Proactive — the backend measured the current envelope and it crossed a configured threshold.
+:::
+
+:::concept{term="context-overflow"}
+Reactive — the provider has already rejected a request for exceeding its context window, so the backend bypasses normal threshold/retention policy and forces one useful reduction regardless of scalar pressure.
+:::
 
 ## Compaction is logged, not silent mutation
 
@@ -82,14 +92,13 @@ type CompactionTrigger = 'pressure' | 'context-overflow'
 
 A successful compaction lands five events in order:
 
-```
-compaction/start    → log-only. Acquires the lock.
-[summarize older range through the backend]
-compaction/summary  → log-only. Records the raw summary, range, shadowed seqs, token count.
-user/message        → THE surface mutation: source = compactCheckpointSource(compactionId),
-                       surfaceOp = { op: 'replace', start, end }, content = framed summary.
-compaction/end       → log-only. Releases the lock.
-```
+:::timeline
+- compaction/start — log-only. Acquires the lock.
+- summarize — the backend summarizes the older range.
+- compaction/summary — log-only. Records the raw summary, range, shadowed seqs, token count.
+- user/message — THE surface mutation: source = compactCheckpointSource(compactionId), surfaceOp = { op: 'replace', start, end }, content = framed summary.
+- compaction/end — log-only. Releases the lock.
+:::
 
 Two things follow directly from "model-visible means logged" (the harness's core session-log invariant): the summary text itself lives on `compaction/summary` for full-fidelity replay, and the *only* thing the model ever actually sees is the replacement `user/message` — a summary genuinely is user-role context, so reusing `user/message` rather than inventing a fifth event type is deliberate honesty about what the checkpoint is, not a workaround. `deriveMessages()` renders it exactly like any other surface node; the shadowed raw events remain in the log underneath, so replay is deterministic and a human transcript reading append-origin events can still show what actually happened.
 

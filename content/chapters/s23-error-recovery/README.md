@@ -15,8 +15,13 @@ order: 23
 
 This chapter is about what happens when something in a running agent goes wrong — not a bug in application code, but a live failure: a user wants to stop a turn, a tool call needs to be interrupted mid-flight, a model request comes back as a transport error. DeepSeek Harness treats these as two distinct problems with two distinct mechanisms:
 
-- **Cancellation** is deliberate: someone or something (a user, a parent agent, a hook, disposal) decides a turn or a tool call should stop. The loop cooperates with that decision instead of forcibly killing work.
-- **Retry** is automatic: a model request fails in a way that might succeed on a second attempt, and a plugin decides whether to retry it transparently, without the model or the user ever seeing the failure.
+:::concept{term="Cancellation"}
+Deliberate: someone or something (a user, a parent agent, a hook, disposal) decides a turn or a tool call should stop. The loop cooperates with that decision instead of forcibly killing work.
+:::
+
+:::concept{term="Retry"}
+Automatic: a model request fails in a way that might succeed on a second attempt, and a plugin decides whether to retry it transparently, without the model or the user ever seeing the failure.
+:::
 
 Both mechanisms share one design commitment that shows up throughout this codebase: **never abandon work you can't prove has stopped.** A cancelled turn does not return "cancelled" until the work it interrupted has actually reached quiescence. A retried request does not silently duplicate a tool call. This is the same commitment [`docs/defensive-patterns.md`](../../../../deepseek-harness/docs/defensive-patterns.md) states as a general rule — "dispose must reach quiescence, not just request it" — applied specifically to the turn/step driver.
 
@@ -48,11 +53,17 @@ Calling `cancel()` on an idle agent is a no-op: there is no active holder to abo
 
 ### What gets durably recorded — and what doesn't
 
-An interrupted live turn closes with the coarse durable outcome `{ kind: 'aborted' }` in its `turn/end` event. That record deliberately does **not** carry which of the four causes triggered it. The reasoning, stated directly in the [explicit-turn-cancellation Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md):
+:::decision
+An interrupted live turn closes with the coarse durable outcome `{ kind: 'aborted' }` in its `turn/end` event. That record deliberately does **not** carry which of the four causes triggered it.
+
+:::decision
+The [explicit-turn-cancellation Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) states the reasoning directly:
 
 > No production replay, UI, ACP, telemetry, or workflow consumer distinguishes `user` from `parent`. Copying the request source into the terminal result would conflate two facts and add Session-specific validation without a consumer.
+:::
 
 This is the "model-visible means logged" rule cutting the other way: the terminal event records *what happened to the turn* (it was aborted), while the *runtime* signal identifies *who* requested it — two different facts, and only the first one earns a place in durable history. Session seed/load actively rejects legacy aborted records carrying a reason field or any other extra field, which forecloses reintroducing caller-owned cancellation detail through replay. A separate process-local `agent/cancel-requested` notification does fire with the resolved cause before work is torn down, but it is not durable — it exists for live observers, not for the log.
+:::
 
 ### Cooperative, not preemptive
 

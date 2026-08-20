@@ -16,7 +16,11 @@ order: 8
 
 ## `ctx.fs` seam:Service Definition
 
-`packages/fs/fs/` 拥有 `ctx.fs`,别无其他——没有本地磁盘访问,没有政策,没有面向模型的 schema。它就是 `FileSystem`,一个继承 Cordis `Service` 的抽象类,公开十二个原语,描述文件系统后端**能做什么**,而不规定**怎么做**:
+`packages/fs/fs/` 拥有 `ctx.fs`,别无其他——没有本地磁盘访问,没有政策,没有面向模型的 schema。
+
+:::concept{term="FileSystem"}
+一个继承 Cordis `Service` 的抽象类,公开十二个原语,描述文件系统后端**能做什么**,而不规定**怎么做**:
+:::
 
 ```ts filename="packages/fs/fs/src/index.ts"
 export abstract class FileSystem extends Service {
@@ -112,7 +116,11 @@ export const inject = ['tools', 'fs', 'systemPrompt']
 
 ## 事件门禁:不依赖服务的政策
 
-在 provider 和工具之间,坐着一个政策插件 `dsh-fs-observation-policy`,值得精确说明它*如何*参与:不是作为一个被注入的服务,而是通过 `dsh-fs` 声明、`dsh-tool-fs` 分派的三个 `fs/*` 事件——`fs/write-intent` 和 `fs/edit-intent`(单槽决策 waterfall,由政策插件完整决策,绝不调用 `next()`),以及 `fs/observed`(发后即忘的记录事件)。当没有监听器应答时,工具的默认 thunk 返回 `undefined`,这就是裸的、不受约束的 provider 行为;加载政策插件后,`write` 会要求在覆盖前先有一次未变版本的 `read`,`edit` 也是同样要求先读后改。移除该插件不会在任何注入边界上破坏工具——因为根本没有服务可注入——只是失去新鲜度政策,回落到裸 provider 的无条件行为。这种优雅降级正是这里采用事件门禁、而非强制方法服务的全部理由。
+在 provider 和工具之间,坐着一个政策插件 `dsh-fs-observation-policy`,值得精确说明它*如何*参与:不是作为一个被注入的服务,而是通过 `dsh-fs` 声明、`dsh-tool-fs` 分派的三个 `fs/*` 事件——`fs/write-intent` 和 `fs/edit-intent`(单槽决策 waterfall,由政策插件完整决策,绝不调用 `next()`),以及 `fs/observed`(发后即忘的记录事件)。当没有监听器应答时,工具的默认 thunk 返回 `undefined`,这就是裸的、不受约束的 provider 行为;加载政策插件后,`write` 会要求在覆盖前先有一次未变版本的 `read`,`edit` 也是同样要求先读后改。
+
+:::decision
+采用事件门禁、而非强制方法服务。移除该插件不会在任何注入边界上破坏工具——因为根本没有服务可注入——只是失去新鲜度政策,回落到裸 provider 的无条件行为。这种优雅降级正是这一选择的全部理由。
+:::
 
 ## 记录在案的非 seam:`dsh-tool-fs-search` 刻意绕开 `ctx.fs`
 
@@ -132,7 +140,14 @@ fs 包家族还发布了第四个面向模型的包,`dsh-tool-fs-search`,提供 
  */
 ```
 
-它的 `inject` 数组印证了这个说法:`['tools', 'systemPrompt', 'subprocess']`——没有 `fs`。每一次 `glob`/`grep` 调用都通过 `ctx.subprocess` 生成打包的 `@vscode/ripgrep` 二进制文件——与 bash 执行器使用的是同一个执行世界 seam,而不是某个文件系统 provider 方法。这个包自己的 README 把这个设计选择描述为刻意为之:"把搜索放到 `ctx.fs` 上,会强迫每一个文件系统后端都长出一个搜索 API。"发现天然是一个由进程支撑的工作流(解析 `rg` 的输出、构建 argv、施加上限)——为十二原语的 `FileSystem` 约定扩展出第十三个、搜索形态的原语,只会让 `dsh-fs-sandbox` 和 `dsh-fs-e2b` 背上重新实现等价 ripgrep 行为的负担,而不是复用一个打包好的二进制文件。这个选择的代价也被明确写了出来:返回的路径只有在搜索工作目录与 `ctx.fs` 的根是同一个工作区时,才能被 `read` 跟进读取——这是一个记录在案的共置部署假设,而不是两个包在运行时互相校验的东西。
+它的 `inject` 数组印证了这个说法:`['tools', 'systemPrompt', 'subprocess']`——没有 `fs`。每一次 `glob`/`grep` 调用都通过 `ctx.subprocess` 生成打包的 `@vscode/ripgrep` 二进制文件——与 bash 执行器使用的是同一个执行世界 seam,而不是某个文件系统 provider 方法。
+
+:::decision
+这个包自己的 README 把这个设计选择描述为刻意为之:"把搜索放到 `ctx.fs` 上,会强迫每一个文件系统后端都长出一个搜索 API。"发现天然是一个由进程支撑的工作流(解析 `rg` 的输出、构建 argv、施加上限)——为十二原语的 `FileSystem` 约定扩展出第十三个、搜索形态的原语,只会让 `dsh-fs-sandbox` 和 `dsh-fs-e2b` 背上重新实现等价 ripgrep 行为的负担,而不是复用一个打包好的二进制文件。
+:::
+
+> [!PITFALL]
+> 这个选择的代价也被明确写了出来:返回的路径只有在搜索工作目录与 `ctx.fs` 的根是同一个工作区时,才能被 `read` 跟进读取——这是一个记录在案的共置部署假设,而不是两个包在运行时互相校验的东西。
 
 ## 图示:`ctx.fs` seam
 
@@ -161,7 +176,13 @@ flowchart LR
 
 ## `ctx.lsp` seam:同一模式的缩小实例
 
-语言服务器导航是同样的三角色形态,只是规模更小。`packages/lsp/` 直接说明了它的范围:"该 seam 恰好公开四种语义操作——`goToDefinition`、`findReferences`、`goToImplementation`、`hover`——且不提供通用 JSON-RPC 逃生口。"它要解决的问题是:真实的语言服务器(TypeScript、Go、Rust,任何部署方配置的语言)讲的是语言服务器协议,这是一个巨大的接口面,包含任意请求、通知,以及——关键的是——诸如 `workspace/applyEdit` 和命令执行这样的变更能力。`ctx.lsp` 刻意把整个协议收窄成四种只读的导航查询,使得没有任何协议载荷、也没有任何未经评审的变更,能通过面向模型的约定到达 provider。
+语言服务器导航是同样的三角色形态,只是规模更小。`packages/lsp/` 直接说明了它的范围:
+
+:::concept{term="ctx.lsp"}
+恰好四种语义操作——`goToDefinition`、`findReferences`、`goToImplementation`、`hover`——且不提供通用 JSON-RPC 逃生口。
+:::
+
+它要解决的问题是:真实的语言服务器(TypeScript、Go、Rust,任何部署方配置的语言)讲的是语言服务器协议,这是一个巨大的接口面,包含任意请求、通知,以及——关键的是——诸如 `workspace/applyEdit` 和命令执行这样的变更能力。`ctx.lsp` 刻意把整个协议收窄成四种只读的导航查询,使得没有任何协议载荷、也没有任何未经评审的变更,能通过面向模型的约定到达 provider。
 
 **Service Definition**——`dsh-lsp`(`packages/lsp/lsp/`)拥有 `ctx.lsp`,这是一个**provider 注册表**,而非单一固定的执行器(与 `ctx.subagents` 相同的注册表形态,而非 bash 那种每上下文一个执行器的规则):`registerProvider` 原子且排他地预留一个品牌化的 provider id 加上它声明的每个文件扩展名——两个 provider 不能同时声明 `.ts`。`query(request, signal?)` 按文件扩展名选择一个 provider,运行一次标准化请求,若无匹配则抛出 `LSP_UNAVAILABLE`。结果类型是一个封闭的可辨识联合(`{ kind: 'locations', ... }` 或 `{ kind: 'hover', ... }`),使消费方能够穷尽式地 `switch`,而不是解析一个开放式载荷。
 

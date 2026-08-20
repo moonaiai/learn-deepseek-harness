@@ -16,8 +16,13 @@ Everything in the harness so far has been about one running agent: how it mainta
 
 These are opposite directions, and the codebase keeps them in unrelated package groups because the roles do not overlap:
 
-- **`packages/mcp/mcp-client`** makes the harness a Model Context Protocol *client*. It connects to an external MCP server (a third-party process or HTTP endpoint) and republishes that server's tools on `ctx.tools`, so the model sees them as native tools it can call — the same way it sees `bash` or `read`.
-- **`packages/sdk`** and **`packages/acp`** make the harness a *server* for another process. `dsh-sdk-jsonrpc-server` and `dsh-acp` each open a JSON-RPC channel over stdio; an external program — a Python script, a parent harness, an IDE integration — speaks that protocol to create sessions, send prompts, and collect results. The harness is the thing being automated, not the thing doing the automating.
+:::concept{term="MCP direction — the harness is the client"}
+**`packages/mcp/mcp-client`** makes the harness a Model Context Protocol *client*. It connects to an external MCP server (a third-party process or HTTP endpoint) and republishes that server's tools on `ctx.tools`, so the model sees them as native tools it can call — the same way it sees `bash` or `read`.
+:::
+
+:::concept{term="SDK/ACP direction — the harness is the server"}
+**`packages/sdk`** and **`packages/acp`** make the harness a *server* for another process. `dsh-sdk-jsonrpc-server` and `dsh-acp` each open a JSON-RPC channel over stdio; an external program — a Python script, a parent harness, an IDE integration — speaks that protocol to create sessions, send prompts, and collect results. The harness is the thing being automated, not the thing doing the automating.
+:::
 
 ```mermaid
 flowchart LR
@@ -99,10 +104,13 @@ The clean case is verbatim concatenation. When character replacement or 64-chara
 
 [`syncTools`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/mcp/mcp-client/src/tools.ts#L104-L174) runs in two phases on every initial connect and every `notifications/tools/list_changed` re-sync:
 
-1. **Fetch** — drain paginated `tools/list` into a full new generation of `ToolDefinition`s, keyed by public name. A duplicate raw name within one server's own list, or a network failure, rejects and leaves the *previous* generation registered, untouched.
-2. **Swap** — dispose the previous generation's disposers, then register every entry of the new generation via `ctx.tools.register()`. If registration collides with a foreign registration already squatting on this server's `mcp__<serverName>__` namespace, the whole attempted generation rolls back — the model sees either the complete new tool set from this server or none of it, never a partial one.
+:::timeline
+- Fetch — drain paginated `tools/list` into a full new generation of `ToolDefinition`s, keyed by public name. A duplicate raw name within one server's own list, or a network failure, rejects and leaves the *previous* generation registered, untouched.
+- Swap — dispose the previous generation's disposers, then register every entry of the new generation via `ctx.tools.register()`. If registration collides with a foreign registration already squatting on this server's `mcp__<serverName>__` namespace, the whole attempted generation rolls back — the model sees either the complete new tool set from this server or none of it, never a partial one.
+:::
 
-This atomicity matters because a half-registered generation would be a worse failure mode than no tools at all: the model could see three of five tools from a server and have no way to know two are missing.
+> [!WHY]
+> This atomicity matters because a half-registered generation would be a worse failure mode than no tools at all: the model could see three of five tools from a server and have no way to know two are missing.
 
 ### Reconnection has a budget, not infinite patience
 

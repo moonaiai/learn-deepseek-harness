@@ -15,13 +15,15 @@ order: 2
 
 A profile directory holds two files: a `package.json` carrying a `dsh.profile` field with an ordered `bundles` list (plus whatever out-of-tree plugin `dependencies` pnpm manages there), and the profile's own `cordis.patch.yml`. Bundle names in that list resolve from the `dsh` installation first, then from the profile's own `node_modules`, so shipped bundles (`@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, `@deepseek-ai/dsh-headless`) always come from the same installation as the running `dsh`, while a plugin someone `add`ed comes from pnpm.
 
-A **bundle** is not a special runtime concept — it is a distribution format. Any npm package whose manifest declares
+:::concept{term="bundle"}
+A bundle is not a special runtime concept — it is a distribution format. Any npm package whose manifest declares
 
 ```json
 "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 ```
 
 is installable as one patch layer in a profile's `bundles` list. The two roles — `dsh.profile` for a profile's own manifest, `dsh.bundle` for a bundle's — live under distinct keys, so a `package.json` states unambiguously which one it is.
+:::
 
 ## The tree composes over an empty root
 
@@ -106,7 +108,18 @@ flowchart TD
   Overlay --> Composed["Composed tree —<br/>what dsh --profile web --dump-config prints"]
 ```
 
-The home-level file outranks the per-profile file because it holds machine-local preferences meant to apply to every profile on that machine, not just one. `apps/cli/src/profile-boot.ts` builds exactly this sequence:
+:::timeline
+- empty profile root — the tree is composed over `[]`
+- bundle layers — `dsh.profile.bundles`, in list order: `dsh-base`, then `dsh-web-app` or `dsh-headless`
+- profile's own cordis.patch.yml
+- home-level $DSH_HOME/cordis.patch.yml
+- --patch overlay(s), in argv order — the composed tree `--dump-config` prints
+:::
+
+> [!WHY]
+> The home-level file outranks the per-profile file because it holds machine-local preferences meant to apply to every profile on that machine, not just one.
+
+`apps/cli/src/profile-boot.ts` builds exactly this sequence:
 
 ```ts
 function allPatches(composed: ComposedProfile): PatchOptions[] {

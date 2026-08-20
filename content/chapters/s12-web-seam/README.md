@@ -15,7 +15,9 @@ order: 12
 
 Every other capability seam covered so far — shell, and shortly LLM — resolves one thing: one executor, one adapter. `ctx.web` is different on purpose. The [`dsh-web` README](../../../packages/web/web/README.md) states it directly: "Unlike shell/fs it spans two operations (search and fetch) on one seam, with potentially multiple providers each." Search and fetch share no request schema and no business logic — a `WebSearchRequest` looks nothing like a `WebFetchRequest`, and the code that calls Exa's endpoint has nothing in common with the code that follows an HTTP redirect. What they share is everything *around* the operation: one provider-id registry, one execution-time selection policy, one abort/error vocabulary (`WebError`), and one product-facing "how does this harness reach the web" configuration surface.
 
+:::decision
 The [web capability seam Agent Note](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md) is explicit about why this is one seam and not two: splitting into `dsh-search`/`dsh-fetch` was considered and rejected, because the shared machinery — the provider-id registry, the registration-order-independent selection policy, abort propagation, the `WebError` taxonomy — "is real and would otherwise be duplicated across two near-identical seams." The price of keeping them together is a `WebRuntime` class with parallel `search()`/`fetch()` method pairs and two separate provider maps rather than one. That asymmetry-that-isn't is accepted deliberately, not a missed extraction.
+:::
 
 ## The Service Definition: a concrete registry, not an abstract class
 
@@ -107,7 +109,10 @@ Three deployments are all legal at once, and the seam behaves differently in eac
 | Exa + Perplexity | `exa` | every call runs Exa; Perplexity sits registered but never selected |
 | Exa + Perplexity, Exa's `apiKey` unset | `exa` | `WEB_PROVIDER_CONFIGURED_UNAVAILABLE` — the configured id is real but its `available()` is false |
 
-So a `cordis.yml` composition genuinely can mount `dsh-web-search-exa`, `dsh-web-search-perplexity`, and `dsh-web-search-deepseek` side by side in the same process — nothing in the Loader or the seam rejects it — but `ctx.web.search()` will refuse to guess among them unless `searchProvider` (or `$DSH_WEB_SEARCH_PROVIDER`) names exactly one. This is the opposite of "swap one provider for another": it is "mount several, then point a config knob at the one that wins," with the seam actively refusing the ambiguous case rather than picking by registration order. The [Agent Note names that alternative explicitly and rejects it](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md#alternatives-considered): "Registration order is not a product policy. It can change with config order, plugin loading, HMR, or refactors."
+So a `cordis.yml` composition genuinely can mount `dsh-web-search-exa`, `dsh-web-search-perplexity`, and `dsh-web-search-deepseek` side by side in the same process — nothing in the Loader or the seam rejects it — but `ctx.web.search()` will refuse to guess among them unless `searchProvider` (or `$DSH_WEB_SEARCH_PROVIDER`) names exactly one. This is the opposite of "swap one provider for another": it is "mount several, then point a config knob at the one that wins," with the seam actively refusing the ambiguous case rather than picking by registration order.
+
+> [!WHY]
+> The [Agent Note names that alternative explicitly and rejects it](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md#alternatives-considered): "Registration order is not a product policy. It can change with config order, plugin loading, HMR, or refactors."
 
 `available()` is the other half of the mechanism worth being precise about. It is a synchronous, local-only check — credential presence, parseable endpoint config — and providers must not make network calls inside it. It answers "is this concrete implementation usable," not "is the network reachable right now." Selection is therefore always a pairing of two independent facts: which id is configured (or how many are usable when none is), and whether the resolved provider's cheap local check currently passes.
 

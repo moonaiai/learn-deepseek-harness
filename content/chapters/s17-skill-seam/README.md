@@ -72,7 +72,17 @@ interface SkillDefinition extends SkillSummary {
 }
 ```
 
-`SkillSummary` is what every model- or human-facing consumer is allowed to see without a full load: name, description, and the resolved invocation policy — never the body or an absolute path. `SkillCandidate` is the provider-to-registry shape used only during discovery and merging; its `locator` is opaque provider-owned state, handed back verbatim to that same provider's `get()`. `SkillDefinition` is the complete parsed result the `skill` tool eventually returns.
+:::concept{term="SkillSummary"}
+What every model- or human-facing consumer is allowed to see without a full load: name, description, and the resolved invocation policy — never the body or an absolute path.
+:::
+
+:::concept{term="SkillCandidate"}
+The provider-to-registry shape used only during discovery and merging; its `locator` is opaque provider-owned state, handed back verbatim to that same provider's `get()`.
+:::
+
+:::concept{term="SkillDefinition"}
+The complete parsed result the `skill` tool eventually returns.
+:::
 
 ### The `SkillProvider` contract
 
@@ -112,9 +122,13 @@ A read carries the **viewing scope** through `SkillViewOptions` — the calling 
 - **The nearest layer wins a duplicate name outright.** If a preset's own layer defines `my-skill`, it shadows any global-layer skill of the same name, full stop — no rank comparison crosses a layer boundary.
 - **Rank decides duplicates only within one layer.** The 100/200/.../600 rank table below only arbitrates ties among providers registered in the *same* layer.
 
-The [layered skill registry Agent Note](../../../.agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md) explains why the alternative — pooling ranks across all visible layers — was rejected: ranks were designed to order sources that already know about each other. Under a global pool, a later-installed repository plugin could silently displace a preset's own same-named skill purely by registration-order tiebreak, changing the preset's behavior from *outside* its own composition. Nearest-wins keeps a composition's effective skill set decided by whoever authored that composition, not by what else happens to be mounted elsewhere in the process.
+:::decision
+The [layered skill registry Agent Note](../../../.agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md) explains why the alternative — pooling ranks across all visible layers — was rejected: ranks were designed to order sources that already know about each other. Under a global pool, a later-installed repository plugin could silently displace a preset's own same-named skill purely by registration-order tiebreak, changing the preset's behavior from *outside* its own composition. We chose nearest-wins so a composition's effective skill set is decided by whoever authored that composition, not by what else happens to be mounted elsewhere in the process.
+:::
 
+:::fold[The deadlock that forced this split]
 This design exists because of a real deadlock the note documents: an earlier version moved the *entire* skill capability — registry included — into each preset's isolated realm, on the theory that "which skills an agent has" is purely an agent-plane decision. That broke a repository plugin's wrapper, which declares `inject: ['skills']` and expects a host-plane registry to attach to; with no host registry composed, the wrapper waited forever. It also meant a cold session with no live agent had no registry to answer a UI's skill-listing request at all. Splitting "which skills a deployment supplies" (host registry, global layer) from "whether an agent consumes them" (whether that agent's composition mounts `dsh-tool-skill` at all) resolved both problems while preserving per-preset override behavior through the scope chain.
+:::
 
 Discovery caches are keyed by the resolved scope chain plus a revision counter, so a blank-session recompose — which re-parents an agent's scope key without mutating the registry itself — is visible on the very next read.
 
@@ -238,6 +252,14 @@ Only `source.kind === 'user'` messages are scanned, so external or injected text
 
 ## Catalog vs. load-on-demand, end to end
 
+:::timeline
+- Discovery — the filesystem provider scans rank-ordered roots, scoped to cwd, and registers on `ctx.skills` during `apply()`
+- Snapshot — the consumer calls `ctx.skills.snapshot({ cwd, scope: agent })` and the registry merges provider lists into `SkillCandidate[]`
+- Catalog publication — the consumer renders a `<system-reminder>` carrying names and descriptions only
+- On-demand load — the model calls `skill({ name })`; the tool resolves `get(name, { cwd, scope: agent })` through the registry and provider
+- Full body — the provider returns the `SkillDefinition`; the tool answers with `<skill_content><skill_resources/><skill_instructions/></skill_content>`
+:::
+
 ```mermaid
 sequenceDiagram
   participant P as skill-filesystem provider
@@ -266,4 +288,5 @@ sequenceDiagram
 
 ## Why this shape
 
-The catalog/load split is the mechanism that makes "install as many skills as you want" not translate into "pay for all of them on every request." The layered registry is the mechanism that makes "a deployment supplies skills" and "an agent preset chooses to use them" two independently composable decisions, matching the precedent `ctx.tools` already established. Both mechanisms answer the same underlying question the harness asks of every capability seam: what changes at deploy time, what changes at compose time, and what the model actually needs to see to act — kept as three separate, independently evolvable things.
+> [!WHY]
+> The catalog/load split is the mechanism that makes "install as many skills as you want" not translate into "pay for all of them on every request." The layered registry is the mechanism that makes "a deployment supplies skills" and "an agent preset chooses to use them" two independently composable decisions, matching the precedent `ctx.tools` already established. Both mechanisms answer the same underlying question the harness asks of every capability seam: what changes at deploy time, what changes at compose time, and what the model actually needs to see to act — kept as three separate, independently evolvable things.

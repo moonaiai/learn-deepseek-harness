@@ -34,6 +34,19 @@ flowchart TD
   turn --> stdout["最后一条非空 assistant 文本 -> stdout<br/>退出码 0（completed）或 1（其他）"]
 ```
 
+这张流程图一眼看全这次调用；下面是同一条有序路径的分步拆解：
+
+:::timeline
+- 组装 —— 解析 `headless` = dsh-base + dsh-headless，再叠加 profile/home patch 与 `--patch` overlay
+- 挂载 —— Cordis Loader 挂载配置树（settings、credentials、llm-deepseek、subprocess/bash、fs、tools、agent-loop）
+- 创建 —— headless-runner 通过 `ctx.agents` 创建一个全新的 Agent
+- 回合 —— 一个回合：agent/pre-step → agent/request → llm/stream → tool/call* → tool/result*
+- 分发 —— 工具调用经 `ctx.tools` 出去：bash、fs、todo_write、subagent、workflow、ralph
+- 排空 —— `sessions.flush(agent.session)` 排空待写入的批次
+- 落盘 —— JSONL 落到 `.sessions/--cwd--/<id>/session.jsonl.zstd`
+- 输出 —— 打印最后一条非空 assistant 文本；退出码 0（completed）或 1（其他）
+:::
+
 ## 组装 profile（回顾第 2 章）
 
 `dsh --profile headless "task"` 会解析 `$DSH_HOME/profiles/headless`，其 manifest（元数据清单）按顺序列出两个组合包：`@deepseek-ai/dsh-base`，然后是 `@deepseek-ai/dsh-headless`。配置树的组装方式与第 2 章描述的完全一致——从空根开始，依次叠加各组合包 patch（按 `bundles` 列表顺序）、profile 自己的 `cordis.patch.yml`、home 级的那一份，最后是任意 `--patch` overlay——你随时可以在真正启动之前查看组装结果：
@@ -44,7 +57,13 @@ dsh --profile headless --dump-config
 
 `dsh-base` 的 patch 在空根之上一次性插入约七十行配置：模型适配器、会话日志及其 JSONL 持久化后端、沙箱与审批策略、`dsh-tools`/`dsh-agent-loop`/`dsh-system-prompt`，以及完整的工具清单（bash、文件系统、skill、subagent、workflow、todo、goal、web），外加遥测。`dsh-headless` 随后直接叠加在这之上，用不到四十行（`packages/bundle/headless/cordis.patch.yml`）做了 patch 能做的三件事：覆盖 `system-prompt` 的 `persona` 配置行，换成一段引用 `{{model}}` 与 `{{cwd}}` 的编码助手人设；禁用 `hmr`（一次性进程没有什么需要热重载）；再插入三行新配置——`code-runtime`（Code Mode 的 worker-thread 执行能力）、`headless-startup`（通过 `ctx.cmdlineArgs` 读取位置任务参数的 provider），以及 `headless-runner` 本身，它注入 `headlessStartup` 并配置 `task: !!js ctx.headlessStartup.task`。
 
-这个 `!!js` 表达式正是 CLI 行为参考文档里讲过的那种"命令行参数接入配置"手法：某一配置行的 `config` 读取启动器 provider 解析出的服务，因此 `dsh --profile headless "run the tests"` 是真的把位置参数穿过了 Cordis 自身的依赖图,而不是靠 `apps/cli` 内部专为 headless 写的 argv 解析逻辑。这个随附组合包完全不挂载 Host、HTTP 服务器、Web 运行时或浏览器插件——这是一个直接的 Agent 驱动器,不是套了另一层 UI 的第二产品入口。
+这个 `!!js` 表达式正是 CLI 行为参考文档里讲过的那种"命令行参数接入配置"手法：某一配置行的 `config` 读取启动器 provider 解析出的服务，因此 `dsh --profile headless "run the tests"` 是真的把位置参数穿过了 Cordis 自身的依赖图,而不是靠 `apps/cli` 内部专为 headless 写的 argv 解析逻辑。
+
+:::decision
+位置任务参数经由 Cordis 依赖图到达 runner——通过一个 `headless-startup` provider 配置行加上 `task: !!js ctx.headlessStartup.task` 配置——而不是靠 `apps/cli` 里专为 headless 写的 argv 解析。我们之所以选择配置行接线而不用专门的 CLI 解析，是因为它复用了启动器本就支持的"命令行参数接入配置"模式，因此 headless 组合包不引入任何特殊代码路径。
+:::
+
+这个随附组合包完全不挂载 Host、HTTP 服务器、Web 运行时或浏览器插件——这是一个直接的 Agent 驱动器,不是套了另一层 UI 的第二产品入口。
 
 本章后文使用的 `examples/headless-agent/cordis.yml` 直接挂载了等价的配置行(没有通过 `include` 引用组合包的 patch),因此它的 id 与真实 profile `--dump-config` 打印出的内容一一对应:`settings`、`credentials`、`llm-deepseek`、`subprocess`、`bash`、`agent-spine`(在演示中替代了 `dsh-agent`/`agent-default-model`/`headless-runner`)、`persistence`、`checkpoint-policy`、`token-meter`、`compaction-basic`、`session-projection`,以及 subagent/workflow/todo 相关配置行和文件系统栈。`examples/headless-agent/composition.md` 里的生成图把这同一份清单渲染成了带有每个插件 id 和包名的流程图——值得先整体打开看一眼,而不是在这里逐行细读。
 
@@ -73,6 +92,9 @@ dsh --profile headless --dump-config
 - `session-projection` 是 subagent 目录的硬依赖,而非点缀:持久化的 subagent 身份(mode/label)要通过注册的 projection 单元折算出来,`list_agents` 在缺少这项能力时会直接失败报错——这正好体现了"配置错误要在能感知的地方响亮失败"这条规则,而不是悄悄少一个功能。
 - `token-meter` 和 `compaction-basic`(`thresholdRatio: 0.8`,`retainRatio: 0.16`)才是真正让一次长时间的 headless 运行留在上下文窗口以内的关键——就是第 18 章讲过的那条压缩接缝,只不过这里给出了具体数字而不是停留在抽象层面。
 
+> [!WHY]
+> 上面的顺序并非巧合。`fs-local` 先于 `fs-observation-policy` 和 `tool-fs` 组装，观察策略才能对那个面向模型的工具执行"先读后写"的规则；若颠倒顺序，策略就没有东西可约束。
+
 因为这一切都只是普通的 Cordis 组合,`examples/headless-agent/` 里与 `cordis.yml` 并列的那些具名 overlay 文件值得当成一份菜单来用,而不是一整块整体。每一个 overlay 都在基础组合上做插入、覆盖或禁用,恰好用来独立演示一个特性:
 
 | Overlay | 打开了什么 |
@@ -88,7 +110,11 @@ dsh --profile headless --dump-config
 
 ## 这个 profile 里的 subagent 与 workflow(回顾第 16/20 章)
 
-这份组合把 subagent 接缝(第 16 章)的两种委托方式并排挂载了出来。`subagent-spawn-in-process` 和 `subagent-fork-in-process` 在 `ctx.subagents` 之下注册了两个进程内后端;`tool-subagent`(`provider: spawn`、`toolName: subagent`、`backgroundMode: continuable`、`maxDepth: 1`)向模型暴露普通的全新子 agent 委托,而第二处 `tool-subagent` 注册(`provider: fork`、`toolName: subagent_fork`、`backgroundMode: one-shot`、`enableRunInBackground: false`)则用另一个工具名暴露了基于已完成会话前缀的 fork 委托。这一行的注释值得记住:在这份组合里 fork 之所以保持一次性,是因为一个可续接子 agent 的 `report` 工具和提示词片段本应排在 fork 已经复用的继承历史之前,而这个示例又没有挂载 `run_in_background` 所依赖的任务服务——这两条都是这份具体组合的选择,不是接缝本身的局限。
+这份组合把 subagent 接缝(第 16 章)的两种委托方式并排挂载了出来。`subagent-spawn-in-process` 和 `subagent-fork-in-process` 在 `ctx.subagents` 之下注册了两个进程内后端;`tool-subagent`(`provider: spawn`、`toolName: subagent`、`backgroundMode: continuable`、`maxDepth: 1`)向模型暴露普通的全新子 agent 委托,而第二处 `tool-subagent` 注册(`provider: fork`、`toolName: subagent_fork`、`backgroundMode: one-shot`、`enableRunInBackground: false`)则用另一个工具名暴露了基于已完成会话前缀的 fork 委托。这条第二处注册行上的注释值得记住：
+
+:::decision
+在这份组合里 fork 之所以保持一次性，是因为一个可续接子 agent 的 `report` 工具和提示词片段本应排在 fork 已经复用的继承历史之前，而这个示例又没有挂载 `run_in_background` 所依赖的任务服务。这两条都是这份具体组合的选择，不是接缝本身的局限——一个挂载了任务服务的部署完全可以启用可续接的 fork。
+:::
 
 `workflow-worker-thread` 加上 `tool-workflow` 给模型提供了一个 `workflow` 工具:一段 JavaScript 编排脚本,其中的 `agent()` 调用通过同一个 `spawn` 后端扇出,让一段脚本可以按阶段协调多个子 agent 并得到结构化结果,而不必逐次委托。`tool-ralph` 作为另一个独立加载的 `ctx.workflowEngine` 消费者与它并列——它把一套固定的、专门化的编排策略(不可变目标、每轮全新子 agent、共享 workspace 作为跨轮次唯一记忆)做成了一个普通插件,证明加入 Ralph 式迭代无需对 `agent-loop`、workflow 引擎或同会话 goal 域做任何改动。
 
@@ -112,6 +138,7 @@ dsh --profile headless --dump-config
 
 ## 隔壁的自动化入口(回顾第 22 章)
 
+:::fold[ACP 姊妹入口]
 `examples/acp-agent/` 是同一个目录层级下的另一个可运行示例,值得弄清楚它相对 headless 改变了什么,而不是当成毫不相关的东西一带而过。headless 是一个提交一个任务就退出的一次性进程,而 `@deepseek-ai/dsh-acp-demo` 是一个长期运行、基于 JSON-RPC stdio 的服务器,实现了 [Agent Client Protocol](https://agentclientprotocol.com):它为每次 `session/new` 创建一个全新 agent,像 headless 一样把会话持久化为 JSONL,并保持 stdout 只承载协议内容——那里不安装任何 logger,只有换行分隔的 ACP JSON-RPC,诊断信息全部走 stderr。它面向的是父 agent、subagent provider 以及其他程序化客户端,而不是终端前的人类用户。
 
 ```sh
@@ -119,10 +146,19 @@ pnpm run demo:acp             # 需要 DEEPSEEK_API_KEY
 ```
 
 这两个示例共享同一个 DeepSeek 适配器、同一套沙箱化 bash/文件系统栈、同一套压缩与 subagent/workflow 机制——真正不同的是入口形态(一次性任务 vs. 面向会话的 RPC 协议)以及权限面(ACP 按每个会话的 `cwd` 解析 `workspace-write`,在模型重试时通过 `session/request_permission` 升级权限;而 headless 则是单一固定的、进程级别的沙箱作用域)。
+:::
 
 ## 究竟挂载了什么:接缝与非接缝
 
 用本课程通篇沿用的接缝/非接缝词汇,把这次组合里的各行对上号,能让"清单"这件事变得具体,而不是停留在抽象层面。这一次 `headless` 运行挂载的是真正的能力接缝——`ctx.shell`(`dsh-bash-local` 作为 Service Provider)、`ctx.subprocess`(`dsh-subprocess-local`)、`ctx.fs`(`dsh-fs-local`)、`ctx.subagents`(`dsh-subagent-spawn-in-process` 与 `dsh-subagent-fork-in-process` 并存)、`ctx.workflowEngine`(`dsh-workflow-worker-thread`)、`ctx.compaction`(`dsh-compaction-basic`)、以及 `ctx.sessionPersistence`(`dsh-session-persistence-jsonl`)——每一个都可以换成另一个 Provider(沙箱化的 bash、E2B 文件系统、另一种持久化后端),而 `dsh-tool-bash`、`dsh-tool-fs`、`dsh-tool-subagent`、`dsh-tool-workflow` 乃至 `headless-runner` 本身完全不需要变动——`e2b.cordis.yml` overlay 一次性演示的正是其中三个接缝的这种替换。
+
+:::concept{term="能力接缝"}
+能力接缝（capability seam）是一条挂载出来的、带有兄弟级可替换 Provider 的 Definition——此处指 `ctx.shell`、`ctx.fs`、`ctx.subagents`、`ctx.workflowEngine`、`ctx.compaction`、`ctx.sessionPersistence`。换一个 Provider（E2B 文件系统、另一种持久化后端）之后，工具与 `headless-runner` 完全不需要改动。
+:::
+
+:::concept{term="非接缝机制"}
+非接缝机制（non-seam mechanism）是不存在第二种可替换实现的机件：事件溯源的会话日志（每个 agent 一份 `Session`）、单一的 `ctx.tools` 注册表，以及 `todo_write`——它只是架在接缝之上的 Consumer，而非自成一条接缝。
+:::
 
 同样具体的是,这次运行也依赖着本课程刻意没有当作接缝来讲的机制:会话日志本身(每个 agent 一份 `Session`,事件溯源,没有另一种可替换的"会话实现");受控的工具流水线(`ctx.tools` 是单一注册表,不是带有兄弟 Provider 的 Definition);以及 `todo_write`——它和这次组合里其余的模型可见工具一样,是架在这些接缝之上的 Consumer,而不是它自己的一条接缝。区分这两者不是咬文嚼字:这正是本课程贯穿始终用来检验每一章的同一个标准——是否真的存在且要紧的第二种、可替换的实现——只是一次 `dsh --profile headless` 运行恰好把两种情况都摆在了一起。
 

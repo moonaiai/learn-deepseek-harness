@@ -47,7 +47,9 @@ The deployment ships four presets under `apps/cli/config/agent-presets/`, and th
 - **`code`** — everything in `standard`, plus one added row, `tool-presentation` configured for `mode: code` (Code Mode): instead of one tool call per action, the model writes a TypeScript program against a generated SDK and `run_code` executes it.
 - **`cordis`** — everything in `standard`, plus the self-modification toolset covered in Part 2, a persona that explains the two-plane split, and a skill that teaches composition authoring.
 
+:::decision
 `code` and `cordis` are each a *full copy* of `standard` with one addition layered on top, not a diff format. The `dsh-agent-presets` package's Known Limitations name this cost directly: "a copy is a snapshot that drifts" — there is no patch semantics at this layer (that belongs to the `dsh-bundle` `cordis.patch.yml` mechanism), so upgrading the deployment does not propagate into copies, and the shipped set accepts that cost itself so the whole assembly stays readable in one file per preset.
+:::
 
 ### Isolation is the default, and it is measured
 

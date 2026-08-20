@@ -49,9 +49,11 @@ export interface Agent {
 
 A few things stand out about what is — and is not — here:
 
+:::concept{term="Agent.ctx"}
+The agent's own scoped Cordis context. Anything registered through `agent.ctx` — tools, prompt sections, listeners — is agent-local and unwinds automatically when the agent disposes. This is the same `dsh-scope` mechanism the previous chapter's loop discussion assumed; `dsh-agent` is one of its two consumers (the other being `system-prompt`).
+:::
+
 - **`id` is shared with `session.id`.** An agent and its session are the same identity; there is exactly one live session per agent and vice versa. `AgentRegistry.enter()` (`index.ts:474-478`) enforces this at insertion time by throwing if `agent.id !== agent.session.id`.
-- **`status` is binary: `'idle' | 'running'`.** Disposal is not a third status — an agent that's been torn down is simply absent from the registry.
-- **`ctx` is the agent's own scoped Cordis context.** Anything registered through `agent.ctx` — tools, prompt sections, listeners — is agent-local and unwinds automatically when the agent disposes. This is the same `dsh-scope` mechanism the previous chapter's loop discussion assumed; `dsh-agent` is one of its two consumers (the other being `system-prompt`).
 - **Four ways to feed input**, each with different wake/queue semantics: `send()` is the general primitive (explicit `target` and `wakeup`), `followup()` and `steer()` are fixed-preset aliases (`next-turn`/wake, `next-step`/wake), and `inject()` queues non-waking `next-step` context — useful for injecting model-facing material that should ride along on whatever step happens next, without forcing one to start.
 - **`cancel()` and `whenIdle()` describe whole-agent activity**, not a single message's fate. `followup()` returns no completion handle — the message id you get back identifies inbox insertion, claim, and discard facts in the session log, not a later `turn/end`. If you need to know what became of consumed input, that's a separate read (see `foldConsumedWork` below).
 
@@ -88,7 +90,8 @@ export interface AgentFactory {
 
 `ctx.agents.create(options)` and `ctx.agents.resume(options)` (`index.ts:405-430`) are thin forwarders: they re-trace the registered factory through the caller's own context (so effects the factory registers attach to the *caller's* fiber, not the factory's) and call `target.createAgent(ownerCtx, options)` / `target.resume(ownerCtx, options)`. If no factory is registered, both reject with `no agent factory registered (load an agent-loop plugin)`.
 
-This indirection is exactly the payoff of the interface/implementation split: the ACP bridge, in-process subagent backends, and any other consumer that wants to spin up an agent call `ctx.agents.create()` — they never import `dsh-agent-loop`. Swap in a different `AgentFactory` and every one of those call sites keeps working unmodified.
+> [!WHY]
+> This indirection is exactly the payoff of the interface/implementation split: the ACP bridge, in-process subagent backends, and any other consumer that wants to spin up an agent call `ctx.agents.create()` — they never import `dsh-agent-loop`. Swap in a different `AgentFactory` and every one of those call sites keeps working unmodified.
 
 `CreateAgentOptions.setup(agentCtx)` and `ResumeAgentOptions.setup(agentCtx)` are the hook for composing an agent's scoped world (tools, prompt sections, listeners) *before* either the session or the agent becomes visible — everything registered through `agentCtx` exists before `agent/created`, `agent/session-start`, and the first prompt assembly. Setup is trusted, composition-only, same-process code: it must not start driving the agent, only assembling it. A rejection, a thrown synchronous commit, or owner disposal during setup rolls the whole transaction back without publishing either id.
 
@@ -102,6 +105,10 @@ export interface AgentHandle {
 }
 ```
 
+:::concept{term="AgentHandle"}
+A disposal capability, not a lookup result. `ctx.agents.get(id)` still returns a bare `Agent` to anyone who looks it up; only the caller that received the `AgentHandle` from `create()`/`resume()` holds the `dispose()` disposer.
+:::
+
 The README is explicit that `dispose()` is "a **consumer capability** — no observer holding the bare registry entry can tear the agent down." `ctx.agents.get(id)` still returns a bare `Agent` to anyone who looks it up; only the caller that received the `AgentHandle` from `create()`/`resume()` holds the disposer. The caller's fiber and the registered factory provider are *structural co-owners*: normal caller-fiber unload disposes it through ordinary Cordis ownership, while factory unload must independently stop every live instance it made, because the agent's scoped dependency surface (tools, providers it resolved through the factory's context) belongs to that provider. Calling `dispose()` from either path reaches one memoized quiescence boundary: stop the loop, await its exit, unregister the agent, remove its session from the store, unwind the scoped world.
 
 Config-created agents — the ones `AgentLoop` starts directly from its `cordis.yml` `agents:` entries — are owned by the loop fiber itself and never need a handle at all; there's no separate consumer waiting to dispose them.
@@ -114,11 +121,13 @@ This is the subtlest piece of the package, and it solves a real, narrow problem,
 
 Cordis `Context` already answers "who can see this service, and what registered it." `agent.ctx` already answers "what's scoped to this one live agent." Neither answers a third, different question: *which* `Agent`, as a value, is the subject of the asynchronous call chain currently executing? Something like a host-aware transport, a tracing helper, or a logger sitting deep inside library code — well below the loop, well below any tool call — sometimes legitimately needs to know "which agent caused this," without every intervening function signature threading an explicit `agent: Agent` parameter through purely for that purpose.
 
-Three tempting alternatives are each wrong for a specific reason:
+:::decision
+Three tempting alternatives to ambient initiator scope were each rejected for a specific reason:
 
 - **Forward `Agent` through every function anyway.** Correct at explicit boundaries (service calls, worker/process/wire messages, persistence records) — those keep doing this — but requiring *every* private helper below a driver to also carry it is repetitive forwarding with no trust benefit, since it's already same-process code.
 - **A process-global mutable slot.** Concurrent agents (a parent driving a delegated subagent, say) overwrite each other across `await` boundaries; there's no serialization guarantee that would make a bare global safe.
 - **Derive it from model-visible arguments.** A model must never be trusted to select its own session identity or routing.
+:::
 
 ### The mechanism
 
