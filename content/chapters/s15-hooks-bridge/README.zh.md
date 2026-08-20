@@ -1,69 +1,13 @@
 ---
 id: s15
 slug: s15-hooks-bridge
-title: "Hooks 桥接"
-summary: "为什么 hooks-claude-code/hooks-codex 本身不构成一个能力 seam，而是 ctx.shell 与 ctx.sessionPersistence 两个 seam 的 Consumer；它们共享 dsh-hook-protocol 提供的方言无关 matcher/codec/merge/runner 原语，把外部 hooks.json 配置转换到 harness 自身的类型化拦截点上"
+title: Hooks 桥接
+summary: 为什么 hooks-claude-code/hooks-codex 本身不构成一个能力 seam，而是 ctx.shell 与 ctx.sessionPersistence
+  两个 seam 的 Consumer；它们共享 dsh-hook-protocol 提供的方言无关 matcher/codec/merge/runner 原语，把外部
+  hooks.json 配置转换到 harness 自身的类型化拦截点上
+seamKind: non-seam
 module: world-and-collab-seams
 order: 15
-sources:
-  - path: packages/hooks/README.zh.md
-    label: "hooks/ 分组总览"
-  - path: docs/capability-seams.md
-    lineStart: 448
-    lineEnd: 448
-    label: "ctx.shell 一行：hooks-claude-code/hooks-codex 作为直接 consumer"
-  - path: docs/capability-seams.md
-    lineStart: 422
-    lineEnd: 422
-    label: "ctx.sessionPersistence 一行：hooks-claude-code/hooks-codex 作为直接 consumer"
-  - path: packages/hooks/hooks-claude-code/src/index.ts
-    lineStart: 39
-    lineEnd: 42
-    label: "name/inject = ['shell']——命名空间插件，无 default export"
-  - path: .agents/notes/implemented/feature/2026-06-30-interception-extension-points.zh.md
-    label: "拦截扩展点 Agent Note"
-  - path: packages/hooks/hook-protocol/README.md
-    label: "dsh-hook-protocol README"
-  - path: packages/hooks/hook-protocol/src/types.ts
-    lineStart: 89
-    lineEnd: 137
-    label: "HookOutput —— 方言无关的结果结构"
-  - path: packages/hooks/hook-protocol/src/codec.ts
-    lineStart: 59
-    lineEnd: 89
-    label: "parseHookOutput"
-  - path: packages/hooks/hook-protocol/src/merge.ts
-    lineStart: 34
-    lineEnd: 52
-    label: "deny > ask > allow 优先级"
-  - path: packages/hooks/hook-protocol/src/matcher.ts
-    lineStart: 37
-    lineEnd: 65
-    label: "matcherDiagnostic / matchesMatcher"
-  - path: packages/hooks/hook-protocol/src/runner.ts
-    lineStart: 67
-    lineEnd: 106
-    label: "runHook —— 通过 ctx.shell 执行"
-  - path: packages/hooks/hook-protocol/src/detached.ts
-    lineStart: 43
-    lineEnd: 62
-    label: "createDetachedRuns —— 静默期追踪"
-  - path: packages/hooks/hook-protocol/src/events.ts
-    lineStart: 75
-    lineEnd: 104
-    label: "appendHookInvoked / appendHookResult"
-  - path: packages/hooks/hooks-claude-code/README.md
-    label: "dsh-hooks-claude-code README"
-  - path: packages/hooks/hooks-codex/README.md
-    label: "dsh-hooks-codex README"
-  - path: .agents/notes/implemented/feature/2026-06-30-hook-protocol-lib.md
-    label: "dsh-hook-protocol Agent Note"
-  - path: .agents/notes/implemented/feature/2026-06-30-hook-bridges.md
-    label: "hook 桥接 Agent Note"
-  - path: docs/tool-execution-pipeline.md
-    lineStart: 8
-    lineEnd: 48
-    label: "工具执行管线图（含钩子触达的阶段）"
 ---
 
 ## 不是 seam——而是两个 seam 的 Consumer，外加一个共享库

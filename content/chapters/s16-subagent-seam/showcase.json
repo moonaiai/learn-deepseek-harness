@@ -1,0 +1,137 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 260,
+    "nodes": [
+      {
+        "id": "registry",
+        "label": "SubagentRuntime\n(ctx.subagents)",
+        "x": 230,
+        "y": 36,
+        "width": 220,
+        "height": 44
+      },
+      {
+        "id": "spawn",
+        "label": "spawn",
+        "x": 60,
+        "y": 130,
+        "width": 90,
+        "height": 36
+      },
+      {
+        "id": "fork",
+        "label": "fork",
+        "x": 160,
+        "y": 130,
+        "width": 90,
+        "height": 36
+      },
+      {
+        "id": "acp",
+        "label": "acp",
+        "x": 260,
+        "y": 130,
+        "width": 90,
+        "height": 36
+      },
+      {
+        "id": "claude_code",
+        "label": "claude-code",
+        "x": 370,
+        "y": 130,
+        "width": 110,
+        "height": 36
+      },
+      {
+        "id": "consumer",
+        "label": "dsh-tool-subagent",
+        "x": 230,
+        "y": 220,
+        "width": 180,
+        "height": 40
+      }
+    ],
+    "edges": [
+      {
+        "from": "registry",
+        "to": "spawn"
+      },
+      {
+        "from": "registry",
+        "to": "fork"
+      },
+      {
+        "from": "registry",
+        "to": "acp"
+      },
+      {
+        "from": "registry",
+        "to": "claude_code"
+      },
+      {
+        "from": "spawn",
+        "to": "consumer"
+      },
+      {
+        "from": "fork",
+        "to": "consumer"
+      },
+      {
+        "from": "acp",
+        "to": "consumer"
+      },
+      {
+        "from": "claude_code",
+        "to": "consumer"
+      }
+    ],
+    "steps": [
+      {
+        "activeNodeIds": [
+          "registry"
+        ],
+        "activeEdgeIds": [],
+        "title": "Named-provider registry",
+        "desc": "registerProvider(name, provider) — a duplicate name fails loud."
+      },
+      {
+        "activeNodeIds": [
+          "spawn",
+          "fork"
+        ],
+        "activeEdgeIds": [
+          "registry->spawn",
+          "registry->fork"
+        ],
+        "title": "In-process: spawn vs. fork",
+        "desc": "Two providers, not one flag — fork alone inherits parent history."
+      },
+      {
+        "activeNodeIds": [
+          "acp",
+          "claude_code"
+        ],
+        "activeEdgeIds": [
+          "registry->acp",
+          "registry->claude_code"
+        ],
+        "title": "Out-of-process providers",
+        "desc": "acp / codex / claude-code spawn a real separate product's runtime."
+      },
+      {
+        "activeNodeIds": [
+          "consumer"
+        ],
+        "activeEdgeIds": [
+          "spawn->consumer",
+          "fork->consumer",
+          "acp->consumer",
+          "claude_code->consumer"
+        ],
+        "title": "One tool, one bound provider",
+        "desc": "Each dsh-tool-subagent instance binds to exactly one provider name."
+      }
+    ]
+  }
+}

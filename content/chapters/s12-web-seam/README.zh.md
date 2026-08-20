@@ -1,49 +1,12 @@
 ---
 id: s12
 slug: s12-web-seam
-title: "Web 接缝"
-summary: "ctx.web 在一个提供方注册表和一套执行时选择策略之下，捆绑了搜索与抓取两种操作；三个互相竞争的搜索厂商与一个抓取后端并列共存，dsh-tool-web 是它们唯一稳定的面向模型 Consumer。"
+title: Web 接缝
+summary: ctx.web 在一个提供方注册表和一套执行时选择策略之下，捆绑了搜索与抓取两种操作；三个互相竞争的搜索厂商与一个抓取后端并列共存，dsh-tool-web
+  是它们唯一稳定的面向模型 Consumer。
+seamKind: seam
 module: world-and-collab-seams
 order: 12
-sources:
-  - path: packages/web/README.md
-    label: "web/ 包家族概览"
-  - path: packages/web/web/README.md
-    label: "dsh-web Service Definition README"
-  - path: packages/web/web/src/index.ts
-    lineStart: 74
-    lineEnd: 194
-    label: "WebRuntime 类：注册表、resolveProvider、search()/fetch()"
-  - path: packages/web/web/src/types.ts
-    lineStart: 1
-    lineEnd: 129
-    label: "ctx.web 词汇：WebSearchRequest/Result、WebFetchRequest/Result、WebFetchBody、WebError"
-  - path: packages/web/web-search-exa/README.md
-    label: "dsh-web-search-exa 包 README"
-  - path: packages/web/web-search-perplexity/README.md
-    label: "dsh-web-search-perplexity 包 README"
-  - path: packages/web/web-search-deepseek/README.md
-    label: "dsh-web-search-deepseek 包 README"
-  - path: packages/web/web-fetch-http/README.md
-    label: "dsh-web-fetch-http 包 README"
-  - path: packages/web/tool-web/README.md
-    label: "dsh-tool-web Consumer README"
-  - path: packages/web/tool-web/src/index.ts
-    lineStart: 20
-    lineEnd: 91
-    label: "tool-web 的 Config 与 apply()：search/fetch 启用状态、逐工具超时"
-  - path: packages/web/tool-web/src/search.ts
-    lineStart: 258
-    lineEnd: 270
-    label: "web_search 的 execute()：进入 seam 的唯一路径是 ctx.web.search()"
-  - path: docs/capability-seams.md
-    lineStart: 460
-    lineEnd: 460
-    label: "ctx.web 行：seam、提供方、consumer"
-  - path: .agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md
-    label: "Web 能力 seam Agent Note（规范设计记录）"
-  - path: docs/subsystems/web.md
-    label: "Web Access 子系统参考"
 ---
 
 ## 一个 seam,两种操作

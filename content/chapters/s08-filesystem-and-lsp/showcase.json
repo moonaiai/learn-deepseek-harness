@@ -1,0 +1,126 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 280,
+    "nodes": [
+      {
+        "id": "definition",
+        "label": "FileSystem\n(ctx.fs)",
+        "x": 230,
+        "y": 36,
+        "width": 180,
+        "height": 44
+      },
+      {
+        "id": "local",
+        "label": "dsh-fs-local",
+        "x": 90,
+        "y": 130,
+        "width": 130,
+        "height": 38
+      },
+      {
+        "id": "sandbox",
+        "label": "dsh-fs-sandbox",
+        "x": 230,
+        "y": 130,
+        "width": 150,
+        "height": 38
+      },
+      {
+        "id": "e2b",
+        "label": "dsh-fs-e2b",
+        "x": 370,
+        "y": 130,
+        "width": 130,
+        "height": 38
+      },
+      {
+        "id": "consumer",
+        "label": "dsh-tool-fs\n(Consumer)",
+        "x": 230,
+        "y": 226,
+        "width": 160,
+        "height": 44
+      }
+    ],
+    "edges": [
+      {
+        "from": "definition",
+        "to": "local"
+      },
+      {
+        "from": "definition",
+        "to": "sandbox"
+      },
+      {
+        "from": "definition",
+        "to": "e2b"
+      },
+      {
+        "from": "local",
+        "to": "consumer"
+      },
+      {
+        "from": "sandbox",
+        "to": "consumer"
+      },
+      {
+        "from": "e2b",
+        "to": "consumer"
+      }
+    ],
+    "steps": [
+      {
+        "activeNodeIds": [
+          "definition"
+        ],
+        "activeEdgeIds": [],
+        "title": "Service Definition",
+        "desc": "FileSystem owns ctx.fs and twelve primitives — no disk access, no policy, no model-facing schema."
+      },
+      {
+        "activeNodeIds": [
+          "local"
+        ],
+        "activeEdgeIds": [
+          "definition->local"
+        ],
+        "title": "Provider: local",
+        "desc": "dsh-fs-local: unconfined host filesystem. config.cwd is a resolution default, explicitly not a sandbox."
+      },
+      {
+        "activeNodeIds": [
+          "sandbox"
+        ],
+        "activeEdgeIds": [
+          "definition->sandbox"
+        ],
+        "title": "Provider: sandboxed",
+        "desc": "dsh-fs-sandbox extends local and overrides exactly two methods (writeText, editText) with a per-call mode check."
+      },
+      {
+        "activeNodeIds": [
+          "e2b"
+        ],
+        "activeEdgeIds": [
+          "definition->e2b"
+        ],
+        "title": "Provider: remote",
+        "desc": "dsh-fs-e2b: remote container access, same E2B sandbox as E2B-backed Bash — does not sync with the host."
+      },
+      {
+        "activeNodeIds": [
+          "consumer"
+        ],
+        "activeEdgeIds": [
+          "local->consumer",
+          "sandbox->consumer",
+          "e2b->consumer"
+        ],
+        "title": "Consumer",
+        "desc": "dsh-tool-fs injects ctx.fs by name and never imports a provider-specific type."
+      }
+    ]
+  }
+}

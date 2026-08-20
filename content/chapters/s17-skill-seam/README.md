@@ -1,61 +1,14 @@
 ---
 id: s17
 slug: s17-skill-seam
-title: "Skill Loading"
-summary: "How ctx.skills merges provider catalogs into invocation-neutral summaries, how the local filesystem provider discovers SKILL.md bundles, and how dsh-tool-skill exposes a name-and-description catalog while deferring the full instruction body to an on-demand skill(name) call."
+title: Skill Loading
+summary: How ctx.skills merges provider catalogs into invocation-neutral summaries,
+  how the local filesystem provider discovers SKILL.md bundles, and how dsh-tool-skill
+  exposes a name-and-description catalog while deferring the full instruction body
+  to an on-demand skill(name) call.
+seamKind: seam
 module: extension-memory-seams
 order: 17
-sources:
-  - path: packages/skill/README.md
-    label: "skill/ capability family overview"
-  - path: packages/skill/skill/README.md
-    label: "dsh-skill: registry package README"
-  - path: packages/skill/skill-filesystem/README.md
-    label: "dsh-skill-filesystem: local provider README"
-  - path: packages/skill/tool-skill/README.md
-    label: "dsh-tool-skill: catalog and loader README"
-  - path: docs/subsystems/skills.md
-    label: "Generated skills subsystem reference"
-  - path: .agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md
-    label: "Agent Note: the skill registry is host-held and layered per scope"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 56
-    lineEnd: 101
-    label: "SkillSummary, SkillCandidate, SkillDefinition"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 247
-    lineEnd: 276
-    label: "SkillProvider and SkillProviderControl interfaces"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 357
-    lineEnd: 461
-    label: "SkillRegistry.registerProvider() and register()"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 501
-    lineEnd: 517
-    label: "SkillRegistry.get() stale-name rejection"
-  - path: packages/skill/skill-filesystem/src/index.ts
-    lineStart: 36
-    lineEnd: 41
-    label: "Local discovery rank constants"
-  - path: packages/skill/skill-filesystem/src/index.ts
-    lineStart: 241
-    lineEnd: 259
-    label: "FileSystemSkillProvider.roots()"
-  - path: packages/skill/tool-skill/src/index.ts
-    lineStart: 81
-    lineEnd: 161
-    label: "The skill tool: schema, execute(), registration"
-  - path: packages/skill/tool-skill/src/index.ts
-    lineStart: 213
-    lineEnd: 247
-    label: "Catalog pre-step listener"
-  - path: packages/skill/tool-skill/src/index.ts
-    lineStart: 402
-    lineEnd: 431
-    label: "SKILL_GESTURE and invokedSkillNames()"
-  - path: .agents/notes/implemented/feature/2026-07-27-skill-catalog-hot-refresh.md
-    label: "Agent Note: skill catalog hot refresh"
 ---
 
 ## The problem: instructions that don't belong in every prompt

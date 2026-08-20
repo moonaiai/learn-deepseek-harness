@@ -1,0 +1,88 @@
+{
+  "sources": [
+    {
+      "path": "packages/compaction/README.md",
+      "label": "compaction/ package family overview"
+    },
+    {
+      "path": "docs/subsystems/compaction.md",
+      "label": "Generated compaction subsystem reference"
+    },
+    {
+      "path": "packages/compaction/compaction/README.md",
+      "label": "dsh-compaction Service Definition package README"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/README.md",
+      "label": "dsh-compaction-basic Service Provider package README"
+    },
+    {
+      "path": "packages/compaction/command-compact/README.md",
+      "label": "dsh-command-compact Consumer package README"
+    },
+    {
+      "path": "packages/compaction/compaction-tool-result-pruner/README.md",
+      "label": "dsh-compaction-tool-result-pruner companion package README"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-06-18-compaction-capability-seam.md",
+      "label": "Agent Note: compaction as a capability seam"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md",
+      "label": "Agent Note: after-call compaction pressure and context-overflow recovery"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-30-queued-manual-compaction.md",
+      "label": "Agent Note: queued manual compaction with one durable lock"
+    },
+    {
+      "path": "packages/compaction/compaction/src/index.ts",
+      "lineStart": 96,
+      "lineEnd": 170,
+      "label": "CompactionEngine abstract Service class"
+    },
+    {
+      "path": "packages/compaction/compaction/src/types.ts",
+      "lineStart": 16,
+      "lineEnd": 90,
+      "label": "compaction/* SessionEventMap declaration merge"
+    },
+    {
+      "path": "packages/compaction/compaction/src/types.ts",
+      "lineStart": 92,
+      "lineEnd": 119,
+      "label": "CompactionResult"
+    },
+    {
+      "path": "packages/compaction/compaction/src/checkpoint.ts",
+      "lineStart": 1,
+      "lineEnd": 51,
+      "label": "compactCheckpointSource / isCompactCheckpointSource"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/index.ts",
+      "lineStart": 137,
+      "lineEnd": 224,
+      "label": "BasicCompactionEngine._registerAutomaticCompaction()"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/index.ts",
+      "lineStart": 258,
+      "lineEnd": 332,
+      "label": "BasicCompactionEngine.compactIfNeeded()"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/region.ts",
+      "lineStart": 152,
+      "lineEnd": 254,
+      "label": "compactSurfaceRegion() — the one shared transaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/summarizer.ts",
+      "lineStart": 121,
+      "lineEnd": 182,
+      "label": "summarizeWithLlm() — the one-shot ctx.llm.stream() call"
+    }
+  ]
+}

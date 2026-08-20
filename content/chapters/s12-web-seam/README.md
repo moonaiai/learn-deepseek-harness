@@ -1,49 +1,14 @@
 ---
 id: s12
 slug: s12-web-seam
-title: "The Web Seam"
-summary: "ctx.web bundles two operations — search and fetch — behind one provider registry and one execution-time selection policy; three competing search vendors and one fetch backend sit side by side, and dsh-tool-web is their single stable model-facing consumer."
+title: The Web Seam
+summary: ctx.web bundles two operations — search and fetch — behind one provider registry
+  and one execution-time selection policy; three competing search vendors and one
+  fetch backend sit side by side, and dsh-tool-web is their single stable model-facing
+  consumer.
+seamKind: seam
 module: world-and-collab-seams
 order: 12
-sources:
-  - path: packages/web/README.md
-    label: "web/ package family overview"
-  - path: packages/web/web/README.md
-    label: "dsh-web Service Definition README"
-  - path: packages/web/web/src/index.ts
-    lineStart: 74
-    lineEnd: 194
-    label: "WebRuntime class: registries, resolveProvider, search()/fetch()"
-  - path: packages/web/web/src/types.ts
-    lineStart: 1
-    lineEnd: 129
-    label: "ctx.web vocabulary: WebSearchRequest/Result, WebFetchRequest/Result, WebFetchBody, WebError"
-  - path: packages/web/web-search-exa/README.md
-    label: "dsh-web-search-exa package README"
-  - path: packages/web/web-search-perplexity/README.md
-    label: "dsh-web-search-perplexity package README"
-  - path: packages/web/web-search-deepseek/README.md
-    label: "dsh-web-search-deepseek package README"
-  - path: packages/web/web-fetch-http/README.md
-    label: "dsh-web-fetch-http package README"
-  - path: packages/web/tool-web/README.md
-    label: "dsh-tool-web Consumer README"
-  - path: packages/web/tool-web/src/index.ts
-    lineStart: 20
-    lineEnd: 91
-    label: "tool-web Config and apply(): search/fetch enablement, per-tool timeouts"
-  - path: packages/web/tool-web/src/search.ts
-    lineStart: 258
-    lineEnd: 270
-    label: "web_search execute(): the only path into the seam is ctx.web.search()"
-  - path: docs/capability-seams.md
-    lineStart: 460
-    lineEnd: 460
-    label: "ctx.web row: seam, providers, consumer"
-  - path: .agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md
-    label: "Web capability seam Agent Note (canonical design record)"
-  - path: docs/subsystems/web.md
-    label: "Web Access subsystem reference"
 ---
 
 ## One seam, two operations

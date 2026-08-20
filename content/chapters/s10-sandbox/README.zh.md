@@ -1,51 +1,12 @@
 ---
 id: s10
 slug: s10-sandbox
-title: "沙箱"
-summary: "ctx.sandbox 进程限制 seam:一个 Service Definition,一个跨三种操作系统专属 runner 做分派的 Service Provider,以及每个 runner 如何如实报告自己的强制执行完整度,而不是假装一套统一保证。"
+title: 沙箱
+summary: ctx.sandbox 进程限制 seam:一个 Service Definition,一个跨三种操作系统专属 runner 做分派的 Service
+  Provider,以及每个 runner 如何如实报告自己的强制执行完整度,而不是假装一套统一保证。
+seamKind: seam
 module: execution-seams
 order: 10
-sources:
-  - path: packages/sandbox/README.md
-    label: "sandbox/ 包家族总览"
-  - path: packages/sandbox/sandbox/README.md
-    label: "dsh-sandbox Service Definition README"
-  - path: packages/sandbox/sandbox/src/index.ts
-    lineStart: 158
-    lineEnd: 176
-    label: "SandboxProvider 抽象 Service 类"
-  - path: packages/sandbox/sandbox-local/README.md
-    label: "dsh-sandbox-local 包 README"
-  - path: packages/sandbox/sandbox-local/src/index.ts
-    lineStart: 150
-    lineEnd: 166
-    label: "PLATFORM_CHAINS:逐平台 runner 链表"
-  - path: packages/sandbox/sandbox-local/src/index.ts
-    lineStart: 486
-    lineEnd: 510
-    label: "selectRunner / chainVerdict:只探测一次、缓存整个生命周期的分派逻辑"
-  - path: packages/sandbox/sandbox-local/src/index.ts
-    lineStart: 177
-    lineEnd: 187
-    label: "STATIC_ENFORCEMENT:bwrap/landlock/seatbelt 为 full,windows-acl 为 partial"
-  - path: packages/sandbox/sandbox-windows-acl/README.md
-    label: "dsh-sandbox-windows-acl 包 README"
-  - path: packages/sandbox/sandbox-policy/README.md
-    label: "dsh-sandbox-policy 包 README(非 seam)"
-  - path: packages/shell/bash-sandbox/README.md
-    label: "dsh-bash-sandbox Consumer README"
-  - path: packages/terminal/terminal-bash/README.md
-    label: "dsh-terminal-bash Consumer README"
-  - path: docs/capability-seams.md
-    lineStart: 451
-    lineEnd: 452
-    label: "ctx.sandbox(seam)与 ctx.sandboxPolicy(core)两行"
-  - path: docs/subsystems/sandbox.md
-    label: "进程沙箱子系统参考"
-  - path: .agents/notes/implemented/feature/2026-07-06-sandbox.md
-    label: "沙箱 Agent Note(能力边界、升权、逐会话模式)"
-  - path: .agents/notes/implemented/feature/2026-08-08-windows-acl-restricted-token-sandbox.md
-    label: "Windows ACL 受限令牌沙箱层 Agent Note"
 ---
 
 ## 没有哪个操作系统提供统一的进程限制原语

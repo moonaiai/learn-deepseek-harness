@@ -1,71 +1,12 @@
 ---
 id: s21
 slug: s21-presets-and-self-modification
-title: "Agent Preset 与自我修改"
-summary: "两套直接建在 Cordis 自身注册与 scope 机制之上的组装机制，都不是能力 seam：一份 preset cordis.yml 让单个会话拥有自己的工具与人设；自我引用的 Cordis 工具集则让模型通过同一套注册系统——而非任意代码执行——读取并扩展自己正运行于其中的实时运行时。"
+title: Agent Preset 与自我修改
+summary: 两套直接建在 Cordis 自身注册与 scope 机制之上的组装机制，都不是能力 seam：一份 preset cordis.yml 让单个会话拥有自己的工具与人设；自我引用的
+  Cordis 工具集则让模型通过同一套注册系统——而非任意代码执行——读取并扩展自己正运行于其中的实时运行时。
+seamKind: non-seam
 module: orchestration-and-capstone
 order: 21
-sources:
-  - path: docs/capability-seams.md
-    lineStart: 437
-    lineEnd: 437
-    label: "ctx.agentPresets 被归类为 Role: core，而非 seam"
-  - path: docs/capability-seams.md
-    lineStart: 468
-    lineEnd: 469
-    label: "ctx.dynamicCordisRunner 与 ctx.cordisInspect 均归类为 Role: core"
-  - path: packages/preset/README.zh.md
-    label: "preset/ 包组概览（中文）"
-  - path: packages/preset/agent-presets/README.zh.md
-    label: "dsh-agent-presets：AgentPresets 服务（中文）"
-  - path: packages/preset/persona/README.zh.md
-    label: "dsh-persona：作为可组装行的 agent 人设（中文）"
-  - path: .agents/notes/implemented/architecture/2026-08-03-per-session-agent-presets.zh.md
-    label: "Agent Note：会话的 agent 由一份 preset cordis.yml 组装而成（中文）"
-  - path: .agents/notes/implemented/architecture/2026-08-08-per-preset-standing-mounts.zh.md
-    label: "Agent Note：基于作用域父链的逐预设常驻挂载（中文）"
-  - path: packages/extensions/README.zh.md
-    label: "extensions/ 包组概览（中文）"
-  - path: docs/subsystems/extensions.md
-    label: "生成的 extensions 子系统文档（ctx.dynamicCordisRunner、ctx.cordisInspect 的 Cordis API）"
-  - path: packages/extensions/tool-cordis/README.zh.md
-    label: "dsh-tool-cordis：面向模型的工具动词（中文）"
-  - path: packages/extensions/tool-cordis/src/index.ts
-    lineStart: 26
-    lineEnd: 27
-    label: "实际注册的七个工具名及其 inject"
-  - path: packages/extensions/cordis-host-runner/README.zh.md
-    label: "dsh-cordis-host-runner：定义注册表与 vm 沙箱（中文）"
-  - path: packages/extensions/cordis-host-runner/src/sandbox.ts
-    lineStart: 84
-    lineEnd: 119
-    label: "沙箱全局对象与 Node API 重定向陷阱"
-  - path: packages/extensions/cordis-host-runner/src/lifecycle.ts
-    lineStart: 22
-    lineEnd: 45
-    label: "startHostHalf：等待落定，失败即 dispose"
-  - path: .agents/notes/implemented/feature/2026-07-08-self-referential-cordis-toolset.zh.md
-    label: "Agent Note：自我引用的 cordis 工具集（中文）"
-  - path: apps/cli/config/agent-presets/minimal/agent.cordis.yml
-    label: "minimal preset：两个工具、一份 complete 人设"
-  - path: apps/cli/config/agent-presets/code/agent.cordis.yml
-    lineStart: 19
-    lineEnd: 25
-    label: "isolate realm 规则，写在 code preset 自己的文件头注释里"
-  - path: apps/cli/config/agent-presets/cordis/agent.cordis.yml
-    lineStart: 1
-    lineEnd: 30
-    label: "cordis preset：standard 加上自我修改能力，其信任声明与人设"
-  - path: apps/cli/config/agent-presets/cordis/agent.cordis.yml
-    lineStart: 241
-    lineEnd: 262
-    label: "cordis preset：tool-cordis 与创作技能"
-  - path: apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md
-    label: "Skill：编辑 Cordis 组装"
-  - path: docs/architecture.zh.md
-    lineStart: 106
-    lineEnd: 116
-    label: "「新行为的归属位置」表格中的 preset 行（中文）"
 ---
 
 ## 两套组装机制，都不是能力 seam

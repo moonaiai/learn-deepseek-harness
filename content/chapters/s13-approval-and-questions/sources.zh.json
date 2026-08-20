@@ -1,0 +1,134 @@
+{
+  "sources": [
+    {
+      "path": "packages/interaction/README.md",
+      "label": "interaction/ 包组概览"
+    },
+    {
+      "path": "packages/interaction/user-approval/README.md",
+      "label": "dsh-user-approval 包 README"
+    },
+    {
+      "path": "packages/interaction/permission-presets/README.md",
+      "label": "dsh-permission-presets 包 README"
+    },
+    {
+      "path": "packages/interaction/user-questions/README.md",
+      "label": "dsh-user-questions 包 README"
+    },
+    {
+      "path": "packages/interaction/tool-ask-user/README.md",
+      "label": "dsh-tool-ask-user 包 README"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 453,
+      "lineEnd": 454,
+      "label": "生成的 Role 分类:ctx.approval = seam,ctx.permissionPresets = core"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 435,
+      "lineEnd": 435,
+      "label": "生成的 Role 分类:ctx.userQuestions = seam"
+    },
+    {
+      "path": "docs/glossary.md",
+      "lineStart": 9,
+      "lineEnd": 9,
+      "label": "seam 术语表条目:是完整的能力,而非单一角色"
+    },
+    {
+      "path": "packages/interaction/user-approval/src/index.ts",
+      "lineStart": 94,
+      "lineEnd": 118,
+      "label": "ApprovalPolicy 类型与 effectiveApprovalPolicy() 折叠函数"
+    },
+    {
+      "path": "packages/interaction/user-approval/src/index.ts",
+      "lineStart": 153,
+      "lineEnd": 185,
+      "label": "ApprovalRequest 接口与 Config"
+    },
+    {
+      "path": "packages/interaction/user-approval/src/index.ts",
+      "lineStart": 226,
+      "lineEnd": 243,
+      "label": "ApprovalService.setPolicy()"
+    },
+    {
+      "path": "packages/interaction/user-approval/src/index.ts",
+      "lineStart": 257,
+      "lineEnd": 276,
+      "label": "ApprovalService.request()——轮次前置条件、asked/decided 审计事件对"
+    },
+    {
+      "path": "packages/interaction/user-approval/src/index.ts",
+      "lineStart": 304,
+      "lineEnd": 344,
+      "label": "ApprovalService.decide()——策略门、waterfall 分发、abort 竞速、结果归一化"
+    },
+    {
+      "path": "packages/core/tools/src/index.ts",
+      "lineStart": 1689,
+      "lineEnd": 1729,
+      "label": "ToolRuntime.serviceAsk()——机会性的 ctx.get('approval'),结果到拒绝文本的映射"
+    },
+    {
+      "path": "packages/sandbox/sandbox/src/escalation.ts",
+      "lineStart": 157,
+      "lineEnd": 189,
+      "label": "approveEscalation()——sandbox_permissions 重试复用同一 seam"
+    },
+    {
+      "path": "packages/acp/acp/src/index.ts",
+      "lineStart": 215,
+      "lineEnd": 229,
+      "label": "ACP 桥接层的 approval/request 应答者(session/request_permission)"
+    },
+    {
+      "path": "packages/interaction/permission-presets/src/index.ts",
+      "lineStart": 159,
+      "lineEnd": 200,
+      "label": "PermissionPresetService 构造函数——配置、sandboxMode 校验"
+    },
+    {
+      "path": "packages/interaction/permission-presets/src/index.ts",
+      "lineStart": 304,
+      "lineEnd": 391,
+      "label": "current()、derive()、set()、apply()——旋钮解析与写入路径"
+    },
+    {
+      "path": "packages/interaction/permission-presets/src/types.ts",
+      "label": "PresetOption / PermissionSelect 类型"
+    },
+    {
+      "path": "packages/interaction/user-questions/src/index.ts",
+      "lineStart": 50,
+      "lineEnd": 141,
+      "label": "UserQuestionService.registerProvider() 与 .ask()"
+    },
+    {
+      "path": "packages/host/apiproxy/src/api-proxy.ts",
+      "lineStart": 1369,
+      "lineEnd": 1393,
+      "label": "Web 宿主运行时的 userQuestions Service Provider(registerProvider)"
+    },
+    {
+      "path": "packages/interaction/tool-ask-user/src/index.ts",
+      "lineStart": 1,
+      "lineEnd": 101,
+      "label": "ask_user_question 工具定义"
+    },
+    {
+      "path": "docs/tool-execution-pipeline.md",
+      "lineStart": 8,
+      "lineEnd": 45,
+      "label": "生成的工具执行流水线示意图(approval 侧门)"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-06-approval-seam.md",
+      "label": "审批 seam 的 Agent Note——设计依据、备选方案、一段实录的升权流程"
+    }
+  ]
+}

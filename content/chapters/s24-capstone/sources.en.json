@@ -1,0 +1,86 @@
+{
+  "sources": [
+    {
+      "path": "examples/headless-agent/README.md",
+      "label": "headless-agent example README"
+    },
+    {
+      "path": "examples/headless-agent/cordis.yml",
+      "label": "headless-agent test/demo composition"
+    },
+    {
+      "path": "examples/headless-agent/composition.md",
+      "label": "Generated headless-agent composition graph"
+    },
+    {
+      "path": "examples/headless-agent/goal.cordis.yml",
+      "label": "goal overlay: same-session objective tools"
+    },
+    {
+      "path": "examples/headless-agent/advanced.cordis.yml",
+      "label": "advanced overlay: Code Mode + Cordis tools"
+    },
+    {
+      "path": "examples/headless-agent/e2b.cordis.yml",
+      "label": "e2b overlay: sandboxed FS/subprocess/PTY/LSP"
+    },
+    {
+      "path": "examples/headless-agent/pty.cordis.snapshot.yml",
+      "label": "pty overlay: opt-in persistent terminal"
+    },
+    {
+      "path": "examples/headless-agent/subagent-inheritance.cordis.snapshot.yml",
+      "label": "subagent-inheritance overlay: delegated policy scoping"
+    },
+    {
+      "path": "examples/acp-agent/README.md",
+      "label": "acp-agent example README"
+    },
+    {
+      "path": "docs/development.md",
+      "lineStart": 127,
+      "lineEnd": 151,
+      "label": "Demos: dsh --profile headless invocation and prerequisites"
+    },
+    {
+      "path": "apps/cli/README.md",
+      "label": "dsh CLI launcher README"
+    },
+    {
+      "path": "apps/cli/reference/README.md",
+      "lineStart": 7,
+      "lineEnd": 30,
+      "label": "Profile boot and headless one-shot task reference"
+    },
+    {
+      "path": "packages/bundle/headless/README.md",
+      "label": "@deepseek-ai/dsh-headless bundle README"
+    },
+    {
+      "path": "packages/bundle/headless/src/index.ts",
+      "lineStart": 90,
+      "lineEnd": 130,
+      "label": "headless-runner: create agent, followup, whenIdle, flush, exit"
+    },
+    {
+      "path": "packages/bundle/base/README.md",
+      "label": "@deepseek-ai/dsh-base bundle README"
+    },
+    {
+      "path": "packages/session/session-persistence-jsonl/README.md",
+      "label": "dsh-session-persistence-jsonl README"
+    },
+    {
+      "path": "packages/subagent/subagent/README.md",
+      "label": "dsh-subagent seam README"
+    },
+    {
+      "path": "packages/workflow/tool-ralph/README.md",
+      "label": "dsh-tool-ralph README"
+    },
+    {
+      "path": "packages/workflow/tool-workflow/README.md",
+      "label": "dsh-tool-workflow README"
+    }
+  ]
+}

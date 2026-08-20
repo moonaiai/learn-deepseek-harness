@@ -1,59 +1,13 @@
 ---
 id: s19
 slug: s19-session-persistence-seam
-title: "Memory: Persistence and Session Query"
-summary: "How the event-sourced session log survives a restart — the SessionPersistence seam, its JSONL and SQLite backends, and the session-query family that searches across sessions."
+title: 'Memory: Persistence and Session Query'
+summary: How the event-sourced session log survives a restart — the SessionPersistence
+  seam, its JSONL and SQLite backends, and the session-query family that searches
+  across sessions.
+seamKind: seam
 module: extension-memory-seams
 order: 19
-sources:
-  - path: packages/session/README.md
-    label: "session/ package group overview"
-  - path: packages/session/session-persistence/README.md
-    label: "dsh-session-persistence package README"
-  - path: packages/session/session-persistence/src/index.ts
-    lineStart: 84
-    lineEnd: 102
-    label: "SessionPersistence abstract Service — locate/supportsRawArtifacts"
-  - path: packages/session/session-persistence/src/index.ts
-    lineStart: 143
-    lineEnd: 228
-    label: "append/load/inspect/readFrom/list abstract methods"
-  - path: packages/session/session-persistence-jsonl/README.md
-    label: "dsh-session-persistence-jsonl package README"
-  - path: packages/session/session-persistence-jsonl/src/index.ts
-    lineStart: 121
-    lineEnd: 174
-    label: "JsonlSessionPersistence class and locate()"
-  - path: packages/session/session-persistence-sqlite/README.md
-    label: "dsh-session-persistence-sqlite package README"
-  - path: packages/session/session-persistence-sqlite/src/schema.ts
-    lineStart: 117
-    lineEnd: 145
-    label: "sessions/events table DDL"
-  - path: packages/session/session-persistence/src/write-behind.ts
-    lineStart: 18
-    lineEnd: 52
-    label: "SessionWriteBehind — per-session batching controller"
-  - path: packages/session-query/session-query/README.md
-    label: "dsh-session-query package README"
-  - path: packages/session-query/session-query-sqlite/README.md
-    label: "dsh-session-query-sqlite package README"
-  - path: packages/session-query/tool-session-query/README.md
-    label: "dsh-tool-session-query package README"
-  - path: packages/session/session-projection/README.md
-    label: "dsh-session-projection package README"
-  - path: packages/session/session-title/README.md
-    label: "dsh-session-title package README"
-  - path: docs/subsystems/persistence.md
-    label: "Session Persistence subsystem doc"
-  - path: docs/persistence-catalog.md
-    lineStart: 639
-    lineEnd: 664
-    label: "session/title and session/title-llm-request catalog entries"
-  - path: .agents/notes/implemented/architecture/2026-06-14-session-persistence.md
-    label: "Agent Note: session persistence design"
-  - path: .agents/notes/implemented/architecture/2026-06-18-shared-persistence-write-coordinator.md
-    label: "Agent Note: shared persistence write coordinator"
 ---
 
 ## From log to durable store

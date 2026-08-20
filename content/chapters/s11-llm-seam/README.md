@@ -1,53 +1,14 @@
 ---
 id: s11
 slug: s11-llm-seam
-title: "The LLM Seam"
-summary: "ctx.llm folds Service Definition and Consumer into dsh-llm because the Consumer is the agent loop itself; dsh-llm-deepseek and dsh-llm-pi-ai exist as two Service Providers because wire-protocol and reasoning-dialect divergence across vendors is real, not a taste choice."
+title: The LLM Seam
+summary: ctx.llm folds Service Definition and Consumer into dsh-llm because the Consumer
+  is the agent loop itself; dsh-llm-deepseek and dsh-llm-pi-ai exist as two Service
+  Providers because wire-protocol and reasoning-dialect divergence across vendors
+  is real, not a taste choice.
+seamKind: seam
 module: world-and-collab-seams
 order: 11
-sources:
-  - path: packages/llm/README.md
-    label: "llm/ package family overview"
-  - path: packages/llm/llm/README.md
-    label: "dsh-llm Service Definition + Consumer README"
-  - path: packages/llm/llm-deepseek/README.md
-    label: "dsh-llm-deepseek README"
-  - path: packages/llm/llm-pi-ai/README.md
-    label: "dsh-llm-pi-ai README"
-  - path: packages/llm/llm-retry/README.md
-    label: "dsh-llm-retry README"
-  - path: packages/llm/token-meter/README.md
-    label: "dsh-token-meter README"
-  - path: docs/capability-seams.md
-    lineStart: 415
-    lineEnd: 415
-    label: "ctx.llm row in the generated capability-seam table"
-  - path: docs/architecture.md
-    lineStart: 98
-    lineEnd: 102
-    label: "Capability seams section (ctx.llm registration line)"
-  - path: .agents/notes/implemented/architecture/2026-06-13-twin-llm-adapters.md
-    label: "Twin LLM adapters Agent Note (why two adapters, on purpose)"
-  - path: packages/llm/llm/src/index.ts
-    lineStart: 180
-    lineEnd: 233
-    label: "LlmAdapter abstract base class"
-  - path: packages/llm/llm/src/index.ts
-    lineStart: 284
-    lineEnd: 294
-    label: "LlmRuntime extends Service, claims ctx.llm"
-  - path: packages/llm/llm/src/index.ts
-    lineStart: 338
-    lineEnd: 365
-    label: "registerAdapter() commit/replace mechanics"
-  - path: packages/llm/llm-deepseek/src/adapter.ts
-    lineStart: 158
-    lineEnd: 232
-    label: "DeepSeekAdapter: direct fetch + SSE stream()"
-  - path: packages/llm/llm-pi-ai/src/adapter.ts
-    lineStart: 186
-    lineEnd: 236
-    label: "PiAiAdapter: profile snapshot + pi-ai Models collection"
 ---
 
 ## Where this fits against the primer

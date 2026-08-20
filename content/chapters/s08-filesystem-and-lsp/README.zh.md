@@ -1,71 +1,11 @@
 ---
 id: s08
 slug: s08-filesystem-and-lsp
-title: "文件系统与语言服务器"
-summary: "ctx.fs 能力 seam——同一个 FileSystem 约定背后是本地、沙箱化和 E2B 远程三个后端——以及更小的 ctx.lsp seam，把任意语言服务器收敛到四种固定的导航操作背后"
+title: 文件系统与语言服务器
+summary: ctx.fs 能力 seam——同一个 FileSystem 约定背后是本地、沙箱化和 E2B 远程三个后端——以及更小的 ctx.lsp seam，把任意语言服务器收敛到四种固定的导航操作背后
+seamKind: seam
 module: execution-seams
 order: 8
-sources:
-  - path: packages/fs/README.md
-    label: "fs/ 包家族概述"
-  - path: packages/fs/fs/README.md
-    label: "dsh-fs Service Definition README"
-  - path: packages/fs/fs/src/index.ts
-    lineStart: 86
-    lineEnd: 250
-    label: "FileSystem 抽象 Service 类：十二个原语"
-  - path: packages/fs/fs-local/README.md
-    label: "dsh-fs-local 包 README"
-  - path: packages/fs/fs-local/src/index.ts
-    lineStart: 106
-    lineEnd: 124
-    label: "LocalFileSystem.resolve/processPath/fileUrl/contains"
-  - path: packages/fs/fs-sandbox/README.md
-    label: "dsh-fs-sandbox 包 README"
-  - path: packages/fs/fs-sandbox/src/index.ts
-    lineStart: 59
-    lineEnd: 148
-    label: "SandboxedFileSystem 继承 LocalFileSystem，围栏 writeText/editText"
-  - path: packages/e2b/fs-e2b/README.md
-    label: "dsh-fs-e2b 包 README"
-  - path: packages/fs/tool-fs/README.md
-    label: "dsh-tool-fs 消费方 README"
-  - path: packages/fs/tool-fs/src/index.ts
-    lineStart: 19
-    lineEnd: 22
-    label: "dsh-tool-fs：inject = ['tools', 'fs', 'systemPrompt']"
-  - path: packages/fs/tool-fs-search/README.md
-    label: "dsh-tool-fs-search 包 README（绕开 ctx.fs）"
-  - path: packages/fs/tool-fs-search/src/index.ts
-    lineStart: 1
-    lineEnd: 27
-    label: "模块文档：由 spawn 支撑，而非 ctx.fs 提供方方法"
-  - path: packages/fs/tool-fs-search/src/index.ts
-    lineStart: 67
-    lineEnd: 70
-    label: "dsh-tool-fs-search：inject = ['tools', 'systemPrompt', 'subprocess']，刻意不含 fs"
-  - path: packages/fs/fs-observation-policy/README.md
-    label: "dsh-fs-observation-policy 包 README（事件门禁，非服务）"
-  - path: docs/capability-seams.md
-    lineStart: 456
-    lineEnd: 456
-    label: "生成的能力-seam 表中 ctx.fs 一行"
-  - path: docs/architecture.md
-    lineStart: 102
-    lineEnd: 102
-    label: "文件系统与子进程提供方共享同一个执行世界"
-  - path: packages/lsp/README.md
-    label: "lsp/ 包家族概述"
-  - path: packages/lsp/lsp/README.md
-    label: "dsh-lsp Service Definition README"
-  - path: packages/lsp/lsp-stdio/README.md
-    label: "dsh-lsp-stdio 包 README"
-  - path: packages/lsp/tool-lsp/README.md
-    label: "dsh-tool-lsp 消费方 README"
-  - path: docs/capability-seams.md
-    lineStart: 466
-    lineEnd: 466
-    label: "生成的能力-seam 表中 ctx.lsp 一行"
 ---
 
 ## 两个执行世界 seam，同一条经验

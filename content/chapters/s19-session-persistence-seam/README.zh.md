@@ -1,59 +1,12 @@
 ---
 id: s19
 slug: s19-session-persistence-seam
-title: "记忆：持久化与会话检索"
-summary: "事件溯源的会话日志如何真正落盘并可被找回:SessionPersistence seam 及其 JSONL / SQLite 后端,以及跨会话检索的 session-query 家族。"
+title: 记忆：持久化与会话检索
+summary: 事件溯源的会话日志如何真正落盘并可被找回:SessionPersistence seam 及其 JSONL / SQLite 后端,以及跨会话检索的
+  session-query 家族。
+seamKind: seam
 module: extension-memory-seams
 order: 19
-sources:
-  - path: packages/session/README.zh.md
-    label: "session/ 包组总览"
-  - path: packages/session/session-persistence/README.zh.md
-    label: "dsh-session-persistence 包 README"
-  - path: packages/session/session-persistence/src/index.ts
-    lineStart: 84
-    lineEnd: 102
-    label: "SessionPersistence 抽象 Service —— locate / supportsRawArtifacts"
-  - path: packages/session/session-persistence/src/index.ts
-    lineStart: 143
-    lineEnd: 228
-    label: "append / load / inspect / readFrom / list 抽象方法"
-  - path: packages/session/session-persistence-jsonl/README.zh.md
-    label: "dsh-session-persistence-jsonl 包 README"
-  - path: packages/session/session-persistence-jsonl/src/index.ts
-    lineStart: 121
-    lineEnd: 174
-    label: "JsonlSessionPersistence 类与 locate()"
-  - path: packages/session/session-persistence-sqlite/README.zh.md
-    label: "dsh-session-persistence-sqlite 包 README"
-  - path: packages/session/session-persistence-sqlite/src/schema.ts
-    lineStart: 117
-    lineEnd: 145
-    label: "sessions / events 表 DDL"
-  - path: packages/session/session-persistence/src/write-behind.ts
-    lineStart: 18
-    lineEnd: 52
-    label: "SessionWriteBehind —— 单会话写入批处理控制器"
-  - path: packages/session-query/session-query/README.zh.md
-    label: "dsh-session-query 包 README"
-  - path: packages/session-query/session-query-sqlite/README.zh.md
-    label: "dsh-session-query-sqlite 包 README"
-  - path: packages/session-query/tool-session-query/README.zh.md
-    label: "dsh-tool-session-query 包 README"
-  - path: packages/session/session-projection/README.zh.md
-    label: "dsh-session-projection 包 README"
-  - path: packages/session/session-title/README.zh.md
-    label: "dsh-session-title 包 README"
-  - path: docs/subsystems/persistence.zh.md
-    label: "Session Persistence 子系统文档"
-  - path: docs/persistence-catalog.md
-    lineStart: 639
-    lineEnd: 664
-    label: "session/title 与 session/title-llm-request 目录条目"
-  - path: .agents/notes/implemented/architecture/2026-06-14-session-persistence.zh.md
-    label: "Agent Note:会话持久化设计"
-  - path: .agents/notes/implemented/architecture/2026-06-18-shared-persistence-write-coordinator.zh.md
-    label: "Agent Note:共享持久化写入协调器"
 ---
 
 ## 日志之后:落盘与找回

@@ -1,83 +1,13 @@
 ---
 id: s22
 slug: s22-mcp-and-automation
-title: "MCP and the Automation Layer"
-summary: "dsh-mcp-client pulls third-party MCP tools onto ctx.tools as a plain Consumer, not a capability seam — while dsh-sdk-protocol/client/server and dsh-acp let an external process drive a harness agent as its own client, in the opposite direction"
+title: MCP and the Automation Layer
+summary: dsh-mcp-client pulls third-party MCP tools onto ctx.tools as a plain Consumer,
+  not a capability seam — while dsh-sdk-protocol/client/server and dsh-acp let an
+  external process drive a harness agent as its own client, in the opposite direction
+seamKind: non-seam
 module: orchestration-and-capstone
 order: 22
-sources:
-  - path: docs/capability-seams.md
-    lineStart: 434
-    lineEnd: 434
-    label: "ctx.tools row: Role core, one owner, no Service Provider column"
-  - path: docs/glossary.md
-    lineStart: 7
-    lineEnd: 9
-    label: "capability-seam glossary entry: three roles, or it isn't a seam"
-  - path: packages/mcp/README.md
-    label: "mcp/ package group overview"
-  - path: packages/mcp/mcp-client/README.md
-    label: "dsh-mcp-client README"
-  - path: packages/mcp/mcp-client/src/index.ts
-    lineStart: 39
-    lineEnd: 45
-    label: "activeServerNames — per-app serverName reservation"
-  - path: packages/mcp/mcp-client/src/tools.ts
-    lineStart: 82
-    lineEnd: 102
-    label: "publicToolName — deterministic mcp__<serverName>__<rawName> naming"
-  - path: packages/mcp/mcp-client/src/tools.ts
-    lineStart: 104
-    lineEnd: 174
-    label: "syncTools — fetch-then-swap generation sync"
-  - path: packages/mcp/mcp-client/src/connection.ts
-    lineStart: 1
-    lineEnd: 16
-    label: "Connection supervisor module doc — reconnect budget"
-  - path: examples/mcp-memory/README.md
-    label: "mcp-memory example: three third-party MCP servers wired in"
-  - path: packages/sdk/README.md
-    label: "sdk/ package group overview"
-  - path: packages/sdk/protocol/README.md
-    label: "dsh-sdk-protocol README"
-  - path: packages/sdk/protocol/src/types.ts
-    lineStart: 100
-    lineEnd: 105
-    label: "HarnessSdkRequestMap — the three client-to-server methods"
-  - path: packages/sdk/protocol/src/types.ts
-    lineStart: 92
-    lineEnd: 98
-    label: "HarnessSdkNotificationMap — the four server-to-client notifications"
-  - path: packages/sdk/protocol/src/transport.ts
-    lineStart: 56
-    lineEnd: 62
-    label: "JsonRpcLineTransport class doc"
-  - path: packages/sdk/client/README.md
-    label: "dsh-sdk-client README"
-  - path: packages/sdk/client/src/client.ts
-    lineStart: 33
-    lineEnd: 65
-    label: "HarnessClient error classes and module doc"
-  - path: packages/sdk/server/README.md
-    label: "dsh-sdk-jsonrpc-server README"
-  - path: packages/sdk/server/src/server.ts
-    lineStart: 190
-    lineEnd: 201
-    label: "HarnessSdkJsonRpcServer.handleRequest — method dispatch"
-  - path: packages/acp/README.md
-    label: "acp/ package group overview"
-  - path: packages/acp/acp/README.md
-    label: "dsh-acp README"
-  - path: packages/acp/acp/src/index.ts
-    lineStart: 212
-    lineEnd: 229
-    label: "approval/request → session/request_permission bridge"
-  - path: examples/jsonrpc-agent/README.md
-    label: "jsonrpc-agent example (Python SDK bundled runtime)"
-  - path: examples/acp-agent/README.md
-    label: "acp-agent example (ACP automation server composition)"
-  - path: docs/module-graph.md
-    label: "Generated module dependency graph"
 ---
 
 ## Two directions of connecting to the outside world

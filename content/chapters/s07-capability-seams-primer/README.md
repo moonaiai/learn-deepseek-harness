@@ -1,47 +1,13 @@
 ---
 id: s07
 slug: s07-capability-seams-primer
-title: "Capability Seams: Definition, Provider, Consumer"
-summary: "The three-role pattern — Service Definition, Service Provider, Consumer — that makes a backend swappable without its consumers knowing, worked through the canonical dsh-shell / dsh-bash-local+dsh-bash-sandbox / dsh-tool-bash trio."
+title: 'Capability Seams: Definition, Provider, Consumer'
+summary: The three-role pattern — Service Definition, Service Provider, Consumer —
+  that makes a backend swappable without its consumers knowing, worked through the
+  canonical dsh-shell / dsh-bash-local+dsh-bash-sandbox / dsh-tool-bash trio.
+seamKind: non-mechanism
 module: foundations
 order: 7
-sources:
-  - path: docs/glossary.md
-    lineStart: 7
-    lineEnd: 9
-    label: "capability-seam glossary entry"
-  - path: .agents/notes/implemented/architecture/2026-06-13-capability-seams.md
-    label: "Capability seams Agent Note (canonical design record)"
-  - path: docs/architecture.md
-    lineStart: 98
-    lineEnd: 102
-    label: "Capability seams section"
-  - path: docs/capability-seams.md
-    label: "Generated capability-seam graph (full)"
-  - path: packages/README.md
-    lineStart: 67
-    lineEnd: 67
-    label: "Extension plugins depend on Service Definitions, never concrete providers"
-  - path: packages/shell/shell/README.md
-    label: "dsh-shell package README"
-  - path: packages/shell/bash-local/README.md
-    label: "dsh-bash-local package README"
-  - path: packages/shell/bash-sandbox/README.md
-    label: "dsh-bash-sandbox package README"
-  - path: packages/shell/tool-bash/README.md
-    label: "dsh-tool-bash package README"
-  - path: packages/shell/shell/src/index.ts
-    lineStart: 46
-    lineEnd: 101
-    label: "ShellExecutor abstract Service class"
-  - path: packages/shell/bash-local/src/index.ts
-    lineStart: 95
-    lineEnd: 111
-    label: "LocalBashExecutor extends ShellExecutor, static inject = ['subprocess']"
-  - path: packages/shell/tool-bash/src/index.ts
-    lineStart: 1
-    lineEnd: 31
-    label: "dsh-tool-bash Consumer: inject = ['tools', 'shell', 'systemPrompt', 'shellEnv']"
 ---
 
 ## The problem a seam solves

@@ -1,61 +1,12 @@
 ---
 id: s17
 slug: s17-skill-seam
-title: "技能加载"
-summary: "ctx.skills 如何把多个 provider 的目录合并成与调用方式无关的摘要；本地文件系统 provider 如何从磁盘发现技能；dsh-tool-skill 如何只发布“名称 + 描述”目录，把完整指令正文留给按需的 skill(name) 调用。"
+title: 技能加载
+summary: ctx.skills 如何把多个 provider 的目录合并成与调用方式无关的摘要；本地文件系统 provider 如何从磁盘发现技能；dsh-tool-skill
+  如何只发布“名称 + 描述”目录，把完整指令正文留给按需的 skill(name) 调用。
+seamKind: seam
 module: extension-memory-seams
 order: 17
-sources:
-  - path: packages/skill/README.md
-    label: "skill/ 能力家族总览"
-  - path: packages/skill/skill/README.md
-    label: "dsh-skill：注册表包 README"
-  - path: packages/skill/skill-filesystem/README.md
-    label: "dsh-skill-filesystem：本地 provider README"
-  - path: packages/skill/tool-skill/README.md
-    label: "dsh-tool-skill：目录与 loader README"
-  - path: docs/subsystems/skills.md
-    label: "生成的 skills 子系统参考文档"
-  - path: .agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md
-    label: "Agent Note：skill 注册表由宿主持有并按 scope 分层"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 56
-    lineEnd: 101
-    label: "SkillSummary、SkillCandidate、SkillDefinition"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 247
-    lineEnd: 276
-    label: "SkillProvider 与 SkillProviderControl 接口"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 357
-    lineEnd: 461
-    label: "SkillRegistry.registerProvider() 与 register()"
-  - path: packages/skill/skill/src/index.ts
-    lineStart: 501
-    lineEnd: 517
-    label: "SkillRegistry.get() 的过期名称拒绝逻辑"
-  - path: packages/skill/skill-filesystem/src/index.ts
-    lineStart: 36
-    lineEnd: 41
-    label: "本地发现的 rank 常量"
-  - path: packages/skill/skill-filesystem/src/index.ts
-    lineStart: 241
-    lineEnd: 259
-    label: "FileSystemSkillProvider.roots()"
-  - path: packages/skill/tool-skill/src/index.ts
-    lineStart: 81
-    lineEnd: 161
-    label: "skill 工具：schema、execute()、注册"
-  - path: packages/skill/tool-skill/src/index.ts
-    lineStart: 213
-    lineEnd: 247
-    label: "目录发布的 pre-step 监听器"
-  - path: packages/skill/tool-skill/src/index.ts
-    lineStart: 402
-    lineEnd: 431
-    label: "SKILL_GESTURE 与 invokedSkillNames()"
-  - path: .agents/notes/implemented/feature/2026-07-27-skill-catalog-hot-refresh.md
-    label: "Agent Note：skill 目录热刷新"
 ---
 
 ## 问题：不该塞进每次提示词的指令

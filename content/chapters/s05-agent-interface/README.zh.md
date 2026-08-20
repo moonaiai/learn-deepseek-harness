@@ -1,63 +1,11 @@
 ---
 id: s05
 slug: s05-agent-interface
-title: "Agent 接口与注册表"
-summary: "循环无关的 Agent 契约、AgentRegistry 工厂模式，以及进程本地的发起方作用域"
+title: Agent 接口与注册表
+summary: 循环无关的 Agent 契约、AgentRegistry 工厂模式，以及进程本地的发起方作用域
+seamKind: non-mechanism
 module: foundations
 order: 5
-sources:
-  - path: packages/core/agent/README.zh.md
-    label: "dsh-agent README"
-  - path: packages/core/agent/src/runtime-types.ts
-    lineStart: 24
-    lineEnd: 144
-    label: "AgentOptions、AgentStatus、Agent 接口"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 172
-    lineEnd: 214
-    label: "AgentHandle、AgentFactory"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 256
-    lineEnd: 298
-    label: "AgentRegistry 字段与构造函数"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 300
-    lineEnd: 388
-    label: "currentInitiator/requireInitiator/withInitiator/withoutInitiator、setFactory"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 405
-    lineEnd: 457
-    label: "create、resume、register"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 474
-    lineEnd: 577
-    label: "enter/detachEntered/announce 的有序发布"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 640
-    lineEnd: 670
-    label: "runWithInitiator（AsyncLocalStorage 边界 + drain 跟踪）"
-  - path: packages/core/agent/src/dispatch.ts
-    label: "agentEvents 融合分发器与 assembleContextFor"
-  - path: packages/core/agent/src/inbox.ts
-    label: "agent/inbox/spliced 的 Inbox 投影"
-  - path: packages/core/agent/src/model-selection.ts
-    label: "installModelSelection"
-  - path: packages/core/agent/src/consumed-work.ts
-    label: "foldConsumedWork"
-  - path: .agents/notes/implemented/architecture/2026-07-15-agent-initiator-scope.zh.md
-    label: "Agent Note：基于 AsyncLocalStorage 的发起 Agent 作用域"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 182
-    lineEnd: 191
-    label: "wakeDriver() 用 withInitiator(this, ...) 包裹 kick()"
-  - path: packages/core/agent-loop/src/index.ts
-    lineStart: 296
-    lineEnd: 350
-    label: "AgentLoop 实现 AgentFactory，通过 setFactory 注册"
-  - path: docs/architecture.zh.md
-    lineStart: 43
-    lineEnd: 51
-    label: "核心包表格：core/agent 与 core/agent-loop"
 ---
 
 ## 为什么这个包要和循环分开存在

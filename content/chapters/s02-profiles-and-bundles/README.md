@@ -1,63 +1,12 @@
 ---
 id: s02
 slug: s02-profiles-and-bundles
-title: "Everything Is a Plugin: Profiles and Bundles"
-summary: "How dsh composes a running process at boot from ordered bundle and patch layers, and how --dump-config makes that composition inspectable."
+title: 'Everything Is a Plugin: Profiles and Bundles'
+summary: How dsh composes a running process at boot from ordered bundle and patch
+  layers, and how --dump-config makes that composition inspectable.
+seamKind: non-mechanism
 module: foundations
 order: 2
-sources:
-  - path: docs/architecture.md
-    lineStart: 15
-    lineEnd: 37
-    label: "Profiles and bundles"
-  - path: .agents/notes/implemented/architecture/2026-08-05-profile-plugin-bundles.md
-    label: "Agent Note: profile plugin bundles replace fixed overlays"
-  - path: apps/cli/src/profile-boot.ts
-    lineStart: 121
-    lineEnd: 171
-    label: "allPatches / composeProfile — patch layer order"
-  - path: apps/cli/src/profile-boot.ts
-    lineStart: 59
-    lineEnd: 64
-    label: "PROFILE_ROOT_CONFIG — the empty entry list"
-  - path: apps/cli/src/args.ts
-    lineStart: 83
-    lineEnd: 103
-    label: "resolveBoot — --dump-config vs --dump-default-config"
-  - path: apps/cli/src/dump-config.ts
-    lineStart: 30
-    lineEnd: 52
-    label: "runDumpConfig"
-  - path: packages/bundle/README.md
-    label: "bundle/ package group"
-  - path: packages/bundle/base/README.md
-    label: "@deepseek-ai/dsh-base"
-  - path: packages/bundle/web-app/README.md
-    label: "@deepseek-ai/dsh-web-app"
-  - path: packages/bundle/headless/README.md
-    label: "@deepseek-ai/dsh-headless"
-  - path: packages/bundle/base/cordis.patch.yml
-    lineStart: 1
-    lineEnd: 25
-    label: "dsh-base patch: insert rows over the empty root"
-  - path: packages/bundle/headless/cordis.patch.yml
-    label: "dsh-headless patch: override, disable, and insert"
-  - path: packages/README.md
-    lineStart: 42
-    lineEnd: 42
-    label: "bundle/ group one-liner"
-  - path: apps/cli/README.md
-    lineStart: 30
-    lineEnd: 43
-    label: "Profiles section"
-  - path: apps/cli/reference/README.md
-    lineStart: 7
-    lineEnd: 39
-    label: "Profile boot reference"
-  - path: packages/boot/app-boot/README.md
-    lineStart: 36
-    lineEnd: 45
-    label: "Profile mechanics (resolveProfileDir / loadProfile / composeEntries)"
 ---
 
 ## Booting a profile is composing patch layers

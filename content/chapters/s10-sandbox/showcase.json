@@ -1,0 +1,144 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 300,
+    "nodes": [
+      {
+        "id": "confine",
+        "label": "ctx.sandbox.confine()",
+        "x": 230,
+        "y": 30,
+        "width": 190,
+        "height": 34
+      },
+      {
+        "id": "platform",
+        "label": "platform?",
+        "x": 230,
+        "y": 96,
+        "width": 120,
+        "height": 34,
+        "shape": "diamond"
+      },
+      {
+        "id": "linux",
+        "label": "linux: bwrap → landlock",
+        "x": 90,
+        "y": 180,
+        "width": 170,
+        "height": 38
+      },
+      {
+        "id": "macos",
+        "label": "darwin: seatbelt",
+        "x": 230,
+        "y": 180,
+        "width": 150,
+        "height": 38
+      },
+      {
+        "id": "windows",
+        "label": "win32: windows-acl",
+        "x": 370,
+        "y": 180,
+        "width": 170,
+        "height": 38
+      },
+      {
+        "id": "verdict",
+        "label": "SelectedRunner (cached)",
+        "x": 230,
+        "y": 264,
+        "width": 180,
+        "height": 34
+      }
+    ],
+    "edges": [
+      {
+        "from": "confine",
+        "to": "platform"
+      },
+      {
+        "from": "platform",
+        "to": "linux",
+        "label": "linux"
+      },
+      {
+        "from": "platform",
+        "to": "macos",
+        "label": "darwin"
+      },
+      {
+        "from": "platform",
+        "to": "windows",
+        "label": "win32"
+      },
+      {
+        "from": "linux",
+        "to": "verdict"
+      },
+      {
+        "from": "macos",
+        "to": "verdict"
+      },
+      {
+        "from": "windows",
+        "to": "verdict"
+      }
+    ],
+    "steps": [
+      {
+        "activeNodeIds": [
+          "confine"
+        ],
+        "activeEdgeIds": [],
+        "title": "confine() called",
+        "desc": "dsh-bash-sandbox or dsh-terminal-bash asks to run this argv under this file-effect mode."
+      },
+      {
+        "activeNodeIds": [
+          "platform"
+        ],
+        "activeEdgeIds": [
+          "confine->platform"
+        ],
+        "title": "Resolve platform",
+        "desc": "The provider reads process.platform and looks up its runner chain."
+      },
+      {
+        "activeNodeIds": [
+          "linux"
+        ],
+        "activeEdgeIds": [
+          "platform->linux"
+        ],
+        "title": "Linux arbitrates",
+        "desc": "bwrap is probed first (real mount-namespace profile); Landlock is the fallback only if that probe fails."
+      },
+      {
+        "activeNodeIds": [
+          "macos",
+          "windows"
+        ],
+        "activeEdgeIds": [
+          "platform->macos",
+          "platform->windows"
+        ],
+        "title": "macOS and Windows have one candidate each",
+        "desc": "darwin selects Seatbelt directly; win32 selects windows-acl directly. chainVerdict skips probing for single-candidate chains."
+      },
+      {
+        "activeNodeIds": [
+          "verdict"
+        ],
+        "activeEdgeIds": [
+          "linux->verdict",
+          "macos->verdict",
+          "windows->verdict"
+        ],
+        "title": "Cache the SelectedRunner",
+        "desc": "The resolved runner is cached for the provider's lifetime; an unusable chain fails closed with SANDBOX_UNAVAILABLE."
+      }
+    ]
+  }
+}

@@ -26,8 +26,9 @@ export type ModuleId =
   | "extension-memory-seams"
   | "orchestration-and-capstone";
 
-/** One row in a chapter's frontmatter `sources` list — a precise, checkable
- * pointer into the deepseek-harness repository at the anchored commit. */
+/** One entry in a `sources.{locale}.json` file — a precise, checkable pointer
+ * into the deepseek-harness repository at the anchored commit, rendered as a
+ * clickable deep-link badge by {@link SourceBadge}. */
 export interface SourceRef {
   path: string;
   lineStart?: number;
@@ -40,7 +41,12 @@ interface FrontmatterBase {
   slug: string;
   title: string;
   summary: string;
-  sources?: SourceRef[];
+  /**
+   * Whether this chapter's subject is actually a capability seam. Drives
+   * the anchor's seam-role versus not-a-seam presentation, so a wrong
+   * answer fails *loud* rather than inferring from module id.
+   */
+  seamKind: "seam" | "non-seam" | "non-mechanism";
 }
 
 export interface ChapterFrontmatter extends FrontmatterBase {
@@ -49,9 +55,7 @@ export interface ChapterFrontmatter extends FrontmatterBase {
 }
 
 /** A single `##`/`###` heading extracted from rendered chapter/doc HTML,
- * used to build the in-page table of contents. Re-exported here (rather than
- * only from `lib/markdown.ts`) so `Chapter`/`Doc` consumers don't need a
- * second import for a field on their own type. */
+ * used to build the in-page table of contents. */
 export interface TocEntry {
   id: string;
   text: string;
@@ -63,6 +67,9 @@ export interface Chapter extends ChapterFrontmatter {
   html: string;
   plainText: string;
   toc: TocEntry[];
+  /** Locale-resolved deep-link list from `sources.{locale}.json`, empty when
+   * the chapter cites nothing. */
+  sources: SourceRef[];
 }
 
 export interface DocFrontmatter extends FrontmatterBase {}
@@ -78,14 +85,16 @@ export interface Doc extends DocFrontmatter {
  * The four reading modes every chapter page exposes as tabs (see
  * `components/ui/tabs.tsx`). Whether a given chapter actually renders each
  * tab depends on whether that tab's data exists for it (see
- * `lib/chapter-tabs.ts`) — `read` and `deep-dive` are universal, `visualize`
- * and `play` are flagship-only.
+ * `lib/chapter-tabs.ts`) — `visualize` and `play` are data-driven, `read`
+ * always exists, and `deep-dive` appears when the chapter has decision or
+ * source data.
  */
 export type ChapterTabId = "read" | "visualize" | "play" | "deep-dive";
 
-/** One entry in a chapter's Deep-Dive design-decision list — distilled from
- * the corresponding Agent Note in the deepseek-harness repo, keeping its
- * own Problem/Decision/Alternatives-considered structure. */
+/** One entry in a chapter's Deep-Dive design-decision list, from its
+ * `decisions.json` — distilled from the corresponding Agent Note in the
+ * deepseek-harness repo, keeping its own Problem/Decision/
+ * Alternatives-considered structure. */
 export interface DesignDecision {
   id: string;
   title: Record<Locale, string>;

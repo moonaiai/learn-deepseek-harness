@@ -1,0 +1,230 @@
+{
+  "diagram": {
+    "width": 460,
+    "height": 360,
+    "nodes": [
+      {
+        "id": "turn_start",
+        "label": "turn/start",
+        "x": 230,
+        "y": 24,
+        "width": 140,
+        "height": 32
+      },
+      {
+        "id": "claim",
+        "label": "claim input",
+        "x": 230,
+        "y": 76,
+        "width": 140,
+        "height": 32
+      },
+      {
+        "id": "pre_step",
+        "label": "agent/pre-step",
+        "x": 230,
+        "y": 128,
+        "width": 150,
+        "height": 32,
+        "shape": "diamond"
+      },
+      {
+        "id": "step_start",
+        "label": "step/start",
+        "x": 100,
+        "y": 188,
+        "width": 120,
+        "height": 32
+      },
+      {
+        "id": "request",
+        "label": "agent/request → llm/stream",
+        "x": 100,
+        "y": 240,
+        "width": 170,
+        "height": 36
+      },
+      {
+        "id": "tool_calls",
+        "label": "tool/call* dispatch",
+        "x": 100,
+        "y": 292,
+        "width": 150,
+        "height": 32
+      },
+      {
+        "id": "step_end",
+        "label": "step/end",
+        "x": 100,
+        "y": 336,
+        "width": 110,
+        "height": 28
+      },
+      {
+        "id": "turn_stopping",
+        "label": "agent/turn-stopping",
+        "x": 360,
+        "y": 188,
+        "width": 160,
+        "height": 32
+      },
+      {
+        "id": "turn_end",
+        "label": "turn/end",
+        "x": 360,
+        "y": 240,
+        "width": 110,
+        "height": 28
+      }
+    ],
+    "edges": [
+      {
+        "from": "turn_start",
+        "to": "claim"
+      },
+      {
+        "from": "claim",
+        "to": "pre_step"
+      },
+      {
+        "from": "pre_step",
+        "to": "step_start",
+        "label": "enter"
+      },
+      {
+        "from": "step_start",
+        "to": "request"
+      },
+      {
+        "from": "request",
+        "to": "tool_calls"
+      },
+      {
+        "from": "tool_calls",
+        "to": "step_end"
+      },
+      {
+        "from": "step_end",
+        "to": "pre_step",
+        "label": "loop"
+      },
+      {
+        "from": "pre_step",
+        "to": "turn_stopping",
+        "label": "reject / nothing owed"
+      },
+      {
+        "from": "turn_stopping",
+        "to": "turn_end"
+      }
+    ],
+    "steps": [
+      {
+        "activeNodeIds": [
+          "turn_start"
+        ],
+        "activeEdgeIds": [],
+        "title": "turn/start",
+        "desc": "A turn opens before any input is claimed."
+      },
+      {
+        "activeNodeIds": [
+          "claim"
+        ],
+        "activeEdgeIds": [
+          "turn_start->claim"
+        ],
+        "title": "claim input",
+        "desc": "The driver claims the next-step input plus one queued message."
+      },
+      {
+        "activeNodeIds": [
+          "pre_step"
+        ],
+        "activeEdgeIds": [
+          "claim->pre_step"
+        ],
+        "title": "agent/pre-step waterfall",
+        "desc": "Listeners may reject the proposed step or let it enter."
+      },
+      {
+        "activeNodeIds": [
+          "step_start",
+          "request"
+        ],
+        "activeEdgeIds": [
+          "pre_step->step_start",
+          "step_start->request"
+        ],
+        "title": "step/start → agent/request",
+        "desc": "Prompt and tool schemas assemble; the model streams a response."
+      },
+      {
+        "activeNodeIds": [
+          "tool_calls",
+          "step_end"
+        ],
+        "activeEdgeIds": [
+          "request->tool_calls",
+          "tool_calls->step_end"
+        ],
+        "title": "tool/call* → step/end",
+        "desc": "Tool calls dispatch through the guarded pipeline; the step closes."
+      },
+      {
+        "activeNodeIds": [
+          "pre_step"
+        ],
+        "activeEdgeIds": [
+          "step_end->pre_step"
+        ],
+        "title": "loop back",
+        "desc": "If more is owed, pre-step runs again for the next step."
+      },
+      {
+        "activeNodeIds": [
+          "turn_stopping",
+          "turn_end"
+        ],
+        "activeEdgeIds": [
+          "pre_step->turn_stopping",
+          "turn_stopping->turn_end"
+        ],
+        "title": "turn/end",
+        "desc": "Once nothing is owed, the turn closes."
+      }
+    ]
+  },
+  "simulator": {
+    "title": "One turn, traced as a replay",
+    "description": "A simplified single-step turn: one model request, one tool call, one result.",
+    "steps": [
+      {
+        "type": "request",
+        "content": "user/message: \"list the files in src/\"",
+        "annotation": "Claimed as this turn's first input."
+      },
+      {
+        "type": "dispatch",
+        "content": "agent/pre-step -> enter(messages)",
+        "annotation": "No listener rejects; the step is admitted."
+      },
+      {
+        "type": "provider_selected",
+        "content": "assemble prompt sections + tool schemas",
+        "annotation": "system-prompt/assemble waterfall runs before the request.",
+        "providerName": "ctx.systemPrompt"
+      },
+      {
+        "type": "provider_execute",
+        "content": "tool/call: bash({ command: \"ls src/\" })",
+        "annotation": "The model's tool call enters the guarded execution pipeline."
+      },
+      {
+        "type": "result",
+        "content": "tool/result: \"agent-loop.ts\\ntool-calls.ts\\n...\"",
+        "annotation": "step/end, then turn/end since nothing more is owed."
+      }
+    ]
+  }
+}

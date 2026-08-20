@@ -1,55 +1,12 @@
 ---
 id: s03
 slug: s03-event-sourced-session
-title: "The Session Log: Event Sourcing as Source of Truth"
-summary: "Why a Session is an append-only SessionEvent log instead of a mutable message array, and how deriveMessages(), surface, and fork() are built on top of it."
+title: 'The Session Log: Event Sourcing as Source of Truth'
+summary: Why a Session is an append-only SessionEvent log instead of a mutable message
+  array, and how deriveMessages(), surface, and fork() are built on top of it.
+seamKind: non-mechanism
 module: foundations
 order: 3
-sources:
-  - path: packages/core/session/README.md
-    label: "dsh-session package README"
-  - path: packages/core/session/src/types.ts
-    lineStart: 236
-    lineEnd: 333
-    label: "SessionEventMap — the event vocabulary"
-  - path: packages/core/session/src/types.ts
-    lineStart: 404
-    lineEnd: 436
-    label: "SessionEvent — the discriminated union"
-  - path: packages/core/session/src/index.ts
-    lineStart: 604
-    lineEnd: 655
-    label: "Session.append()"
-  - path: packages/core/session/src/index.ts
-    lineStart: 726
-    lineEnd: 747
-    label: "Session.deriveMessages()"
-  - path: packages/core/session/src/index.ts
-    lineStart: 1081
-    lineEnd: 1096
-    label: "SessionStore.fork()"
-  - path: packages/core/session/src/surface.ts
-    lineStart: 83
-    lineEnd: 114
-    label: "deriveEventMessage() — per-node projection rule"
-  - path: packages/core/session/src/chunk-rows.ts
-    lineStart: 1
-    lineEnd: 19
-    label: "chunk-row storage codec — module doc"
-  - path: packages/core/session/src/request-header.ts
-    lineStart: 56
-    lineEnd: 71
-    label: "foldRequestHeader()"
-  - path: docs/architecture.md
-    lineStart: 92
-    lineEnd: 96
-    label: "Session log section"
-  - path: docs/persistence-catalog.md
-    label: "Generated persistence log event catalog"
-  - path: .agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md
-    label: "Agent Note: event-sourced sessions with derived message history"
-  - path: .agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md
-    label: "Agent Note: session log versioning mechanism"
 ---
 
 ## The array you'd expect, and the log you actually get

@@ -1,55 +1,12 @@
 ---
 id: s03
 slug: s03-event-sourced-session
-title: "会话日志:事件溯源的真相之源"
-summary: "为什么 Session 是一份仅追加的 SessionEvent 日志而不是可变消息数组,以及 deriveMessages()、surface 与 fork() 如何建立在它之上。"
+title: 会话日志:事件溯源的真相之源
+summary: 为什么 Session 是一份仅追加的 SessionEvent 日志而不是可变消息数组,以及 deriveMessages()、surface
+  与 fork() 如何建立在它之上。
+seamKind: non-mechanism
 module: foundations
 order: 3
-sources:
-  - path: packages/core/session/README.zh.md
-    label: "dsh-session 包 README"
-  - path: packages/core/session/src/types.ts
-    lineStart: 236
-    lineEnd: 333
-    label: "SessionEventMap —— 事件词汇表"
-  - path: packages/core/session/src/types.ts
-    lineStart: 404
-    lineEnd: 436
-    label: "SessionEvent —— 判别式联合类型"
-  - path: packages/core/session/src/index.ts
-    lineStart: 604
-    lineEnd: 655
-    label: "Session.append()"
-  - path: packages/core/session/src/index.ts
-    lineStart: 726
-    lineEnd: 747
-    label: "Session.deriveMessages()"
-  - path: packages/core/session/src/index.ts
-    lineStart: 1081
-    lineEnd: 1096
-    label: "SessionStore.fork()"
-  - path: packages/core/session/src/surface.ts
-    lineStart: 83
-    lineEnd: 114
-    label: "deriveEventMessage() —— 逐节点投影规则"
-  - path: packages/core/session/src/chunk-rows.ts
-    lineStart: 1
-    lineEnd: 19
-    label: "分片行存储编解码器 —— 模块文档"
-  - path: packages/core/session/src/request-header.ts
-    lineStart: 56
-    lineEnd: 71
-    label: "foldRequestHeader()"
-  - path: docs/architecture.zh.md
-    lineStart: 96
-    lineEnd: 100
-    label: "会话日志一节"
-  - path: docs/persistence-catalog.zh.md
-    label: "生成的持久化日志事件目录"
-  - path: .agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.zh.md
-    label: "Agent Note:带派生消息历史的事件溯源会话"
-  - path: .agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.zh.md
-    label: "Agent Note:会话日志版本机制"
 ---
 
 ## 你以为的数组,和你实际拿到的日志

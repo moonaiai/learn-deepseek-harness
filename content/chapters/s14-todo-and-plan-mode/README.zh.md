@@ -1,63 +1,12 @@
 ---
 id: s14
 slug: s14-todo-and-plan-mode
-title: "todo_write 与 Plan Mode"
-summary: "两种完全建立在普通会话日志原语之上、而非能力 seam 的协作机制——todo_write 工具的整表任务快照，以及 plan mode 围绕 exit_plan_mode 的「提案-评审-退出」日志化流程"
+title: todo_write 与 Plan Mode
+summary: 两种完全建立在普通会话日志原语之上、而非能力 seam 的协作机制——todo_write 工具的整表任务快照，以及 plan mode 围绕 exit_plan_mode
+  的「提案-评审-退出」日志化流程
+seamKind: non-seam
 module: world-and-collab-seams
 order: 14
-sources:
-  - path: packages/todo/README.md
-    label: "todo/ 包组概览"
-  - path: packages/todo/tool-todo/README.md
-    label: "dsh-tool-todo 包 README"
-  - path: packages/plan/README.md
-    label: "plan/ 包组概览"
-  - path: packages/plan/plan-mode/README.md
-    label: "dsh-plan-mode 包 README"
-  - path: docs/subsystems/plan.md
-    label: "Plan Mode 子系统参考"
-  - path: docs/capability-seams.md
-    lineStart: 436
-    lineEnd: 436
-    label: "生成的角色分类：ctx.planMode = core"
-  - path: docs/capability-seams.md
-    lineStart: 439
-    lineEnd: 439
-    label: "生成的角色分类：ctx.sessionProjections = core"
-  - path: .agents/notes/implemented/simplification/2026-07-22-plan-specific-collaboration-state.md
-    label: "plan 专用协作状态 Agent Note"
-  - path: .agents/notes/implemented/feature/2026-06-29-todo-write-tool.md
-    label: "todo_write 工具 Agent Note"
-  - path: .agents/notes/implemented/feature/2026-07-28-todo-plan-clears-on-next-turn.md
-    label: "todo 计划条在下一轮次清空 Agent Note"
-  - path: packages/todo/tool-todo/src/index.ts
-    lineStart: 91
-    lineEnd: 111
-    label: "toTodoList() 数值校验"
-  - path: packages/todo/tool-todo/src/index.ts
-    lineStart: 128
-    lineEnd: 148
-    label: "todos 投影单元注册"
-  - path: packages/todo/tool-todo/src/index.ts
-    lineStart: 206
-    lineEnd: 223
-    label: "todo_write execute()——追加事件与所有者检查"
-  - path: packages/plan/plan-mode/src/index.ts
-    lineStart: 184
-    lineEnd: 233
-    label: "PlanModeController 构造函数——pre-step 监听器与 plan:policy 段落"
-  - path: packages/plan/plan-mode/src/index.ts
-    lineStart: 321
-    lineEnd: 380
-    label: "exit_plan_mode execute()——通过 ctx.userQuestions 评审"
-  - path: packages/plan/plan-mode/src/index.ts
-    lineStart: 425
-    lineEnd: 445
-    label: "PlanModeController.set()——committed/queued/cancelled/noop"
-  - path: docs/tool-catalog.md
-    lineStart: 1682
-    lineEnd: 1730
-    label: "生成的 todo_write 工具目录条目"
 ---
 
 ## 不是能力 seam——这正是重点

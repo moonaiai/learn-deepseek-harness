@@ -1,0 +1,66 @@
+{
+  "sources": [
+    {
+      "path": "docs/cordis-primer.md",
+      "label": "Cordis primer"
+    },
+    {
+      "path": "docs/cordis-tutorial/01-first-plugin.md",
+      "label": "Tutorial 1: your first plugin"
+    },
+    {
+      "path": "docs/cordis-tutorial/02-lifecycle-and-effects.md",
+      "label": "Tutorial 2: lifecycle and effects"
+    },
+    {
+      "path": "docs/cordis-tutorial/03-services.md",
+      "label": "Tutorial 3: services"
+    },
+    {
+      "path": "docs/cordis-tutorial/04-events.md",
+      "label": "Tutorial 4: events"
+    },
+    {
+      "path": "vendor/cordis/src/service.ts",
+      "lineStart": 5,
+      "lineEnd": 59,
+      "label": "Service base class and constructor"
+    },
+    {
+      "path": "vendor/cordis/src/context.ts",
+      "lineStart": 16,
+      "lineEnd": 33,
+      "label": "Context interface: services mixed onto ctx"
+    },
+    {
+      "path": "vendor/cordis/src/registry.ts",
+      "lineStart": 92,
+      "lineEnd": 110,
+      "label": "Plugin.Base metadata: name, Config, inject, provide"
+    },
+    {
+      "path": "vendor/cordis/src/fiber.ts",
+      "lineStart": 140,
+      "lineEnd": 153,
+      "label": "FiberState enum and lifecycle doc comment"
+    },
+    {
+      "path": "vendor/cordis/src/fiber.ts",
+      "lineStart": 402,
+      "lineEnd": 418,
+      "label": "Fiber.effect() doc comment and overloads"
+    },
+    {
+      "path": "vendor/cordis/src/events.ts",
+      "lineStart": 24,
+      "lineEnd": 32,
+      "label": "DispatchMode type"
+    },
+    {
+      "path": "vendor/cordis/src/events.ts",
+      "lineStart": 76,
+      "lineEnd": 97,
+      "label": "ctx.waterfall and ctx.on declarations"
+    }
+  ]
+}

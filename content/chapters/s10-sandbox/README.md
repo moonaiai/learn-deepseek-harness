@@ -1,51 +1,13 @@
 ---
 id: s10
 slug: s10-sandbox
-title: "Sandbox"
-summary: "The ctx.sandbox process-confinement seam: one Service Definition, one Service Provider that dispatches across three OS-specific runners, and how each runner reports its own enforcement completeness instead of a uniform guarantee."
+title: Sandbox
+summary: 'The ctx.sandbox process-confinement seam: one Service Definition, one Service
+  Provider that dispatches across three OS-specific runners, and how each runner reports
+  its own enforcement completeness instead of a uniform guarantee.'
+seamKind: seam
 module: execution-seams
 order: 10
-sources:
-  - path: packages/sandbox/README.md
-    label: "sandbox/ package family overview"
-  - path: packages/sandbox/sandbox/README.md
-    label: "dsh-sandbox Service Definition README"
-  - path: packages/sandbox/sandbox/src/index.ts
-    lineStart: 158
-    lineEnd: 176
-    label: "SandboxProvider abstract Service class"
-  - path: packages/sandbox/sandbox-local/README.md
-    label: "dsh-sandbox-local package README"
-  - path: packages/sandbox/sandbox-local/src/index.ts
-    lineStart: 150
-    lineEnd: 166
-    label: "PLATFORM_CHAINS: the per-OS runner chain table"
-  - path: packages/sandbox/sandbox-local/src/index.ts
-    lineStart: 486
-    lineEnd: 510
-    label: "selectRunner / chainVerdict: probe-once, cache-for-lifetime dispatch"
-  - path: packages/sandbox/sandbox-local/src/index.ts
-    lineStart: 177
-    lineEnd: 187
-    label: "STATIC_ENFORCEMENT: full for bwrap/landlock/seatbelt, partial for windows-acl"
-  - path: packages/sandbox/sandbox-windows-acl/README.md
-    label: "dsh-sandbox-windows-acl package README"
-  - path: packages/sandbox/sandbox-policy/README.md
-    label: "dsh-sandbox-policy package README (not a seam)"
-  - path: packages/shell/bash-sandbox/README.md
-    label: "dsh-bash-sandbox Consumer README"
-  - path: packages/terminal/terminal-bash/README.md
-    label: "dsh-terminal-bash Consumer README"
-  - path: docs/capability-seams.md
-    lineStart: 451
-    lineEnd: 452
-    label: "ctx.sandbox (seam) and ctx.sandboxPolicy (core) rows"
-  - path: docs/subsystems/sandbox.md
-    label: "Process Sandbox subsystem reference"
-  - path: .agents/notes/implemented/feature/2026-07-06-sandbox.md
-    label: "Sandbox Agent Note (capability boundary, escalation, per-session modes)"
-  - path: .agents/notes/implemented/feature/2026-08-08-windows-acl-restricted-token-sandbox.md
-    label: "Windows ACL restricted-token sandbox rung Agent Note"
 ---
 
 ## No OS gives you one process-confinement primitive

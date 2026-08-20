@@ -1,0 +1,88 @@
+{
+  "sources": [
+    {
+      "path": "docs/architecture.zh.md",
+      "lineStart": 15,
+      "lineEnd": 37,
+      "label": "Profile 与组合包"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-08-05-profile-plugin-bundles.zh.md",
+      "label": "Agent Note：profile 插件组合包取代固定的表层 overlay"
+    },
+    {
+      "path": "apps/cli/src/profile-boot.ts",
+      "lineStart": 121,
+      "lineEnd": 171,
+      "label": "allPatches / composeProfile —— patch 层的组合顺序"
+    },
+    {
+      "path": "apps/cli/src/profile-boot.ts",
+      "lineStart": 59,
+      "lineEnd": 64,
+      "label": "PROFILE_ROOT_CONFIG —— 空的条目列表"
+    },
+    {
+      "path": "apps/cli/src/args.ts",
+      "lineStart": 83,
+      "lineEnd": 103,
+      "label": "resolveBoot —— --dump-config 与 --dump-default-config 的区别"
+    },
+    {
+      "path": "apps/cli/src/dump-config.ts",
+      "lineStart": 30,
+      "lineEnd": 52,
+      "label": "runDumpConfig"
+    },
+    {
+      "path": "packages/bundle/README.zh.md",
+      "label": "bundle/ 包分组"
+    },
+    {
+      "path": "packages/bundle/base/README.zh.md",
+      "label": "@deepseek-ai/dsh-base"
+    },
+    {
+      "path": "packages/bundle/web-app/README.zh.md",
+      "label": "@deepseek-ai/dsh-web-app"
+    },
+    {
+      "path": "packages/bundle/headless/README.zh.md",
+      "label": "@deepseek-ai/dsh-headless"
+    },
+    {
+      "path": "packages/bundle/base/cordis.patch.yml",
+      "lineStart": 1,
+      "lineEnd": 25,
+      "label": "dsh-base 的 patch：在空根之上 insert 各配置行"
+    },
+    {
+      "path": "packages/bundle/headless/cordis.patch.yml",
+      "label": "dsh-headless 的 patch：覆盖、禁用与插入三种操作"
+    },
+    {
+      "path": "packages/README.zh.md",
+      "lineStart": 42,
+      "lineEnd": 42,
+      "label": "bundle/ 分组一句话说明"
+    },
+    {
+      "path": "apps/cli/README.zh.md",
+      "lineStart": 30,
+      "lineEnd": 43,
+      "label": "Profile 一节"
+    },
+    {
+      "path": "apps/cli/reference/README.zh.md",
+      "lineStart": 7,
+      "lineEnd": 39,
+      "label": "Profile 启动参考"
+    },
+    {
+      "path": "packages/boot/app-boot/README.zh.md",
+      "lineStart": 36,
+      "lineEnd": 45,
+      "label": "Profile 机制（resolveProfileDir / loadProfile / composeEntries）"
+    }
+  ]
+}

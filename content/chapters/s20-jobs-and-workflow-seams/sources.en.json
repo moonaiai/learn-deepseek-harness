@@ -1,0 +1,156 @@
+{
+  "sources": [
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 459,
+      "lineEnd": 459,
+      "label": "ctx.jobs seam row (generated)"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 465,
+      "lineEnd": 465,
+      "label": "ctx.workflowEngine seam row (generated)"
+    },
+    {
+      "path": "packages/jobs/README.md",
+      "label": "jobs/ family README"
+    },
+    {
+      "path": "packages/jobs/jobs/README.md",
+      "label": "dsh-jobs (Service Definition) README"
+    },
+    {
+      "path": "packages/jobs/jobs-local/README.md",
+      "label": "dsh-jobs-local (Service Provider) README"
+    },
+    {
+      "path": "packages/jobs/tool-jobs/README.md",
+      "label": "dsh-tool-jobs (Consumer) README"
+    },
+    {
+      "path": "packages/schedule/README.md",
+      "lineStart": 1,
+      "lineEnd": 13,
+      "label": "schedule/ family README — states no ctx key, no public service"
+    },
+    {
+      "path": "packages/schedule/schedule/README.md",
+      "label": "dsh-schedule package README"
+    },
+    {
+      "path": "packages/schedule/AGENTS.md",
+      "label": "Schedule package rules"
+    },
+    {
+      "path": "packages/workflow/README.md",
+      "label": "workflow/ family README"
+    },
+    {
+      "path": "packages/workflow/workflow/README.md",
+      "label": "dsh-workflow (Service Definition) README"
+    },
+    {
+      "path": "packages/workflow/workflow-worker-thread/README.md",
+      "label": "dsh-workflow-worker-thread (Service Provider) README"
+    },
+    {
+      "path": "packages/workflow/tool-workflow/README.md",
+      "label": "dsh-tool-workflow (Consumer) README"
+    },
+    {
+      "path": "packages/workflow/tool-ralph/README.md",
+      "label": "dsh-tool-ralph README"
+    },
+    {
+      "path": "docs/subsystems/jobs.md",
+      "label": "Background Task Runtime subsystem reference"
+    },
+    {
+      "path": "docs/subsystems/schedule.md",
+      "label": "Session-local Schedule subsystem reference"
+    },
+    {
+      "path": "docs/subsystems/workflow.md",
+      "label": "Workflow subsystem reference"
+    },
+    {
+      "path": "docs/tool-catalog.md",
+      "lineStart": 1039,
+      "lineEnd": 1041,
+      "label": "schedule_create generated tool description"
+    },
+    {
+      "path": "docs/glossary.md",
+      "lineStart": 35,
+      "lineEnd": 45,
+      "label": "loop hierarchy and Ralph glossary entries"
+    },
+    {
+      "path": "docs/architecture.md",
+      "lineStart": 116,
+      "lineEnd": 116,
+      "label": "\"Add background work\" extension-point row"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-06-20-generic-long-running-tool-runtime.md",
+      "label": "Agent Note: the background job runtime"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-07-26-job-registry-seam.md",
+      "label": "Agent Note: the job registry is a capability seam"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-08-11-bounded-background-job-admission.md",
+      "label": "Agent Note: bounded background job admission"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-05-dynamic-workflows.md",
+      "label": "Agent Note: dynamic workflows"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-19-fresh-agent-ralph-workflow-tool.md",
+      "label": "Agent Note: fresh-agent Ralph workflow tool"
+    },
+    {
+      "path": "packages/jobs/jobs/src/index.ts",
+      "lineStart": 62,
+      "lineEnd": 177,
+      "label": "JobRegistry abstract Service class"
+    },
+    {
+      "path": "packages/jobs/jobs/src/types.ts",
+      "lineStart": 13,
+      "lineEnd": 39,
+      "label": "JobStatus, JobKindMap, JobOutcome"
+    },
+    {
+      "path": "packages/workflow/workflow/src/index.ts",
+      "lineStart": 150,
+      "lineEnd": 168,
+      "label": "WorkflowEngine abstract Service class"
+    },
+    {
+      "path": "packages/workflow/tool-ralph/src/index.ts",
+      "lineStart": 49,
+      "lineEnd": 84,
+      "label": "RalphRoundReport / RalphRunResult types and fixed RALPH_META"
+    },
+    {
+      "path": "examples/headless-agent/cordis.yml",
+      "lineStart": 133,
+      "lineEnd": 146,
+      "label": "workflow-worker-thread, tool-workflow, tool-ralph composed together"
+    },
+    {
+      "path": "examples/web-schedule/cordis.yml",
+      "label": "Opt-in Schedule overlay over the Web composition"
+    },
+    {
+      "path": "packages/bundle/base/cordis.patch.yml",
+      "lineStart": 69,
+      "lineEnd": 70,
+      "label": "dsh-jobs-local composed in the base bundle"
+    }
+  ]
+}

@@ -1,11 +1,18 @@
 @import "tailwindcss";
 
 /*
- * Tailwind v4 is configured CSS-first (no tailwind.config.*): the `@custom-variant`
- * below teaches `dark:` utilities to key off a `.dark` class on <html> (toggled by
- * ThemeToggle, initialized pre-paint by the inline script in app/layout.tsx),
- * and the two `:root`/`.dark` blocks below are the single source of every
- * color token consumed as `bg-[--color-*]` / `text-[--color-*]` across components.
+ * Visual language system for the whole site: color tokens, typography scale,
+ * reading-width settings, and the prose styling for chapter/doc Markdown
+ * bodies. Deliberately one cohesive stylesheet (not scattered inline classes
+ * across components) so "this looks like a learning document" is a system
+ * property, not something patched component-by-component.
+ *
+ * Tailwind v4 is configured CSS-first (no tailwind.config.*): the
+ * `@custom-variant` below teaches `dark:` utilities to key off a `.dark`
+ * class on <html> (toggled by ThemeToggle, initialized pre-paint by the
+ * inline script in app/layout.tsx), and the two `:root`/`.dark` blocks
+ * below are the single source of every color token consumed as
+ * `bg-[--color-*]` / `text-[--color-*]` across components.
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -42,10 +49,9 @@ body {
 }
 
 /* ---------------------------------------------------------------------- */
-/* prose-course: styling for server-rendered chapter/doc Markdown bodies.  */
-/* Deliberately hand-rolled rather than @tailwindcss/typography so heading */
-/* anchors, code-block language tags, and mermaid containers share the     */
-/* same token set as the rest of the app.                                 */
+/* prose-course: styling for server-rendered chapter/doc Markdown bodies  */
+/* (generated once server-side by lib/markdown.ts, then hydrated for       */
+/* Mermaid diagrams and SourceViewer excerpts client-side).              */
 /* ---------------------------------------------------------------------- */
 
 .prose-course {
@@ -76,6 +82,7 @@ body {
   margin-bottom: 0.75rem;
   font-size: 1.125rem;
   font-weight: 600;
+  letter-spacing: -0.005em;
   scroll-margin-top: 5rem;
 }
 

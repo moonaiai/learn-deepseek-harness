@@ -1,93 +1,14 @@
 ---
 id: s13
 slug: s13-approval-and-questions
-title: "Approval and Questions"
-summary: "Two true capability seams for human collaboration — ctx.approval's one-shot permission decisions and ctx.userQuestions' provider-neutral Q&A — plus ctx.permissionPresets, a core-classified bundling point over the first seam and the sandbox-mode knob, explicitly not a third seam."
+title: Approval and Questions
+summary: Two true capability seams for human collaboration — ctx.approval's one-shot
+  permission decisions and ctx.userQuestions' provider-neutral Q&A — plus ctx.permissionPresets,
+  a core-classified bundling point over the first seam and the sandbox-mode knob,
+  explicitly not a third seam.
+seamKind: non-seam
 module: world-and-collab-seams
 order: 13
-sources:
-  - path: packages/interaction/README.md
-    label: "interaction/ package group overview"
-  - path: packages/interaction/user-approval/README.md
-    label: "dsh-user-approval package README"
-  - path: packages/interaction/permission-presets/README.md
-    label: "dsh-permission-presets package README"
-  - path: packages/interaction/user-questions/README.md
-    label: "dsh-user-questions package README"
-  - path: packages/interaction/tool-ask-user/README.md
-    label: "dsh-tool-ask-user package README"
-  - path: docs/capability-seams.md
-    lineStart: 453
-    lineEnd: 454
-    label: "Generated Role classification: ctx.approval = seam, ctx.permissionPresets = core"
-  - path: docs/capability-seams.md
-    lineStart: 435
-    lineEnd: 435
-    label: "Generated Role classification: ctx.userQuestions = seam"
-  - path: docs/glossary.md
-    lineStart: 9
-    lineEnd: 9
-    label: "seam glossary entry: the complete capability, never one role"
-  - path: packages/interaction/user-approval/src/index.ts
-    lineStart: 94
-    lineEnd: 118
-    label: "ApprovalPolicy type and effectiveApprovalPolicy() fold"
-  - path: packages/interaction/user-approval/src/index.ts
-    lineStart: 153
-    lineEnd: 185
-    label: "ApprovalRequest interface and Config"
-  - path: packages/interaction/user-approval/src/index.ts
-    lineStart: 226
-    lineEnd: 243
-    label: "ApprovalService.setPolicy()"
-  - path: packages/interaction/user-approval/src/index.ts
-    lineStart: 257
-    lineEnd: 276
-    label: "ApprovalService.request() — turn precondition, asked/decided audit pair"
-  - path: packages/interaction/user-approval/src/index.ts
-    lineStart: 304
-    lineEnd: 344
-    label: "ApprovalService.decide() — policy gate, waterfall dispatch, abort race, outcome normalization"
-  - path: packages/core/tools/src/index.ts
-    lineStart: 1689
-    lineEnd: 1729
-    label: "ToolRuntime.serviceAsk() — opportunistic ctx.get('approval'), outcome-to-denial mapping"
-  - path: packages/sandbox/sandbox/src/escalation.ts
-    lineStart: 157
-    lineEnd: 189
-    label: "approveEscalation() — sandbox_permissions retry through the same seam"
-  - path: packages/acp/acp/src/index.ts
-    lineStart: 215
-    lineEnd: 229
-    label: "ACP bridge's approval/request answerer (session/request_permission)"
-  - path: packages/interaction/permission-presets/src/index.ts
-    lineStart: 159
-    lineEnd: 200
-    label: "PermissionPresetService constructor — config, sandboxMode guard"
-  - path: packages/interaction/permission-presets/src/index.ts
-    lineStart: 304
-    lineEnd: 391
-    label: "current(), derive(), set(), apply() — knob resolution and write path"
-  - path: packages/interaction/permission-presets/src/types.ts
-    label: "PresetOption / PermissionSelect types"
-  - path: packages/interaction/user-questions/src/index.ts
-    lineStart: 50
-    lineEnd: 141
-    label: "UserQuestionService.registerProvider() and .ask()"
-  - path: packages/host/apiproxy/src/api-proxy.ts
-    lineStart: 1369
-    lineEnd: 1393
-    label: "Web host runtime's userQuestions Service Provider (registerProvider)"
-  - path: packages/interaction/tool-ask-user/src/index.ts
-    lineStart: 1
-    lineEnd: 101
-    label: "ask_user_question tool definition"
-  - path: docs/tool-execution-pipeline.md
-    lineStart: 8
-    lineEnd: 45
-    label: "Generated tool execution pipeline diagram (the approval side door)"
-  - path: .agents/notes/implemented/feature/2026-07-06-approval-seam.md
-    label: "Approval seam Agent Note — design rationale, alternatives considered, a recorded escalation transcript"
 ---
 
 ## Two seams and one bundle, not three seams

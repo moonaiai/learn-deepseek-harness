@@ -1,0 +1,64 @@
+{
+  "sources": [
+    {
+      "path": "docs/glossary.zh.md",
+      "lineStart": 7,
+      "lineEnd": 9,
+      "label": "capability-seam 术语表条目（中文）"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md",
+      "label": "能力 seam Agent Note（规范设计记录，中文）"
+    },
+    {
+      "path": "docs/architecture.zh.md",
+      "lineStart": 102,
+      "lineEnd": 104,
+      "label": "能力 seam 小节（中文）"
+    },
+    {
+      "path": "docs/capability-seams.zh.md",
+      "label": "生成的能力-seam 全量关系图（中文）"
+    },
+    {
+      "path": "packages/README.zh.md",
+      "lineStart": 67,
+      "lineEnd": 67,
+      "label": "扩展插件依赖 Service Definition，绝不依赖具体提供方"
+    },
+    {
+      "path": "packages/shell/shell/README.md",
+      "label": "dsh-shell 包 README"
+    },
+    {
+      "path": "packages/shell/bash-local/README.md",
+      "label": "dsh-bash-local 包 README"
+    },
+    {
+      "path": "packages/shell/bash-sandbox/README.md",
+      "label": "dsh-bash-sandbox 包 README"
+    },
+    {
+      "path": "packages/shell/tool-bash/README.md",
+      "label": "dsh-tool-bash 包 README"
+    },
+    {
+      "path": "packages/shell/shell/src/index.ts",
+      "lineStart": 46,
+      "lineEnd": 101,
+      "label": "ShellExecutor 抽象 Service 类"
+    },
+    {
+      "path": "packages/shell/bash-local/src/index.ts",
+      "lineStart": 95,
+      "lineEnd": 111,
+      "label": "LocalBashExecutor extends ShellExecutor，static inject = ['subprocess']"
+    },
+    {
+      "path": "packages/shell/tool-bash/src/index.ts",
+      "lineStart": 1,
+      "lineEnd": 31,
+      "label": "dsh-tool-bash Consumer：inject = ['tools', 'shell', 'systemPrompt', 'shellEnv']"
+    }
+  ]
+}

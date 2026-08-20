@@ -1,58 +1,35 @@
 #!/usr/bin/env python3
 """
-Verifies every `sources` frontmatter entry across content/chapters and
-content/docs against the real deepseek-harness checkout: the cited path must
-exist, and if lineStart/lineEnd are given, the file must have at least that
-many lines. Does not (cannot, cheaply) verify that the cited lines say what
-the prose claims -- that requires a human/agent spot-check -- but it catches
-the class of error this course cares most about: an invented or stale path.
+Verifies every `sources.{locale}.json` entry across content/chapters against
+the real deepseek-harness checkout: the cited path must exist, and if
+lineStart/lineEnd are given, the file must have at least that many lines.
+Does not (cannot, cheaply) verify that the cited lines say what the prose
+claims -- that requires a human/agent spot-check -- but it catches the class
+of error this course cares most about: an invented or stale path.
+
+Runs across every sources.{en,zh}.json file (formerly the `sources`
+frontmatter field, moved out of markdown by a data-package migration).
 """
-import re
+import json
 import sys
 from pathlib import Path
-
-try:
-    import yaml
-except ImportError:
-    print("PyYAML not installed; run: pip3 install pyyaml", file=sys.stderr)
-    sys.exit(2)
 
 REPO_ROOT = Path("/opt/workspace/deepseek-harness")
 COURSE_CONTENT = Path("/opt/workspace/learn-deepseek-harness/content")
 
-FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
-
-def load_frontmatter(path: Path):
-    text = path.read_text(encoding="utf-8")
-    m = FRONTMATTER_RE.match(text)
-    if not m:
-        return None, f"no frontmatter block found"
-    try:
-        data = yaml.safe_load(m.group(1))
-    except yaml.YAMLError as e:
-        return None, f"YAML parse error: {e}"
-    return data, None
-
-
-def check_file(md_path: Path):
+def check_sources_file(json_path: Path, rel: str) -> list[str]:
     problems = []
-    data, err = load_frontmatter(md_path)
-    if err:
-        problems.append(err)
-        return problems
-    if data is None:
-        problems.append("frontmatter parsed to None")
-        return problems
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return [f"JSON parse error: {e}"]
 
-    for field in ("id", "slug", "title", "summary"):
-        if field not in data:
-            problems.append(f"missing required frontmatter field: {field}")
-
-    sources = data.get("sources") or []
+    sources = data.get("sources")
+    if sources is None:
+        return ["missing `sources` key"]
     if not isinstance(sources, list):
-        problems.append("`sources` is not a list")
-        sources = []
+        return ["`sources` is not a list"]
 
     for i, src in enumerate(sources):
         if not isinstance(src, dict) or "path" not in src:
@@ -89,27 +66,30 @@ def check_file(md_path: Path):
     return problems
 
 
-def main():
+def main() -> None:
     if not REPO_ROOT.exists():
         print(f"ERROR: deepseek-harness checkout not found at {REPO_ROOT}", file=sys.stderr)
         sys.exit(2)
 
-    md_files = sorted(COURSE_CONTENT.rglob("README*.md"))
-    if not md_files:
-        print(f"ERROR: no README*.md files found under {COURSE_CONTENT}", file=sys.stderr)
+    json_files = sorted(COURSE_CONTENT.glob("**/sources.*.json"))
+    if not json_files:
+        print(f"ERROR: no sources.*.json files found under {COURSE_CONTENT}", file=sys.stderr)
         sys.exit(2)
 
     total_sources = 0
     total_problems = 0
     files_with_problems = 0
 
-    for md_path in md_files:
-        rel = md_path.relative_to(COURSE_CONTENT)
-        data, _ = load_frontmatter(md_path)
-        n_sources = len((data or {}).get("sources") or []) if isinstance(data, dict) else 0
+    for json_path in json_files:
+        rel = str(json_path.relative_to(COURSE_CONTENT))
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            n_sources = len(data.get("sources") or [])
+        except json.JSONDecodeError:
+            n_sources = 0
         total_sources += n_sources
 
-        problems = check_file(md_path)
+        problems = check_sources_file(json_path, rel)
         if problems:
             files_with_problems += 1
             total_problems += len(problems)
@@ -118,7 +98,7 @@ def main():
                 print(f"  - {p}")
 
     print(f"\n{'=' * 60}")
-    print(f"Checked {len(md_files)} files, {total_sources} total source entries.")
+    print(f"Checked {len(json_files)} files, {total_sources} total source entries.")
     if total_problems:
         print(f"FOUND {total_problems} PROBLEM(S) in {files_with_problems} file(s).")
         sys.exit(1)

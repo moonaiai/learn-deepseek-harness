@@ -24,6 +24,10 @@ content/
     s01-cordis-primer/
       README.zh.md
       README.md
+      sources.zh.json
+      sources.en.json
+      decisions.json
+      showcase.json
     s02-profiles-and-bundles/
       ...
   docs/
@@ -37,11 +41,11 @@ content/
 
 - `chapters/sNN-slug/` — one directory per course chapter, numbered `s01`..`s24`. The directory name's `sNN-slug` prefix has no parsing significance to the app (the real ordering key is the `order` frontmatter field) but MUST stay sorted-consistent with `order` for readability.
 - `docs/slug/` — standalone reference pages outside the chapter sequence (`glossary`, `concept-map`). Same two-file-per-directory shape.
-- Each directory holds **exactly two files**: `README.zh.md` (Chinese) and `README.md` (English). Neither is a translation stub — both are complete, independently readable chapters.
+- Each chapter directory holds **exactly two prose files** (`README.zh.md` and `README.md`, complete and independently readable in their own language) plus the data files below. A chapter with no decisions or showcase data simply omits that file.
 
 ## Frontmatter schema
 
-Every file starts with YAML frontmatter. Both locale files for the same chapter/doc MUST share the same `id`, `slug`, `module` (chapters only), and `order` (chapters only) — only `title`, `summary`, and the prose body differ by locale.
+Every prose file starts with YAML frontmatter. Both locale files for the same chapter/doc MUST share the same `id`, `slug`, `module` (chapters only), and `order` (chapters only) — only `title`, `summary`, and the prose body differ by locale.
 
 ### Chapters
 
@@ -53,18 +57,10 @@ title: "Cordis 五个核心概念"       # localized per file
 summary: "一句话概括本章内容"       # localized per file
 module: foundations               # one of: foundations | execution-seams | world-and-collab-seams | extension-memory-seams | orchestration-and-capstone
 order: 1                          # global 1..24 ordering, identical in both locale files
-sources:
-  - path: docs/cordis-primer.md
-    label: "Cordis 五个核心概念"
-  - path: packages/core/session/src/types.ts
-    lineStart: 12
-    lineEnd: 40
-    label: "SessionEvent 判别式联合"
 ---
 ```
 
-- `sources` entries are rendered as clickable badges linking to `github.com/deepseek-ai/deepseek-harness/blob/<anchored-commit>/<path>#L<start>-L<end>`. **Every path/line pair must be verified against the actual deepseek-harness checkout before merging** — never invent a plausible-looking path or line number. Omit `lineStart`/`lineEnd` when citing a whole file or a whole doc page.
-- `label` is optional, shown after the path as a short human gloss.
+Frontmatter carries **only** the chapter's own identity metadata — the deep-link source list lives in `sources.{locale}.json`, not here.
 
 ### Docs (glossary, concept-map)
 
@@ -76,28 +72,62 @@ id: glossary
 slug: glossary
 title: "术语表"
 summary: "DeepSeek Harness 的核心词汇"
-sources: [...]
 ---
 ```
+
+## Chapter data files
+
+### `sources.{locale}.json`
+
+The chapter's deep-link source list, one file per locale because the two languages may cite different doc twins (e.g. `docs/architecture.md` vs `docs/architecture.zh.md`). Rendered as clickable badges linking to `github.com/deepseek-ai/deepseek-harness/blob/<anchored-commit>/<path>#L<start>-L<end>`.
+
+```json
+{
+  "sources": [
+    { "path": "docs/cordis-primer.md", "label": "Cordis 五个核心概念" },
+    { "path": "packages/core/session/src/types.ts", "lineStart": 12, "lineEnd": 40, "label": "SessionEvent 判别式联合" }
+  ]
+}
+```
+
+- **Every path/line pair must be verified against the actual deepseek-harness checkout before merging** — never invent a plausible-looking path or line number. Omit `lineStart`/`lineEnd` when citing a whole file or a whole doc page.
+- `label` is optional, shown after the path as a short human gloss.
+
+### `decisions.json`
+
+The chapter's Deep-Dive design-decision entries, distilled from the corresponding Agent Note(s) in the deepseek-harness repository (`.agents/notes/implemented/architecture/` or `feature/`), preserving the note's own Problem/Decision/Alternatives-considered structure. Bilingual: every entry has `en` and `zh` text.
+
+```json
+{
+  "decisions": [
+    {
+      "id": "short-kebab-case-id",
+      "title": { "en": "Decision title", "zh": "决策标题" },
+      "description": { "en": "Why this decision was made.", "zh": "为什么做出这个决定。" },
+      "alternatives": { "en": "What alternatives were considered and rejected.", "zh": "考虑过但被否决的备选方案。" }
+    }
+  ]
+}
+```
+
+### `showcase.json`
+
+A chapter's StepDiagram and/or SeamSimulator data — only a handful of chapters have this file; most render through the plain Markdown+Mermaid baseline. If you are asked to add or update a showcase entry:
+
+- Every node label, event name, and provider name in the showcase data must be traceable to that chapter's own `sources` citations. This is illustrative UI data, not a place to invent a plausible-sounding event that isn't in the real event vocabulary.
+- A `diagram` entry needs `nodes`/`edges` (fixed layout) and `steps` (each naming which node/edge ids are "active" at that step, plus a title/desc). Edge routing is computed automatically (see `web/src/components/diagram/edge-routing.ts`) — do not hand-place edge paths.
+- A `simulator` entry needs a `title`/`description` and an ordered `steps` array of `{ type, content, annotation, providerName? }`, where `type` is one of `request | dispatch | provider_selected | provider_execute | result`.
 
 ## Body conventions
 
 - Plain Markdown (GFM tables/task lists supported). One `#` H1 is implied by the page template from `title` — **do not add your own `# Heading`** at the top of the body; start with `##`.
 - Use ` ```mermaid ` fenced code blocks for diagrams; they render as live interactive SVG. Prefer adapting a diagram that already exists in `docs/*.md` (e.g. `docs/agent-lifecycle.md`, `docs/capability-seams.md`, `docs/tool-execution-pipeline.md`, `docs/module-graph.md`) over inventing a new one, so the diagram stays traceable to the project's own generated docs.
-- Reference real code with fenced code blocks (```` ```ts ````, etc.); precede any nontrivial excerpt with the matching `sources` entry so the reader can jump to the live file.
+- Reference real code with fenced code blocks (```` ```ts ````, etc.); precede any nontrivial excerpt with the matching `sources.{locale}.json` entry so the reader can jump to the live file.
 - **One flagship excerpt per chapter may use `filename="..."` meta** to render as a terminal-styled `SourceViewer` instead of a plain code block:
   ````
   ```ts filename="packages/core/tools/src/schema.ts"
   export function defineTool<...>(...) { ... }
   ```
   ````
-  The path in `filename=` should match a `sources` entry for the same chapter. Use this sparingly — one genuinely representative excerpt per chapter, not every code block — since its visual weight is meant to mark "the one snippet worth lingering on."
+  The path in `filename=` should match a `sources.{locale}.json` entry for the same chapter. Use this sparingly — one genuinely representative excerpt per chapter, not every code block — since its visual weight is meant to mark "the one snippet worth lingering on."
 - No editorializing about the writing process itself (no "as we saw earlier", no meta-commentary about the course) — write as current-state technical prose, same register as the rest of the deepseek-harness documentation it draws from.
-
-## Chapter showcases (StepDiagram / SeamSimulator)
-
-A small, fixed set of chapters get an animated, step-through diagram and/or a replayable "seam simulator" rendered above their prose body — see `web/src/data/chapter-showcases.ts`, keyed by chapter slug. This is deliberately not applied to every chapter; most chapters render through the plain Markdown+Mermaid baseline. If you are asked to add or update a showcase entry:
-
-- Every node label, event name, and provider name in the showcase data must be traceable to that chapter's own `sources` citations. This file is illustrative UI data, not a place to invent a plausible-sounding event that isn't in the real event vocabulary.
-- A `StepDiagram` entry needs `nodes`/`edges` (fixed layout) and `steps` (each naming which node/edge ids are "active" at that step, plus a title/desc). Edge routing is computed automatically (see `web/src/components/diagram/edge-routing.ts`) — do not hand-place edge paths.
-- A `SeamSimulator` entry needs a `title`/`description` and an ordered `steps` array of `{ type, content, annotation, providerName? }`, where `type` is one of `request | dispatch | provider_selected | provider_execute | result`.

@@ -1,49 +1,11 @@
 ---
 id: s01
 slug: s01-cordis-primer
-title: "Cordis 五个核心概念"
-summary: "deepseek-harness 底层的插件框架：ctx 上的服务、inject、effect 与 waterfall 分发。"
+title: Cordis 五个核心概念
+summary: deepseek-harness 底层的插件框架：ctx 上的服务、inject、effect 与 waterfall 分发。
+seamKind: non-mechanism
 module: foundations
 order: 1
-sources:
-  - path: docs/cordis-primer.zh.md
-    label: "Cordis 入门"
-  - path: docs/cordis-tutorial/01-first-plugin.zh.md
-    label: "教程第 1 章：编写第一个插件"
-  - path: docs/cordis-tutorial/02-lifecycle-and-effects.zh.md
-    label: "教程第 2 章：生命周期与 effect"
-  - path: docs/cordis-tutorial/03-services.zh.md
-    label: "教程第 3 章：服务"
-  - path: docs/cordis-tutorial/04-events.zh.md
-    label: "教程第 4 章：事件"
-  - path: vendor/cordis/src/service.ts
-    lineStart: 5
-    lineEnd: 59
-    label: "Service 基类与构造函数"
-  - path: vendor/cordis/src/context.ts
-    lineStart: 16
-    lineEnd: 33
-    label: "Context 接口：混入 ctx 的内置服务"
-  - path: vendor/cordis/src/registry.ts
-    lineStart: 92
-    lineEnd: 110
-    label: "Plugin.Base 元数据：name、Config、inject、provide"
-  - path: vendor/cordis/src/fiber.ts
-    lineStart: 140
-    lineEnd: 153
-    label: "FiberState 枚举与生命周期注释"
-  - path: vendor/cordis/src/fiber.ts
-    lineStart: 402
-    lineEnd: 418
-    label: "Fiber.effect() 注释与重载签名"
-  - path: vendor/cordis/src/events.ts
-    lineStart: 24
-    lineEnd: 32
-    label: "DispatchMode 类型"
-  - path: vendor/cordis/src/events.ts
-    lineStart: 76
-    lineEnd: 97
-    label: "ctx.waterfall 与 ctx.on 的声明"
 ---
 
 ## 为什么从这里开始

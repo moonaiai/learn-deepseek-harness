@@ -1,53 +1,12 @@
 ---
 id: s11
 slug: s11-llm-seam
-title: "LLM 接缝"
-summary: "ctx.llm 把 Service Definition 与 Consumer 合并进 dsh-llm 一个包，因为它的 Consumer 就是 agent loop 本身；dsh-llm-deepseek 与 dsh-llm-pi-ai 分成两个 Service Provider,是因为厂商之间线上协议与推理方言的分歧是真实存在的工程问题，而非风格偏好。"
+title: LLM 接缝
+summary: ctx.llm 把 Service Definition 与 Consumer 合并进 dsh-llm 一个包，因为它的 Consumer 就是
+  agent loop 本身；dsh-llm-deepseek 与 dsh-llm-pi-ai 分成两个 Service Provider,是因为厂商之间线上协议与推理方言的分歧是真实存在的工程问题，而非风格偏好。
+seamKind: seam
 module: world-and-collab-seams
 order: 11
-sources:
-  - path: packages/llm/README.zh.md
-    label: "llm/ 包家族概述（中文）"
-  - path: packages/llm/llm/README.zh.md
-    label: "dsh-llm Service Definition + Consumer README（中文）"
-  - path: packages/llm/llm-deepseek/README.zh.md
-    label: "dsh-llm-deepseek README（中文）"
-  - path: packages/llm/llm-pi-ai/README.zh.md
-    label: "dsh-llm-pi-ai README（中文）"
-  - path: packages/llm/llm-retry/README.zh.md
-    label: "dsh-llm-retry README（中文）"
-  - path: packages/llm/token-meter/README.zh.md
-    label: "dsh-token-meter README（中文）"
-  - path: docs/capability-seams.zh.md
-    lineStart: 417
-    lineEnd: 417
-    label: "生成的能力-seam 表中 ctx.llm 一行"
-  - path: docs/architecture.zh.md
-    lineStart: 102
-    lineEnd: 106
-    label: "能力 seam 一节（ctx.llm 注册行）"
-  - path: .agents/notes/implemented/architecture/2026-06-13-twin-llm-adapters.zh.md
-    label: "孪生 LLM 适配器 Agent Note（为什么故意做两个适配器，中文）"
-  - path: packages/llm/llm/src/index.ts
-    lineStart: 180
-    lineEnd: 233
-    label: "LlmAdapter 抽象基类"
-  - path: packages/llm/llm/src/index.ts
-    lineStart: 284
-    lineEnd: 294
-    label: "LlmRuntime extends Service，占据 ctx.llm"
-  - path: packages/llm/llm/src/index.ts
-    lineStart: 338
-    lineEnd: 365
-    label: "registerAdapter() 的提交/替换机制"
-  - path: packages/llm/llm-deepseek/src/adapter.ts
-    lineStart: 158
-    lineEnd: 232
-    label: "DeepSeekAdapter：直连 fetch + SSE 的 stream()"
-  - path: packages/llm/llm-pi-ai/src/adapter.ts
-    lineStart: 186
-    lineEnd: 236
-    label: "PiAiAdapter：profile 快照 + pi-ai Models 集合"
 ---
 
 ## 这一章在全局中的位置

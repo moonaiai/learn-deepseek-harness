@@ -1,63 +1,13 @@
 ---
 id: s14
 slug: s14-todo-and-plan-mode
-title: "todo_write and Plan Mode"
-summary: "Two collaboration mechanisms built entirely from ordinary session-log primitives, not capability seams — the todo_write tool's whole-list task snapshot, and plan mode's logged propose/review/exit cycle around exit_plan_mode"
+title: todo_write and Plan Mode
+summary: Two collaboration mechanisms built entirely from ordinary session-log primitives,
+  not capability seams — the todo_write tool's whole-list task snapshot, and plan
+  mode's logged propose/review/exit cycle around exit_plan_mode
+seamKind: non-seam
 module: world-and-collab-seams
 order: 14
-sources:
-  - path: packages/todo/README.md
-    label: "todo/ package group overview"
-  - path: packages/todo/tool-todo/README.md
-    label: "dsh-tool-todo package README"
-  - path: packages/plan/README.md
-    label: "plan/ package group overview"
-  - path: packages/plan/plan-mode/README.md
-    label: "dsh-plan-mode package README"
-  - path: docs/subsystems/plan.md
-    label: "Plan Mode subsystem reference"
-  - path: docs/capability-seams.md
-    lineStart: 436
-    lineEnd: 436
-    label: "Generated Role classification: ctx.planMode = core"
-  - path: docs/capability-seams.md
-    lineStart: 439
-    lineEnd: 439
-    label: "Generated Role classification: ctx.sessionProjections = core"
-  - path: .agents/notes/implemented/simplification/2026-07-22-plan-specific-collaboration-state.md
-    label: "Plan-specific collaboration state Agent Note"
-  - path: .agents/notes/implemented/feature/2026-06-29-todo-write-tool.md
-    label: "The todo_write tool Agent Note"
-  - path: .agents/notes/implemented/feature/2026-07-28-todo-plan-clears-on-next-turn.md
-    label: "Todo plan strip clears on the next turn Agent Note"
-  - path: packages/todo/tool-todo/src/index.ts
-    lineStart: 91
-    lineEnd: 111
-    label: "toTodoList() value validation"
-  - path: packages/todo/tool-todo/src/index.ts
-    lineStart: 128
-    lineEnd: 148
-    label: "todos projection unit registration"
-  - path: packages/todo/tool-todo/src/index.ts
-    lineStart: 206
-    lineEnd: 223
-    label: "todo_write execute() — append and owning-agent check"
-  - path: packages/plan/plan-mode/src/index.ts
-    lineStart: 184
-    lineEnd: 233
-    label: "PlanModeController constructor — pre-step listener and plan:policy section"
-  - path: packages/plan/plan-mode/src/index.ts
-    lineStart: 321
-    lineEnd: 380
-    label: "exit_plan_mode execute() — review through ctx.userQuestions"
-  - path: packages/plan/plan-mode/src/index.ts
-    lineStart: 425
-    lineEnd: 445
-    label: "PlanModeController.set() — committed/queued/cancelled/noop"
-  - path: docs/tool-catalog.md
-    lineStart: 1682
-    lineEnd: 1730
-    label: "Generated todo_write tool-catalog entry"
 ---
 
 ## Not a capability seam — and that's the point

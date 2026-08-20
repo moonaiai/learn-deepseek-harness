@@ -1,0 +1,134 @@
+{
+  "diagram": {
+    "width": 420,
+    "height": 260,
+    "nodes": [
+      {
+        "id": "definition",
+        "label": "ShellExecutor\n(Service Definition)",
+        "x": 210,
+        "y": 40,
+        "width": 200,
+        "height": 44
+      },
+      {
+        "id": "provider_local",
+        "label": "dsh-bash-local",
+        "x": 110,
+        "y": 130,
+        "width": 140,
+        "height": 40
+      },
+      {
+        "id": "provider_sandbox",
+        "label": "dsh-bash-sandbox",
+        "x": 310,
+        "y": 130,
+        "width": 150,
+        "height": 40
+      },
+      {
+        "id": "consumer",
+        "label": "dsh-tool-bash\n(Consumer)",
+        "x": 210,
+        "y": 220,
+        "width": 160,
+        "height": 44
+      }
+    ],
+    "edges": [
+      {
+        "from": "definition",
+        "to": "provider_local",
+        "label": "implements"
+      },
+      {
+        "from": "definition",
+        "to": "provider_sandbox",
+        "label": "implements"
+      },
+      {
+        "from": "provider_local",
+        "to": "consumer"
+      },
+      {
+        "from": "provider_sandbox",
+        "to": "consumer"
+      }
+    ],
+    "steps": [
+      {
+        "activeNodeIds": [
+          "definition"
+        ],
+        "activeEdgeIds": [],
+        "title": "Service Definition",
+        "desc": "ShellExecutor owns ctx.shell and the vocabulary — never a bare interface."
+      },
+      {
+        "activeNodeIds": [
+          "provider_local"
+        ],
+        "activeEdgeIds": [
+          "definition->provider_local"
+        ],
+        "title": "Provider: local",
+        "desc": "dsh-bash-local runs bash through real subprocesses."
+      },
+      {
+        "activeNodeIds": [
+          "provider_sandbox"
+        ],
+        "activeEdgeIds": [
+          "definition->provider_sandbox"
+        ],
+        "title": "Provider: sandboxed",
+        "desc": "dsh-bash-sandbox wraps the same argv through ctx.sandbox."
+      },
+      {
+        "activeNodeIds": [
+          "consumer"
+        ],
+        "activeEdgeIds": [
+          "provider_local->consumer",
+          "provider_sandbox->consumer"
+        ],
+        "title": "Consumer",
+        "desc": "dsh-tool-bash injects ctx.shell by key — never a provider-specific type."
+      }
+    ]
+  },
+  "simulator": {
+    "title": "One bash call, two possible providers",
+    "description": "The same tool call dispatched through whichever provider is mounted — the consumer never changes.",
+    "steps": [
+      {
+        "type": "request",
+        "content": "tool/call: bash({ command: \"npm test\" })",
+        "annotation": "dsh-tool-bash injects ctx.shell by key, not by provider type."
+      },
+      {
+        "type": "dispatch",
+        "content": "ctx.shell.run(request)",
+        "annotation": "The registry doesn't know or care which provider is mounted."
+      },
+      {
+        "type": "provider_selected",
+        "content": "resolved provider: dsh-bash-sandbox",
+        "annotation": "Whichever provider this deployment mounted at boot.",
+        "providerName": "dsh-bash-sandbox"
+      },
+      {
+        "type": "provider_execute",
+        "content": "spawn through ctx.subprocess, confined via ctx.sandbox",
+        "annotation": "The exact same argv a local executor would run, now fenced.",
+        "providerName": "dsh-bash-sandbox"
+      },
+      {
+        "type": "result",
+        "content": "tool/result: exit 0, stdout captured",
+        "annotation": "dsh-tool-bash's own source never changed for this swap."
+      }
+    ]
+  }
+}

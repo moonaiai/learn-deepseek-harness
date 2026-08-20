@@ -1,0 +1,106 @@
+{
+  "sources": [
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 437,
+      "lineEnd": 437,
+      "label": "ctx.agentPresets classified Role: core, not seam"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 468,
+      "lineEnd": 469,
+      "label": "ctx.dynamicCordisRunner and ctx.cordisInspect classified Role: core"
+    },
+    {
+      "path": "packages/preset/README.md",
+      "label": "preset/ package group overview"
+    },
+    {
+      "path": "packages/preset/agent-presets/README.md",
+      "label": "dsh-agent-presets: the AgentPresets service"
+    },
+    {
+      "path": "packages/preset/persona/README.md",
+      "label": "dsh-persona: the agent persona as a composable row"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-08-03-per-session-agent-presets.md",
+      "label": "Agent Note: a session's agent is composed from a preset cordis.yml"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-08-08-per-preset-standing-mounts.md",
+      "label": "Agent Note: per-preset standing mounts over a scope parent chain"
+    },
+    {
+      "path": "packages/extensions/README.md",
+      "label": "extensions/ package group overview"
+    },
+    {
+      "path": "docs/subsystems/extensions.md",
+      "label": "Generated extensions subsystem doc (Cordis API for ctx.dynamicCordisRunner, ctx.cordisInspect)"
+    },
+    {
+      "path": "packages/extensions/tool-cordis/README.md",
+      "label": "dsh-tool-cordis: the model-facing tool verbs"
+    },
+    {
+      "path": "packages/extensions/tool-cordis/src/index.ts",
+      "lineStart": 26,
+      "lineEnd": 27,
+      "label": "The seven registered tool names and their injects"
+    },
+    {
+      "path": "packages/extensions/cordis-host-runner/README.md",
+      "label": "dsh-cordis-host-runner: definition registry and vm sandbox"
+    },
+    {
+      "path": "packages/extensions/cordis-host-runner/src/sandbox.ts",
+      "lineStart": 84,
+      "lineEnd": 119,
+      "label": "Sandbox globals and the Node-API redirect traps"
+    },
+    {
+      "path": "packages/extensions/cordis-host-runner/src/lifecycle.ts",
+      "lineStart": 22,
+      "lineEnd": 45,
+      "label": "startHostHalf: awaited settlement, disposed on failure"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-08-self-referential-cordis-toolset.md",
+      "label": "Agent Note: the self-referential cordis toolset"
+    },
+    {
+      "path": "apps/cli/config/agent-presets/minimal/agent.cordis.yml",
+      "label": "The minimal preset: two tools, a complete persona"
+    },
+    {
+      "path": "apps/cli/config/agent-presets/code/agent.cordis.yml",
+      "lineStart": 19,
+      "lineEnd": 25,
+      "label": "The isolate-realm rule, stated in the code preset's own header comment"
+    },
+    {
+      "path": "apps/cli/config/agent-presets/cordis/agent.cordis.yml",
+      "lineStart": 1,
+      "lineEnd": 30,
+      "label": "The cordis preset: standard plus self-modification, its trust header and persona"
+    },
+    {
+      "path": "apps/cli/config/agent-presets/cordis/agent.cordis.yml",
+      "lineStart": 241,
+      "lineEnd": 262,
+      "label": "The cordis preset: tool-cordis and the authoring skill"
+    },
+    {
+      "path": "apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md",
+      "label": "Skill: editing Cordis compositions"
+    },
+    {
+      "path": "docs/architecture.md",
+      "lineStart": 104,
+      "lineEnd": 112,
+      "label": "\"Where new behavior goes\" table, preset row"
+    }
+  ]
+}

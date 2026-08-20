@@ -6,7 +6,7 @@ import { useProgress } from "@/hooks/use-progress";
 /** Aggregate progress bar for the home page — counts completed chapters
  * against the full course length using the same localStorage-backed state
  * as the sidebar checkmarks and the per-chapter toggle. */
-export function HomeProgress({ chapters, title }: { locale: string; chapters: Chapter[]; title: string }) {
+export function HomeProgress({ chapters, title }: { chapters: Chapter[]; title: string }) {
   const { completed } = useProgress();
   const total = chapters.length;
   const done = chapters.filter((c) => completed.has(c.id)).length;

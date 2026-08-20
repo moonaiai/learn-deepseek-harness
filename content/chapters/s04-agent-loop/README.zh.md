@@ -1,45 +1,12 @@
 ---
 id: s04
 slug: s04-agent-loop
-title: "Turn/Step：Agent Loop 剖析"
-summary: "轮次与步骤驱动器：领取输入、跑完 pre-step waterfall、流式发起模型请求、调度工具调用、关闭轮次——对照具体的 ReactLoopAgent 逐行核对。"
+title: Turn/Step：Agent Loop 剖析
+summary: 轮次与步骤驱动器：领取输入、跑完 pre-step waterfall、流式发起模型请求、调度工具调用、关闭轮次——对照具体的 ReactLoopAgent
+  逐行核对。
+seamKind: non-mechanism
 module: foundations
 order: 4
-sources:
-  - path: docs/architecture.zh.md
-    lineStart: 63
-    lineEnd: 90
-    label: "轮次流程 ASCII 时序"
-  - path: docs/agent-lifecycle.zh.md
-    label: "Agent 轮次与步骤生命周期（mermaid）"
-  - path: packages/core/agent-loop/README.zh.md
-    label: "dsh-agent-loop 包 README"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 246
-    lineEnd: 330
-    label: "ReactLoopAgent.turn()"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 332
-    lineEnd: 401
-    label: "ReactLoopAgent.step()"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 407
-    lineEnd: 495
-    label: "ReactLoopAgent.buildRequest()"
-  - path: packages/core/agent-loop/src/tool-calls.ts
-    lineStart: 59
-    lineEnd: 101
-    label: "executeToolCalls()"
-  - path: packages/core/agent-loop/src/tool-calls.ts
-    lineStart: 121
-    lineEnd: 246
-    label: "runGroup() 调度器"
-  - path: docs/tool-execution-pipeline.zh.md
-    label: "工具执行流水线流程图"
-  - path: docs/subsystems/core.zh.md
-    lineStart: 865
-    lineEnd: 1021
-    label: "agent/* 事件目录"
 ---
 
 ## 两个精确定义的词

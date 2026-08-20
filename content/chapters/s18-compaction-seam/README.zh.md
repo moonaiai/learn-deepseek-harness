@@ -1,61 +1,12 @@
 ---
 id: s18
 slug: s18-compaction-seam
-title: "上下文压缩"
-summary: "ctx.compaction 能力 seam 与 compaction-basic 压缩后端：harness 如何检测 token 压力、通过一次直接的 LLM 调用摘要较早的历史，并用一条可记录、可重放的检查点事件替换它。"
+title: 上下文压缩
+summary: ctx.compaction 能力 seam 与 compaction-basic 压缩后端：harness 如何检测 token 压力、通过一次直接的
+  LLM 调用摘要较早的历史，并用一条可记录、可重放的检查点事件替换它。
+seamKind: seam
 module: extension-memory-seams
 order: 18
-sources:
-  - path: packages/compaction/README.md
-    label: "compaction/ 包家族总览"
-  - path: docs/subsystems/compaction.md
-    label: "生成的压缩子系统参考文档"
-  - path: packages/compaction/compaction/README.md
-    label: "dsh-compaction Service Definition 包 README"
-  - path: packages/compaction/compaction-basic/README.md
-    label: "dsh-compaction-basic Service Provider 包 README"
-  - path: packages/compaction/command-compact/README.md
-    label: "dsh-command-compact Consumer 包 README"
-  - path: packages/compaction/compaction-tool-result-pruner/README.md
-    label: "dsh-compaction-tool-result-pruner 配套包 README"
-  - path: .agents/notes/implemented/feature/2026-06-18-compaction-capability-seam.md
-    label: "Agent Note：压缩作为能力 seam"
-  - path: .agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md
-    label: "Agent Note：调用后压缩压力与上下文溢出恢复"
-  - path: .agents/notes/implemented/feature/2026-07-30-queued-manual-compaction.md
-    label: "Agent Note：带单一持久锁的排队式手动压缩"
-  - path: packages/compaction/compaction/src/index.ts
-    lineStart: 96
-    lineEnd: 170
-    label: "CompactionEngine 抽象 Service 类"
-  - path: packages/compaction/compaction/src/types.ts
-    lineStart: 16
-    lineEnd: 90
-    label: "compaction/* SessionEventMap 声明合并"
-  - path: packages/compaction/compaction/src/types.ts
-    lineStart: 92
-    lineEnd: 119
-    label: "CompactionResult"
-  - path: packages/compaction/compaction/src/checkpoint.ts
-    lineStart: 1
-    lineEnd: 51
-    label: "compactCheckpointSource / isCompactCheckpointSource"
-  - path: packages/compaction/compaction-basic/src/index.ts
-    lineStart: 137
-    lineEnd: 224
-    label: "BasicCompactionEngine._registerAutomaticCompaction()"
-  - path: packages/compaction/compaction-basic/src/index.ts
-    lineStart: 258
-    lineEnd: 332
-    label: "BasicCompactionEngine.compactIfNeeded()"
-  - path: packages/compaction/compaction-basic/src/region.ts
-    lineStart: 152
-    lineEnd: 254
-    label: "compactSurfaceRegion() —— 唯一的共享事务"
-  - path: packages/compaction/compaction-basic/src/summarizer.ts
-    lineStart: 121
-    lineEnd: 182
-    label: "summarizeWithLlm() —— 一次性的 ctx.llm.stream() 调用"
 ---
 
 ## 压缩要防止什么

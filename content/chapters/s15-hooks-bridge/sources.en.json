@@ -1,0 +1,98 @@
+{
+  "sources": [
+    {
+      "path": "packages/hooks/README.md",
+      "label": "hooks/ group overview"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 448,
+      "lineEnd": 448,
+      "label": "ctx.shell row: hooks-claude-code/hooks-codex as direct consumers"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 422,
+      "lineEnd": 422,
+      "label": "ctx.sessionPersistence row: hooks-claude-code/hooks-codex as direct consumers"
+    },
+    {
+      "path": "packages/hooks/hooks-claude-code/src/index.ts",
+      "lineStart": 39,
+      "lineEnd": 42,
+      "label": "name/inject = ['shell'] — namespace plugin, no default export"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-06-30-interception-extension-points.md",
+      "label": "Interception extension points Agent Note"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/README.md",
+      "label": "dsh-hook-protocol README"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/src/types.ts",
+      "lineStart": 89,
+      "lineEnd": 137,
+      "label": "HookOutput — the dialect-neutral outcome"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/src/codec.ts",
+      "lineStart": 59,
+      "lineEnd": 89,
+      "label": "parseHookOutput"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/src/merge.ts",
+      "lineStart": 34,
+      "lineEnd": 52,
+      "label": "deny > ask > allow precedence"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/src/matcher.ts",
+      "lineStart": 37,
+      "lineEnd": 65,
+      "label": "matcherDiagnostic / matchesMatcher"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/src/runner.ts",
+      "lineStart": 67,
+      "lineEnd": 106,
+      "label": "runHook — execution through ctx.shell"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/src/detached.ts",
+      "lineStart": 43,
+      "lineEnd": 62,
+      "label": "createDetachedRuns — quiescence tracking"
+    },
+    {
+      "path": "packages/hooks/hook-protocol/src/events.ts",
+      "lineStart": 75,
+      "lineEnd": 104,
+      "label": "appendHookInvoked / appendHookResult"
+    },
+    {
+      "path": "packages/hooks/hooks-claude-code/README.md",
+      "label": "dsh-hooks-claude-code README"
+    },
+    {
+      "path": "packages/hooks/hooks-codex/README.md",
+      "label": "dsh-hooks-codex README"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-06-30-hook-protocol-lib.md",
+      "label": "dsh-hook-protocol Agent Note"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-06-30-hook-bridges.md",
+      "label": "hook bridges Agent Note"
+    },
+    {
+      "path": "docs/tool-execution-pipeline.md",
+      "lineStart": 8,
+      "lineEnd": 48,
+      "label": "Tool execution pipeline diagram (hook-touched stages)"
+    }
+  ]
+}

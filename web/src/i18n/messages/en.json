@@ -22,6 +22,7 @@
   },
   "chapter": {
     "sourcesTitle": "Sources cited in this chapter",
+    "relatedChaptersTitle": "Related chapters",
     "prev": "Previous",
     "next": "Next",
     "markComplete": "Mark as complete",

@@ -1,69 +1,12 @@
 ---
 id: s09
 slug: s09-subprocess-and-terminal
-title: "子进程与终端"
-summary: "ctx.subprocess 作为 bash、LSP、PTY 与三个进程外 subagent 后端共享的进程基底,以及 ctx.terminals 作为其上一个独立的、更小的持久 PTY 会话 seam。"
+title: 子进程与终端
+summary: ctx.subprocess 作为 bash、LSP、PTY 与三个进程外 subagent 后端共享的进程基底,以及 ctx.terminals
+  作为其上一个独立的、更小的持久 PTY 会话 seam。
+seamKind: seam
 module: execution-seams
 order: 9
-sources:
-  - path: packages/subprocess/README.md
-    label: "subprocess/ 包组 README"
-  - path: packages/subprocess/subprocess/README.md
-    label: "dsh-subprocess Service Definition README"
-  - path: packages/subprocess/subprocess-local/README.md
-    label: "dsh-subprocess-local Service Provider README"
-  - path: packages/subprocess/subprocess/src/index.ts
-    lineStart: 102
-    lineEnd: 140
-    label: "抽象类 SubprocessRuntime:resolveExecutable / spawn / spawnTerminal"
-  - path: packages/subprocess/subprocess-local/src/index.ts
-    lineStart: 37
-    lineEnd: 37
-    label: "LocalSubprocessRuntime extends SubprocessRuntime"
-  - path: packages/subprocess/subprocess-local/src/index.ts
-    lineStart: 161
-    lineEnd: 184
-    label: "spawnTerminal():node-pty 分配与终端句柄接线"
-  - path: docs/capability-seams.md
-    lineStart: 447
-    lineEnd: 447
-    label: "ctx.subprocess seam 表格行:七个直接 Consumer"
-  - path: docs/capability-seams.md
-    lineStart: 450
-    lineEnd: 450
-    label: "ctx.terminals seam 表格行"
-  - path: docs/architecture.md
-    lineStart: 102
-    lineEnd: 102
-    label: "「Filesystem and subprocess providers share one execution world」"
-  - path: .agents/notes/implemented/architecture/2026-07-26-subprocess-seam.md
-    label: "子进程 seam Agent Note(为何进程半边要从 dsh-bash-local 中拆出)"
-  - path: packages/e2b/subprocess-e2b/README.md
-    lineStart: 1
-    lineEnd: 5
-    label: "dsh-subprocess-e2b:既有 Bash/PTY/LSP 消费方原样迁移到远程沙箱"
-  - path: packages/terminal/README.md
-    label: "terminal/ 包组 README"
-  - path: packages/terminal/terminal/README.md
-    label: "dsh-terminal Service Definition README"
-  - path: packages/terminal/terminal-bash/README.md
-    label: "dsh-terminal-bash Service Provider README"
-  - path: packages/terminal/tool-terminal/README.md
-    label: "dsh-tool-terminal Consumer README"
-  - path: packages/terminal/terminal-bash/src/index.ts
-    lineStart: 23
-    lineEnd: 25
-    label: "terminal-bash 插件名与 inject: ['terminals', 'sandboxPolicy', 'subprocess']"
-  - path: packages/terminal/terminal-bash/src/index.ts
-    lineStart: 102
-    lineEnd: 118
-    label: "BashTerminalBackend:spawnTerminal 默认调用 ctx.subprocess.spawnTerminal"
-  - path: .agents/notes/implemented/feature/2026-07-16-persistent-pty-sessions.md
-    label: "持久 PTY 会话 Agent Note(为何 PTY 是独立于一次性 bash 的能力)"
-  - path: packages/shell/tool-bash-persistent/src/index.ts
-    lineStart: 401
-    lineEnd: 402
-    label: "tool-bash-persistent:name/inject = ['tools', 'terminals']——一个未出现在生成的 ctx.terminals 表格行中的 Consumer"
 ---
 
 ## 一个执行世界,两层 seam

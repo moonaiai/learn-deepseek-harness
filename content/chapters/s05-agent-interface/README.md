@@ -1,63 +1,12 @@
 ---
 id: s05
 slug: s05-agent-interface
-title: "The Agent Interface and Registry"
-summary: "The loop-independent Agent contract, the AgentRegistry factory pattern, and process-local initiator scope"
+title: The Agent Interface and Registry
+summary: The loop-independent Agent contract, the AgentRegistry factory pattern, and
+  process-local initiator scope
+seamKind: non-mechanism
 module: foundations
 order: 5
-sources:
-  - path: packages/core/agent/README.md
-    label: "dsh-agent README"
-  - path: packages/core/agent/src/runtime-types.ts
-    lineStart: 24
-    lineEnd: 144
-    label: "AgentOptions, AgentStatus, Agent interface"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 172
-    lineEnd: 214
-    label: "AgentHandle, AgentFactory"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 256
-    lineEnd: 298
-    label: "AgentRegistry fields and constructor"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 300
-    lineEnd: 388
-    label: "currentInitiator/requireInitiator/withInitiator/withoutInitiator, setFactory"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 405
-    lineEnd: 457
-    label: "create, resume, register"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 474
-    lineEnd: 577
-    label: "enter/detachEntered/announce ordered publication"
-  - path: packages/core/agent/src/index.ts
-    lineStart: 640
-    lineEnd: 670
-    label: "runWithInitiator (AsyncLocalStorage boundary + drain tracking)"
-  - path: packages/core/agent/src/dispatch.ts
-    label: "agentEvents fused dispatcher and assembleContextFor"
-  - path: packages/core/agent/src/inbox.ts
-    label: "Inbox projection of agent/inbox/spliced"
-  - path: packages/core/agent/src/model-selection.ts
-    label: "installModelSelection"
-  - path: packages/core/agent/src/consumed-work.ts
-    label: "foldConsumedWork"
-  - path: .agents/notes/implemented/architecture/2026-07-15-agent-initiator-scope.md
-    label: "Agent Note: Initiating Agent scope over AsyncLocalStorage"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 182
-    lineEnd: 191
-    label: "wakeDriver() wraps kick() in withInitiator(this, ...)"
-  - path: packages/core/agent-loop/src/index.ts
-    lineStart: 296
-    lineEnd: 350
-    label: "AgentLoop implements AgentFactory, registers via setFactory"
-  - path: docs/architecture.md
-    lineStart: 43
-    lineEnd: 51
-    label: "Core packages table: core/agent vs core/agent-loop"
 ---
 
 ## Why this package exists separately from the loop

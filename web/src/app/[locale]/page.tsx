@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { ArrowRight, GitCommitHorizontal, Map } from "lucide-react";
+import { ArrowRight, GitCommitHorizontal, Map as MapIcon } from "lucide-react";
 import { getTranslator } from "@/i18n/i18n-server";
 import { getAllChapters } from "@/lib/content";
-import { MODULES, moduleClasses } from "@/lib/modules";
-import { Card } from "@/components/ui/card";
 import { HomeProgress } from "@/components/home/home-progress";
+import { ModuleMap } from "@/components/home/module-map";
 import { SOURCE_COMMIT, SOURCE_REPO } from "@/lib/source-link";
 import { LOCALES, resolveLocale } from "@/lib/types";
 
@@ -17,7 +16,6 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   const locale = resolveLocale(rawLocale);
   const t = getTranslator(locale);
   const chapters = getAllChapters(locale);
-  const modules = [...MODULES].sort((a, b) => a.order - b.order);
   const firstChapter = chapters[0];
 
   return (
@@ -40,7 +38,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
             href={`/${locale}/concept-map`}
             className="inline-flex items-center gap-2 rounded-lg border border-[--color-border] px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-[--color-surface-hover]"
           >
-            <Map size={16} />
+            <MapIcon size={16} />
             {t("home.ctaSecondary")}
           </Link>
         </div>
@@ -58,39 +56,13 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </p>
       </section>
 
-      <section className="mb-8">
-        <HomeProgress locale={locale} chapters={chapters} title={t("home.progressTitle")} />
+      <section className="mb-10">
+        <HomeProgress chapters={chapters} title={t("home.progressTitle")} />
       </section>
 
       <section>
         <h2 className="mb-4 text-lg font-semibold">{t("home.modulesTitle")}</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {modules.map((mod) => {
-            const inModule = chapters.filter((c) => c.module === mod.id);
-            const classes = moduleClasses(mod.id);
-            return (
-              <Card key={mod.id} className="flex flex-col">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${classes.dot}`} />
-                  <h3 className="font-semibold">{mod.title[locale]}</h3>
-                </div>
-                <p className="mb-4 flex-1 text-sm text-[--color-text-muted]">{mod.description[locale]}</p>
-                <ul className="space-y-1">
-                  {inModule.map((chapter) => (
-                    <li key={chapter.slug}>
-                      <Link
-                        href={`/${locale}/${chapter.slug}`}
-                        className="text-sm text-[--color-text-muted] transition-colors hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        {chapter.title}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            );
-          })}
-        </div>
+        <ModuleMap locale={locale} chapters={chapters} />
       </section>
     </div>
   );

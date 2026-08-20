@@ -1,0 +1,124 @@
+{
+  "sources": [
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 434,
+      "lineEnd": 434,
+      "label": "ctx.tools 一行：Role 为 core，唯一所有者，没有 Service Provider 列"
+    },
+    {
+      "path": "docs/glossary.md",
+      "lineStart": 7,
+      "lineEnd": 9,
+      "label": "capability-seam 词条：必须三个角色齐全才算 seam"
+    },
+    {
+      "path": "packages/mcp/README.zh.md",
+      "label": "mcp/ 分组总览"
+    },
+    {
+      "path": "packages/mcp/mcp-client/README.zh.md",
+      "label": "dsh-mcp-client README"
+    },
+    {
+      "path": "packages/mcp/mcp-client/src/index.ts",
+      "lineStart": 39,
+      "lineEnd": 45,
+      "label": "activeServerNames —— 按 app 隔离的 serverName 占用表"
+    },
+    {
+      "path": "packages/mcp/mcp-client/src/tools.ts",
+      "lineStart": 82,
+      "lineEnd": 102,
+      "label": "publicToolName —— 确定性的 mcp__<serverName>__<rawName> 命名"
+    },
+    {
+      "path": "packages/mcp/mcp-client/src/tools.ts",
+      "lineStart": 104,
+      "lineEnd": 174,
+      "label": "syncTools —— 先拉取再替换的世代同步"
+    },
+    {
+      "path": "packages/mcp/mcp-client/src/connection.ts",
+      "lineStart": 1,
+      "lineEnd": 16,
+      "label": "连接 supervisor 模块文档 —— 重连预算"
+    },
+    {
+      "path": "examples/mcp-memory/README.zh.md",
+      "label": "mcp-memory 示例：接入三个第三方 MCP 服务器"
+    },
+    {
+      "path": "packages/sdk/README.zh.md",
+      "label": "sdk/ 分组总览"
+    },
+    {
+      "path": "packages/sdk/protocol/README.zh.md",
+      "label": "dsh-sdk-protocol README"
+    },
+    {
+      "path": "packages/sdk/protocol/src/types.ts",
+      "lineStart": 100,
+      "lineEnd": 105,
+      "label": "HarnessSdkRequestMap —— 三个客户端到服务端方法"
+    },
+    {
+      "path": "packages/sdk/protocol/src/types.ts",
+      "lineStart": 92,
+      "lineEnd": 98,
+      "label": "HarnessSdkNotificationMap —— 四个服务端到客户端通知"
+    },
+    {
+      "path": "packages/sdk/protocol/src/transport.ts",
+      "lineStart": 56,
+      "lineEnd": 62,
+      "label": "JsonRpcLineTransport 类文档"
+    },
+    {
+      "path": "packages/sdk/client/README.zh.md",
+      "label": "dsh-sdk-client README"
+    },
+    {
+      "path": "packages/sdk/client/src/client.ts",
+      "lineStart": 33,
+      "lineEnd": 65,
+      "label": "HarnessClient 错误类与模块文档"
+    },
+    {
+      "path": "packages/sdk/server/README.zh.md",
+      "label": "dsh-sdk-jsonrpc-server README"
+    },
+    {
+      "path": "packages/sdk/server/src/server.ts",
+      "lineStart": 190,
+      "lineEnd": 201,
+      "label": "HarnessSdkJsonRpcServer.handleRequest —— 方法分发"
+    },
+    {
+      "path": "packages/acp/README.zh.md",
+      "label": "acp/ 分组总览"
+    },
+    {
+      "path": "packages/acp/acp/README.zh.md",
+      "label": "dsh-acp README"
+    },
+    {
+      "path": "packages/acp/acp/src/index.ts",
+      "lineStart": 212,
+      "lineEnd": 229,
+      "label": "approval/request → session/request_permission 桥接"
+    },
+    {
+      "path": "examples/jsonrpc-agent/README.zh.md",
+      "label": "jsonrpc-agent 示例（Python SDK 内置运行时）"
+    },
+    {
+      "path": "examples/acp-agent/README.zh.md",
+      "label": "acp-agent 示例（ACP 自动化服务器组合）"
+    },
+    {
+      "path": "docs/module-graph.md",
+      "label": "生成的模块依赖关系图"
+    }
+  ]
+}

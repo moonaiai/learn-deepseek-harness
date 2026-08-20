@@ -1,0 +1,86 @@
+{
+  "sources": [
+    {
+      "path": "examples/headless-agent/README.zh.md",
+      "label": "headless-agent 示例 README"
+    },
+    {
+      "path": "examples/headless-agent/cordis.yml",
+      "label": "headless-agent 测试/演示组合配置"
+    },
+    {
+      "path": "examples/headless-agent/composition.md",
+      "label": "生成的 headless-agent 组合关系图"
+    },
+    {
+      "path": "examples/headless-agent/goal.cordis.yml",
+      "label": "goal overlay：同会话目标工具"
+    },
+    {
+      "path": "examples/headless-agent/advanced.cordis.yml",
+      "label": "advanced overlay：Code Mode 与 Cordis 工具"
+    },
+    {
+      "path": "examples/headless-agent/e2b.cordis.yml",
+      "label": "e2b overlay：沙箱化 FS/子进程/PTY/LSP"
+    },
+    {
+      "path": "examples/headless-agent/pty.cordis.snapshot.yml",
+      "label": "pty overlay：可选的持久终端"
+    },
+    {
+      "path": "examples/headless-agent/subagent-inheritance.cordis.snapshot.yml",
+      "label": "subagent-inheritance overlay：委托策略的作用域收窄"
+    },
+    {
+      "path": "examples/acp-agent/README.zh.md",
+      "label": "acp-agent 示例 README"
+    },
+    {
+      "path": "docs/development.zh.md",
+      "lineStart": 127,
+      "lineEnd": 151,
+      "label": "Demos 一节：dsh --profile headless 的调用方式与前置条件"
+    },
+    {
+      "path": "apps/cli/README.zh.md",
+      "label": "dsh CLI 启动器 README"
+    },
+    {
+      "path": "apps/cli/reference/README.zh.md",
+      "lineStart": 7,
+      "lineEnd": 30,
+      "label": "Profile 启动与 headless 一次性任务参考"
+    },
+    {
+      "path": "packages/bundle/headless/README.zh.md",
+      "label": "@deepseek-ai/dsh-headless 组合包 README"
+    },
+    {
+      "path": "packages/bundle/headless/src/index.ts",
+      "lineStart": 90,
+      "lineEnd": 130,
+      "label": "headless-runner：创建 agent、followup、whenIdle、flush、exit"
+    },
+    {
+      "path": "packages/bundle/base/README.zh.md",
+      "label": "@deepseek-ai/dsh-base 组合包 README"
+    },
+    {
+      "path": "packages/session/session-persistence-jsonl/README.zh.md",
+      "label": "dsh-session-persistence-jsonl README"
+    },
+    {
+      "path": "packages/subagent/subagent/README.zh.md",
+      "label": "dsh-subagent seam README"
+    },
+    {
+      "path": "packages/workflow/tool-ralph/README.zh.md",
+      "label": "dsh-tool-ralph README"
+    },
+    {
+      "path": "packages/workflow/tool-workflow/README.zh.md",
+      "label": "dsh-tool-workflow README"
+    }
+  ]
+}

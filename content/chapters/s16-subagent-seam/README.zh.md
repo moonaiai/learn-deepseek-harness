@@ -1,63 +1,12 @@
 ---
 id: s16
 slug: s16-subagent-seam
-title: "Subagent：委派型 Provider"
-summary: "ctx.subagents 具名 provider 注册表与 dsh-tool-subagent 消费方——为什么委派是一个能力 seam，而非单一写死的机制，并配有一整族可替换的 provider：进程内 fork/spawn、ACP、Codex、Claude Code，乃至通过 SDK 驱动的另一个 harness"
+title: Subagent：委派型 Provider
+summary: ctx.subagents 具名 provider 注册表与 dsh-tool-subagent 消费方——为什么委派是一个能力 seam，而非单一写死的机制，并配有一整族可替换的
+  provider：进程内 fork/spawn、ACP、Codex、Claude Code，乃至通过 SDK 驱动的另一个 harness
+seamKind: seam
 module: extension-memory-seams
 order: 16
-sources:
-  - path: packages/subagent/README.zh.md
-    label: "subagent/ 包家族概述（中文）"
-  - path: docs/subsystems/subagent.zh.md
-    label: "Subagent 子系统参考（中文）"
-  - path: packages/subagent/subagent/README.zh.md
-    label: "dsh-subagent Service Definition README（中文）"
-  - path: packages/subagent/subagent/src/types.ts
-    lineStart: 86
-    lineEnd: 149
-    label: "SubagentCapabilities 与 SubagentStartRequest"
-  - path: packages/subagent/subagent/src/types.ts
-    lineStart: 249
-    lineEnd: 324
-    label: "SubagentRun 与 SubagentProvider 接口"
-  - path: packages/subagent/subagent/src/index.ts
-    lineStart: 171
-    lineEnd: 201
-    label: "SubagentRuntime 构造函数：继续执行管理器与投影注册"
-  - path: packages/subagent/subagent/src/index.ts
-    lineStart: 362
-    lineEnd: 426
-    label: "registerProvider / getProvider / list / start"
-  - path: packages/subagent/subagent-spawn-in-process/README.md
-    label: "dsh-subagent-spawn-in-process 包 README"
-  - path: packages/subagent/subagent-fork-in-process/README.zh.md
-    label: "dsh-subagent-fork-in-process 包 README（中文）"
-  - path: packages/subagent/subagent-in-process-driver/README.md
-    label: "dsh-subagent-in-process-driver 共享运行驱动器 README"
-  - path: packages/subagent/subagent-acp/README.md
-    label: "dsh-subagent-acp 包 README"
-  - path: packages/subagent/subagent-codex/README.md
-    label: "dsh-subagent-codex 包 README"
-  - path: packages/subagent/subagent-claude-code/README.zh.md
-    label: "dsh-subagent-claude-code 包 README（中文）"
-  - path: packages/subagent/subagent-dsh-sdk/README.md
-    label: "dsh-subagent-dsh-sdk 包 README"
-  - path: packages/subagent/tool-subagent/README.md
-    label: "dsh-tool-subagent Consumer README"
-  - path: packages/subagent/tool-subagent-control/README.md
-    label: "dsh-tool-subagent-control README（send_message、interrupt_agent、list_agents）"
-  - path: packages/subagent/tool-subagent-report/README.md
-    label: "dsh-tool-subagent-report README（子级到父级的 report 通道）"
-  - path: .agents/notes/implemented/feature/2026-06-21-subagent-capability-seam.zh.md
-    label: "Subagent 能力 seam Agent Note（规范设计记录，中文）"
-  - path: docs/capability-seams.zh.md
-    lineStart: 458
-    lineEnd: 458
-    label: "生成的能力-seam 表中 ctx.subagents 一行"
-  - path: docs/architecture.zh.md
-    lineStart: 106
-    lineEnd: 106
-    label: "Subagent provider 在同一接口背后同样千差万别"
 ---
 
 ## 一个 agent 把工作委派给另一个 agent

@@ -1,0 +1,106 @@
+{
+  "sources": [
+    {
+      "path": "packages/fs/README.md",
+      "label": "fs/ package family overview"
+    },
+    {
+      "path": "packages/fs/fs/README.md",
+      "label": "dsh-fs Service Definition README"
+    },
+    {
+      "path": "packages/fs/fs/src/index.ts",
+      "lineStart": 86,
+      "lineEnd": 250,
+      "label": "FileSystem abstract Service class: twelve primitives"
+    },
+    {
+      "path": "packages/fs/fs-local/README.md",
+      "label": "dsh-fs-local package README"
+    },
+    {
+      "path": "packages/fs/fs-local/src/index.ts",
+      "lineStart": 106,
+      "lineEnd": 124,
+      "label": "LocalFileSystem.resolve/processPath/fileUrl/contains"
+    },
+    {
+      "path": "packages/fs/fs-sandbox/README.md",
+      "label": "dsh-fs-sandbox package README"
+    },
+    {
+      "path": "packages/fs/fs-sandbox/src/index.ts",
+      "lineStart": 59,
+      "lineEnd": 148,
+      "label": "SandboxedFileSystem extends LocalFileSystem, fences writeText/editText"
+    },
+    {
+      "path": "packages/e2b/fs-e2b/README.md",
+      "label": "dsh-fs-e2b package README"
+    },
+    {
+      "path": "packages/fs/tool-fs/README.md",
+      "label": "dsh-tool-fs Consumer README"
+    },
+    {
+      "path": "packages/fs/tool-fs/src/index.ts",
+      "lineStart": 19,
+      "lineEnd": 22,
+      "label": "dsh-tool-fs: inject = ['tools', 'fs', 'systemPrompt']"
+    },
+    {
+      "path": "packages/fs/tool-fs-search/README.md",
+      "label": "dsh-tool-fs-search package README (bypasses ctx.fs)"
+    },
+    {
+      "path": "packages/fs/tool-fs-search/src/index.ts",
+      "lineStart": 1,
+      "lineEnd": 27,
+      "label": "Module doc: spawn-backed, not a ctx.fs provider method"
+    },
+    {
+      "path": "packages/fs/tool-fs-search/src/index.ts",
+      "lineStart": 67,
+      "lineEnd": 70,
+      "label": "dsh-tool-fs-search: inject = ['tools', 'systemPrompt', 'subprocess'], deliberately not fs"
+    },
+    {
+      "path": "packages/fs/fs-observation-policy/README.md",
+      "label": "dsh-fs-observation-policy package README (event gate, not a service)"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 456,
+      "lineEnd": 456,
+      "label": "ctx.fs row in the generated capability-seam table"
+    },
+    {
+      "path": "docs/architecture.md",
+      "lineStart": 102,
+      "lineEnd": 102,
+      "label": "Filesystem and subprocess providers share one execution world"
+    },
+    {
+      "path": "packages/lsp/README.md",
+      "label": "lsp/ package family overview"
+    },
+    {
+      "path": "packages/lsp/lsp/README.md",
+      "label": "dsh-lsp Service Definition README"
+    },
+    {
+      "path": "packages/lsp/lsp-stdio/README.md",
+      "label": "dsh-lsp-stdio package README"
+    },
+    {
+      "path": "packages/lsp/tool-lsp/README.md",
+      "label": "dsh-tool-lsp Consumer README"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 466,
+      "lineEnd": 466,
+      "label": "ctx.lsp row in the generated capability-seam table"
+    }
+  ]
+}

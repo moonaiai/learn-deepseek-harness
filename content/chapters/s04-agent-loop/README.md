@@ -1,45 +1,13 @@
 ---
 id: s04
 slug: s04-agent-loop
-title: "Turn/Step: Anatomy of the Agent Loop"
-summary: "The turn/step driver: claiming input, running the pre-step waterfall, streaming a model request, dispatching tool calls, and closing the turn — traced against the concrete ReactLoopAgent."
+title: 'Turn/Step: Anatomy of the Agent Loop'
+summary: 'The turn/step driver: claiming input, running the pre-step waterfall, streaming
+  a model request, dispatching tool calls, and closing the turn — traced against the
+  concrete ReactLoopAgent.'
+seamKind: non-mechanism
 module: foundations
 order: 4
-sources:
-  - path: docs/architecture.md
-    lineStart: 63
-    lineEnd: 90
-    label: "Turn flow ASCII sequence"
-  - path: docs/agent-lifecycle.md
-    label: "Agent Turn And Step Lifecycle (mermaid)"
-  - path: packages/core/agent-loop/README.md
-    label: "dsh-agent-loop package README"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 246
-    lineEnd: 330
-    label: "ReactLoopAgent.turn()"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 332
-    lineEnd: 401
-    label: "ReactLoopAgent.step()"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 407
-    lineEnd: 495
-    label: "ReactLoopAgent.buildRequest()"
-  - path: packages/core/agent-loop/src/tool-calls.ts
-    lineStart: 59
-    lineEnd: 101
-    label: "executeToolCalls()"
-  - path: packages/core/agent-loop/src/tool-calls.ts
-    lineStart: 121
-    lineEnd: 246
-    label: "runGroup() scheduler"
-  - path: docs/tool-execution-pipeline.md
-    label: "Tool execution pipeline flowchart"
-  - path: docs/subsystems/core.md
-    lineStart: 865
-    lineEnd: 1021
-    label: "agent/* event catalog"
 ---
 
 ## Two words, precisely defined

@@ -1,69 +1,13 @@
 ---
 id: s09
 slug: s09-subprocess-and-terminal
-title: "Subprocess and Terminal"
-summary: "ctx.subprocess as the shared process substrate under bash, LSP, PTY, and three out-of-process subagent backends, and ctx.terminals as its own smaller seam for owner-scoped persistent PTY sessions."
+title: Subprocess and Terminal
+summary: ctx.subprocess as the shared process substrate under bash, LSP, PTY, and
+  three out-of-process subagent backends, and ctx.terminals as its own smaller seam
+  for owner-scoped persistent PTY sessions.
+seamKind: seam
 module: execution-seams
 order: 9
-sources:
-  - path: packages/subprocess/README.md
-    label: "subprocess/ package-group README"
-  - path: packages/subprocess/subprocess/README.md
-    label: "dsh-subprocess Service Definition README"
-  - path: packages/subprocess/subprocess-local/README.md
-    label: "dsh-subprocess-local Service Provider README"
-  - path: packages/subprocess/subprocess/src/index.ts
-    lineStart: 102
-    lineEnd: 140
-    label: "abstract SubprocessRuntime: resolveExecutable / spawn / spawnTerminal"
-  - path: packages/subprocess/subprocess-local/src/index.ts
-    lineStart: 37
-    lineEnd: 37
-    label: "LocalSubprocessRuntime extends SubprocessRuntime"
-  - path: packages/subprocess/subprocess-local/src/index.ts
-    lineStart: 161
-    lineEnd: 184
-    label: "spawnTerminal(): node-pty allocation and terminal handle wiring"
-  - path: docs/capability-seams.md
-    lineStart: 447
-    lineEnd: 447
-    label: "ctx.subprocess seam row: seven direct Consumers"
-  - path: docs/capability-seams.md
-    lineStart: 450
-    lineEnd: 450
-    label: "ctx.terminals seam row"
-  - path: docs/architecture.md
-    lineStart: 102
-    lineEnd: 102
-    label: "\"Filesystem and subprocess providers share one execution world\""
-  - path: .agents/notes/implemented/architecture/2026-07-26-subprocess-seam.md
-    label: "Subprocess seam Agent Note (why the process half split out of dsh-bash-local)"
-  - path: packages/e2b/subprocess-e2b/README.md
-    lineStart: 1
-    lineEnd: 5
-    label: "dsh-subprocess-e2b: existing Bash/PTY/LSP consumers move to the remote sandbox unchanged"
-  - path: packages/terminal/README.md
-    label: "terminal/ package-group README"
-  - path: packages/terminal/terminal/README.md
-    label: "dsh-terminal Service Definition README"
-  - path: packages/terminal/terminal-bash/README.md
-    label: "dsh-terminal-bash Service Provider README"
-  - path: packages/terminal/tool-terminal/README.md
-    label: "dsh-tool-terminal Consumer README"
-  - path: packages/terminal/terminal-bash/src/index.ts
-    lineStart: 23
-    lineEnd: 25
-    label: "terminal-bash plugin name and inject: ['terminals', 'sandboxPolicy', 'subprocess']"
-  - path: packages/terminal/terminal-bash/src/index.ts
-    lineStart: 102
-    lineEnd: 118
-    label: "BashTerminalBackend: spawnTerminal defaults to ctx.subprocess.spawnTerminal"
-  - path: .agents/notes/implemented/feature/2026-07-16-persistent-pty-sessions.md
-    label: "Persistent PTY sessions Agent Note (why PTY is a separate capability from one-shot bash)"
-  - path: packages/shell/tool-bash-persistent/src/index.ts
-    lineStart: 401
-    lineEnd: 402
-    label: "tool-bash-persistent: name/inject = ['tools', 'terminals'] — a ctx.terminals Consumer absent from the generated ctx.terminals row"
 ---
 
 ## One execution world, two layers of seam

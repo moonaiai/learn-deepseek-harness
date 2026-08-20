@@ -1,0 +1,96 @@
+{
+  "sources": [
+    {
+      "path": "packages/subagent/README.md",
+      "label": "subagent/ package family overview"
+    },
+    {
+      "path": "docs/subsystems/subagent.md",
+      "label": "Subagent subsystem reference"
+    },
+    {
+      "path": "packages/subagent/subagent/README.md",
+      "label": "dsh-subagent Service Definition README"
+    },
+    {
+      "path": "packages/subagent/subagent/src/types.ts",
+      "lineStart": 86,
+      "lineEnd": 149,
+      "label": "SubagentCapabilities and SubagentStartRequest"
+    },
+    {
+      "path": "packages/subagent/subagent/src/types.ts",
+      "lineStart": 249,
+      "lineEnd": 324,
+      "label": "SubagentRun and SubagentProvider interfaces"
+    },
+    {
+      "path": "packages/subagent/subagent/src/index.ts",
+      "lineStart": 171,
+      "lineEnd": 201,
+      "label": "SubagentRuntime constructor: continuation manager and projection registration"
+    },
+    {
+      "path": "packages/subagent/subagent/src/index.ts",
+      "lineStart": 362,
+      "lineEnd": 426,
+      "label": "registerProvider / getProvider / list / start"
+    },
+    {
+      "path": "packages/subagent/subagent-spawn-in-process/README.md",
+      "label": "dsh-subagent-spawn-in-process package README"
+    },
+    {
+      "path": "packages/subagent/subagent-fork-in-process/README.md",
+      "label": "dsh-subagent-fork-in-process package README"
+    },
+    {
+      "path": "packages/subagent/subagent-in-process-driver/README.md",
+      "label": "dsh-subagent-in-process-driver shared run driver README"
+    },
+    {
+      "path": "packages/subagent/subagent-acp/README.md",
+      "label": "dsh-subagent-acp package README"
+    },
+    {
+      "path": "packages/subagent/subagent-codex/README.md",
+      "label": "dsh-subagent-codex package README"
+    },
+    {
+      "path": "packages/subagent/subagent-claude-code/README.md",
+      "label": "dsh-subagent-claude-code package README"
+    },
+    {
+      "path": "packages/subagent/subagent-dsh-sdk/README.md",
+      "label": "dsh-subagent-dsh-sdk package README"
+    },
+    {
+      "path": "packages/subagent/tool-subagent/README.md",
+      "label": "dsh-tool-subagent Consumer README"
+    },
+    {
+      "path": "packages/subagent/tool-subagent-control/README.md",
+      "label": "dsh-tool-subagent-control README (send_message, interrupt_agent, list_agents)"
+    },
+    {
+      "path": "packages/subagent/tool-subagent-report/README.md",
+      "label": "dsh-tool-subagent-report README (child-to-parent report channel)"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-06-21-subagent-capability-seam.md",
+      "label": "Subagent capability seam Agent Note (canonical design record)"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 458,
+      "lineEnd": 458,
+      "label": "ctx.subagents row in the generated capability-seam table"
+    },
+    {
+      "path": "docs/architecture.md",
+      "lineStart": 102,
+      "lineEnd": 102,
+      "label": "Subagent providers vary widely behind one interface"
+    }
+  ]
+}

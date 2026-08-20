@@ -1,20 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { CheckCircle2, Circle } from "lucide-react";
-import type { Chapter } from "@/lib/types";
-import { useI18n } from "@/i18n/i18n-client";
+import type { Chapter, Locale } from "@/lib/types";
 import { MODULES } from "@/lib/modules";
 import { moduleClasses } from "@/lib/modules";
 import { useProgress } from "@/hooks/use-progress";
+import { useI18n } from "@/i18n/i18n-client";
 import { cn } from "@/lib/utils";
 
+const KIND_MARKER: Record<Chapter["seamKind"], string> = {
+  seam: "◆",
+  "non-seam": "○",
+  "non-mechanism": "·",
+};
+
 /**
- * The course outline, grouped by module (see `lib/modules.ts`). Renders
+ * The course outline, grouped by module (see `lib/modules.ts`), with a
+ * per-chapter seamKind marker drawn next to each entry so the navigation
+ * shows which chapters are actually capability seams (◆), which are not
+ * (○), and which are the deliberately non-mechanism core spine (·). Rendered
  * identically in the always-visible desktop rail and inside the mobile
  * header's collapsible panel — `variant` only changes the wrapping element,
- * not the content, so the two never drift apart.
+ * not the content.
  */
 export function Sidebar({
   chapters,
@@ -26,7 +34,6 @@ export function Sidebar({
   variant?: "desktop" | "mobile";
 }) {
   const { locale, t } = useI18n();
-  const pathname = usePathname();
   const { isCompleted } = useProgress();
   const modules = [...MODULES].sort((a, b) => a.order - b.order);
 
@@ -45,7 +52,7 @@ export function Sidebar({
             <ul className="space-y-0.5">
               {chaptersInModule.map((chapter) => {
                 const href = `/${locale}/${chapter.slug}`;
-                const isActive = chapter.slug === activeSlug || pathname === href;
+                const isActive = chapter.slug === activeSlug;
                 const done = isCompleted(chapter.id);
                 return (
                   <li key={chapter.slug}>
@@ -64,6 +71,9 @@ export function Sidebar({
                         <Circle size={14} className="shrink-0 text-[--color-text-faint]" />
                       )}
                       <span className="truncate">{chapter.title}</span>
+                      <span className="ml-auto shrink-0 text-[--color-text-faint]" title={chapter.seamKind}>
+                        {KIND_MARKER[chapter.seamKind]}
+                      </span>
                     </Link>
                   </li>
                 );

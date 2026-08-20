@@ -1,47 +1,14 @@
 ---
 id: s23
 slug: s23-error-recovery
-title: "Error Recovery and Defensive Patterns"
-summary: "How the agent loop cancels turns and tool calls cooperatively rather than killing them, how agent/request-error drives transparent retry, and the hard-won defensive rules — illustrated with three real postmortems — that keep this codebase's failures loud instead of silent."
+title: Error Recovery and Defensive Patterns
+summary: How the agent loop cancels turns and tool calls cooperatively rather than
+  killing them, how agent/request-error drives transparent retry, and the hard-won
+  defensive rules — illustrated with three real postmortems — that keep this codebase's
+  failures loud instead of silent.
+seamKind: non-seam
 module: orchestration-and-capstone
 order: 23
-sources:
-  - path: docs/architecture.md
-    lineStart: 63
-    lineEnd: 90
-    label: "Turn flow ASCII sequence"
-  - path: docs/subsystems/core.md
-    lineStart: 53
-    lineEnd: 201
-    label: "The agent handle: cancel(), CancelOptions, AgentCancelCause"
-  - path: docs/subsystems/core.md
-    lineStart: 916
-    lineEnd: 941
-    label: "agent/request-error waterfall"
-  - path: .agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md
-    label: "Agent Note: Explicit turn cancellation capability"
-  - path: .agents/notes/implemented/architecture/2026-07-19-cooperative-tool-cancellation.md
-    label: "Agent Note: Cooperative tool cancellation at the registry boundary"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 332
-    lineEnd: 371
-    label: "step(): request-error waterfall and retry loop"
-  - path: packages/core/agent-loop/src/tool-calls.ts
-    lineStart: 248
-    lineEnd: 259
-    label: "appendSkippedToolCall(): durable pair for an undispatched call"
-  - path: packages/llm/llm-retry/README.md
-    label: "dsh-llm-retry: normal/always retry modes over agent/request-error"
-  - path: docs/defensive-patterns.md
-    label: "Defensive patterns"
-  - path: docs/postmortem/README.md
-    label: "Post-mortems index"
-  - path: docs/postmortem/0001-acp-default-export-drops-inject.md
-    label: "Postmortem 0001: export default drops inject"
-  - path: docs/postmortem/0002-js-expression-disabled-filesystem-tools.md
-    label: "Postmortem 0002: !!js disabled filesystem tools"
-  - path: docs/postmortem/0004-landlock-partial-notice-misclassified-child-failures.md
-    label: "Postmortem 0004: Landlock partial-enforcement notice misclassified child failures"
 ---
 
 ## Two failure modes, two different fixes

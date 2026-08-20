@@ -1,47 +1,11 @@
 ---
 id: s23
 slug: s23-error-recovery
-title: "错误恢复与防御式模式"
-summary: "agent loop 如何协作式地取消轮次与工具调用而不是硬杀死它们，agent/request-error 如何驱动透明重试，以及三篇真实事故复盘所体现的、让本代码库的失败保持「响亮」而非静默的防御性工程规则。"
+title: 错误恢复与防御式模式
+summary: agent loop 如何协作式地取消轮次与工具调用而不是硬杀死它们，agent/request-error 如何驱动透明重试，以及三篇真实事故复盘所体现的、让本代码库的失败保持「响亮」而非静默的防御性工程规则。
+seamKind: non-seam
 module: orchestration-and-capstone
 order: 23
-sources:
-  - path: docs/architecture.zh.md
-    lineStart: 67
-    lineEnd: 94
-    label: "轮次流程 ASCII 时序"
-  - path: docs/subsystems/core.zh.md
-    lineStart: 57
-    lineEnd: 201
-    label: "Agent 句柄：cancel()、CancelOptions、AgentCancelCause"
-  - path: docs/subsystems/core.zh.md
-    lineStart: 924
-    lineEnd: 951
-    label: "agent/request-error waterfall"
-  - path: .agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.zh.md
-    label: "Agent Note：显式轮次取消能力"
-  - path: .agents/notes/implemented/architecture/2026-07-19-cooperative-tool-cancellation.zh.md
-    label: "Agent Note：注册表边界上的协作式工具取消"
-  - path: packages/core/agent-loop/src/agent.ts
-    lineStart: 332
-    lineEnd: 371
-    label: "step()：request-error waterfall 与重试循环"
-  - path: packages/core/agent-loop/src/tool-calls.ts
-    lineStart: 248
-    lineEnd: 259
-    label: "appendSkippedToolCall()：未派发调用的持久配对记录"
-  - path: packages/llm/llm-retry/README.zh.md
-    label: "dsh-llm-retry：基于 agent/request-error 的 normal/always 重试模式"
-  - path: docs/defensive-patterns.zh.md
-    label: "防御性模式"
-  - path: docs/postmortem/README.zh.md
-    label: "事故复盘索引"
-  - path: docs/postmortem/0001-acp-default-export-drops-inject.zh.md
-    label: "事故复盘 0001：export default 丢弃 inject"
-  - path: docs/postmortem/0002-js-expression-disabled-filesystem-tools.zh.md
-    label: "事故复盘 0002：!!js 永久禁用文件系统工具"
-  - path: docs/postmortem/0004-landlock-partial-notice-misclassified-child-failures.zh.md
-    label: "事故复盘 0004：Landlock 部分强制执行通知导致子进程失败被误归类"
 ---
 
 ## 两类失败，两种截然不同的应对

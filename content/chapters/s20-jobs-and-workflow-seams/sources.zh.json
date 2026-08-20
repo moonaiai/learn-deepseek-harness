@@ -1,0 +1,156 @@
+{
+  "sources": [
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 459,
+      "lineEnd": 459,
+      "label": "ctx.jobs seam 行(生成)"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "lineStart": 465,
+      "lineEnd": 465,
+      "label": "ctx.workflowEngine seam 行(生成)"
+    },
+    {
+      "path": "packages/jobs/README.zh.md",
+      "label": "jobs/ 家族 README(中文)"
+    },
+    {
+      "path": "packages/jobs/jobs/README.zh.md",
+      "label": "dsh-jobs(Service Definition)README(中文)"
+    },
+    {
+      "path": "packages/jobs/jobs-local/README.zh.md",
+      "label": "dsh-jobs-local(Service Provider)README(中文)"
+    },
+    {
+      "path": "packages/jobs/tool-jobs/README.zh.md",
+      "label": "dsh-tool-jobs(Consumer)README(中文)"
+    },
+    {
+      "path": "packages/schedule/README.zh.md",
+      "lineStart": 1,
+      "lineEnd": 13,
+      "label": "schedule/ 家族 README(中文)——明确没有 ctx 键、没有公开 service"
+    },
+    {
+      "path": "packages/schedule/schedule/README.md",
+      "label": "dsh-schedule 包 README"
+    },
+    {
+      "path": "packages/schedule/AGENTS.md",
+      "label": "Schedule 包规则"
+    },
+    {
+      "path": "packages/workflow/README.zh.md",
+      "label": "workflow/ 家族 README(中文)"
+    },
+    {
+      "path": "packages/workflow/workflow/README.md",
+      "label": "dsh-workflow(Service Definition)README"
+    },
+    {
+      "path": "packages/workflow/workflow-worker-thread/README.md",
+      "label": "dsh-workflow-worker-thread(Service Provider)README"
+    },
+    {
+      "path": "packages/workflow/tool-workflow/README.md",
+      "label": "dsh-tool-workflow(Consumer)README"
+    },
+    {
+      "path": "packages/workflow/tool-ralph/README.md",
+      "label": "dsh-tool-ralph README"
+    },
+    {
+      "path": "docs/subsystems/jobs.zh.md",
+      "label": "后台任务运行时子系统参考(中文)"
+    },
+    {
+      "path": "docs/subsystems/schedule.zh.md",
+      "label": "会话内 Schedule 子系统参考(中文)"
+    },
+    {
+      "path": "docs/subsystems/workflow.zh.md",
+      "label": "Workflow 子系统参考(中文)"
+    },
+    {
+      "path": "docs/tool-catalog.md",
+      "lineStart": 1039,
+      "lineEnd": 1041,
+      "label": "schedule_create 生成的工具描述"
+    },
+    {
+      "path": "docs/glossary.zh.md",
+      "lineStart": 35,
+      "lineEnd": 45,
+      "label": "循环层级与 Ralph 术语条目(中文)"
+    },
+    {
+      "path": "docs/architecture.md",
+      "lineStart": 116,
+      "lineEnd": 116,
+      "label": "\"Add background work\" 扩展点行"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-06-20-generic-long-running-tool-runtime.zh.md",
+      "label": "Agent Note:后台任务运行时(中文)"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-07-26-job-registry-seam.zh.md",
+      "label": "Agent Note:任务注册表是一个能力 seam(中文)"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-08-11-bounded-background-job-admission.zh.md",
+      "label": "Agent Note:有界的后台任务准入(中文)"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-05-dynamic-workflows.zh.md",
+      "label": "Agent Note:动态工作流(中文)"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-19-fresh-agent-ralph-workflow-tool.zh.md",
+      "label": "Agent Note:全新 agent 的 Ralph 工作流工具(中文)"
+    },
+    {
+      "path": "packages/jobs/jobs/src/index.ts",
+      "lineStart": 62,
+      "lineEnd": 177,
+      "label": "JobRegistry 抽象 Service 类"
+    },
+    {
+      "path": "packages/jobs/jobs/src/types.ts",
+      "lineStart": 13,
+      "lineEnd": 39,
+      "label": "JobStatus、JobKindMap、JobOutcome"
+    },
+    {
+      "path": "packages/workflow/workflow/src/index.ts",
+      "lineStart": 150,
+      "lineEnd": 168,
+      "label": "WorkflowEngine 抽象 Service 类"
+    },
+    {
+      "path": "packages/workflow/tool-ralph/src/index.ts",
+      "lineStart": 49,
+      "lineEnd": 84,
+      "label": "RalphRoundReport / RalphRunResult 类型与固定 RALPH_META"
+    },
+    {
+      "path": "examples/headless-agent/cordis.yml",
+      "lineStart": 133,
+      "lineEnd": 146,
+      "label": "workflow-worker-thread、tool-workflow、tool-ralph 组合在一起"
+    },
+    {
+      "path": "examples/web-schedule/cordis.yml",
+      "label": "叠加在 Web 组合之上的可选 Schedule overlay"
+    },
+    {
+      "path": "packages/bundle/base/cordis.patch.yml",
+      "lineStart": 69,
+      "lineEnd": 70,
+      "label": "base bundle 中组合的 dsh-jobs-local"
+    }
+  ]
+}
