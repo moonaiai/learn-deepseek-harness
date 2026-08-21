@@ -10,9 +10,13 @@ module: foundations
 order: 4
 ---
 
-## Two words, precisely defined
+## The short version
 
-The harness defines exactly two units of work inside a running agent, and the whole loop is built out of them:
+The agent loop is the only package in the harness with concrete loop logic — `ReactLoopAgent` in `packages/core/agent-loop/src/agent.ts`. It defines exactly two units of work, the **step** (one model request plus the tool calls it produced) and the **turn** (zero or more steps), and builds the whole driver out of them: open a turn, run its steps, close it once nothing is owed. Everything else — compaction, retries, permission policy, sandboxing — is a plugin on the named extension points, never a branch in the loop. Read on for the full turn lifecycle, traced against the code.
+
+## At a glance
+
+Four terms carry the whole chapter. Two are the units of work the driver is built from; two are the vocabularies its events speak — one recorded for replay, one handed to listeners live.
 
 :::concept{term="step"}
 One model request, plus the tool calls that request produced.
@@ -21,6 +25,16 @@ One model request, plus the tool calls that request produced.
 :::concept{term="turn"}
 Zero or more steps. It opens before its first input is claimed and closes once nothing is owed — no live tool call, no fresh steering.
 :::
+
+:::concept{term="durable session event"}
+`turn/*`, `step/*`, `user/message`, `assistant/*`, `tool/*`. Each is appended to the session log the moment it happens, so the entire run can be replayed from the log alone.
+:::
+
+:::concept{term="live extension point"}
+`agent/pre-step`, `agent/request`, `llm/stream`, the `tools/*` set. Not logged — they are waterfalls, so every listener must call `next()` to delegate or the chain stops there. `agent/turn-stopping` is the lone `serial` point: no `next()`, only a veto by side effect (steering).
+:::
+
+## The turn lifecycle
 
 Everything else in this chapter is the mechanics of opening a turn, running its steps, and closing it again. The authoritative statement of the flow is the ASCII sequence in `docs/architecture.md`'s "Turn flow" section — here it is as a step-through you can run:
 
@@ -36,12 +50,12 @@ Everything else in this chapter is the mechanics of opening a turn, running its 
 - turn/end — close the turn
 :::
 
-Two vocabularies are interleaved in that sequence. `turn/*`, `step/*`, `user/message`, `assistant/*`, and `tool/*` are **durable session events** — every one of them is appended to the log and can be replayed. `agent/pre-step`, `agent/request`, `llm/stream`, and the three `tools/*` events are **live extension points**, not logged directly; they are waterfalls, so every listener on them must call `next()` to delegate, or the chain stops there. `agent/turn-stopping` is `serial` — it has no `next()`, only a veto by side effect (steering).
+Read that sequence with the two vocabularies in mind: the durable events are the lines the log records; the extension points are where control is handed to listeners while the loop runs.
 
 > [!NOTE]
 > Durable events are replayable; extension points are live waterfalls. The distinction is the whole reason the loop is both traceable and swappable.
 
-This chapter walks that diagram against the concrete implementation: `ReactLoopAgent` in `packages/core/agent-loop/src/agent.ts`, the only package in the harness that contains concrete loop logic. Everything else — compaction, retries, permission policy, sandboxing — is a plugin sitting on the extension points this chapter names.
+This chapter walks that flow against the concrete implementation: `ReactLoopAgent` in `packages/core/agent-loop/src/agent.ts`, the only package in the harness that contains concrete loop logic. Everything else — compaction, retries, permission policy, sandboxing — is a plugin sitting on the extension points named above.
 
 ## The full sequence diagram
 
@@ -72,41 +86,41 @@ sequenceDiagram
   alt proposed step rejected or pre-step failed
     Driver-->>Driver: claimed batch stays removed, the open turn spends no step
   else enter proposed step
-  Driver->>Session: step/start
-  Driver->>Session: user/message per entered message
-  Driver->>Prompt: system-prompt/assemble waterfall
-  Driver->>LLM: agent/request waterfall, then llm/stream waterfall
-  LLM-->>Driver: StreamChunk*
-  Driver->>Session: assistant/chunk*
-  Session-->>SDK: session/event assistant/chunk*
-  alt final adapter or terminal in-band request failure
+    Driver->>Session: step/start
+    Driver->>Session: user/message per entered message
+    Driver->>Prompt: system-prompt/assemble waterfall
+    Driver->>LLM: agent/request waterfall, then llm/stream waterfall
+    LLM-->>Driver: StreamChunk*
+    Driver->>Session: assistant/chunk*
+    Session-->>SDK: session/event assistant/chunk*
+    alt final adapter or terminal in-band request failure
+      Driver->>Session: step/end
+      Driver->>Hooks: agent/request-error waterfall
+      Hooks-->>Driver: return retry action or preserve the original error
+    else model request succeeded
+    Driver->>Session: assistant/message
+    Driver->>Tools: classify pending call by executionMode
+    loop barriers and bounded rolling pool, reclassify before start
+      opt call starts
+        Driver->>Session: tool/call
+        Driver->>Tools: ordered pre, concurrent execute
+        Tools-->>Session: tool-owned events when applicable
+      end
+      opt next model-order result ready
+        Driver->>Tools: ordered post
+        Driver->>Session: tool/result
+      end
+    end
     Driver->>Session: step/end
-    Driver->>Hooks: agent/request-error waterfall
-    Hooks-->>Driver: return retry action or preserve the original error
-  else model request succeeded
-  Driver->>Session: assistant/message
-  Driver->>Tools: classify pending call by executionMode
-  loop barriers and bounded rolling pool, reclassify before start
-    opt call starts
-      Driver->>Session: tool/call
-      Driver->>Tools: ordered pre, concurrent execute
-      Tools-->>Session: tool-owned events when applicable
+    opt natural stop and next-step inbox empty
+      Driver->>Hooks: agent/turn-stopping serial terminal checkpoint
     end
-    opt next model-order result ready
-      Driver->>Tools: ordered post
-      Driver->>Session: tool/result
+    opt next-step input is pending
+      Driver-->>Driver: claim pending next-step input
+      Driver-->>SDK: agent/inbox/claimed { message, turn } per message
+      Driver->>Hooks: agent/pre-step waterfall
+      Hooks-->>Driver: authoritative reject or enter(messages)
     end
-  end
-  Driver->>Session: step/end
-  opt natural stop and next-step inbox empty
-    Driver->>Hooks: agent/turn-stopping serial terminal checkpoint
-  end
-  opt next-step input is pending
-    Driver-->>Driver: claim pending next-step input
-    Driver-->>SDK: agent/inbox/claimed { message, turn } per message
-    Driver->>Hooks: agent/pre-step waterfall
-    Hooks-->>Driver: authoritative reject or enter(messages)
-  end
   end
   end
   Driver->>Session: turn/end
@@ -115,8 +129,11 @@ sequenceDiagram
 
 Two implementation facts sharpen this diagram immediately:
 
-- `assistant/message` is appended for **every** successful provider call, including a content-less finish and a `max-tokens` finish. Empty content stays out of derived history, but the durable event still records usage and the exact `assistant/chunk` seqs it summarizes (`sourceEventSeqs`, `[]` for a chunkless stream).
-- The returned `agent/pre-step` decision is authoritative. A listener that wraps `next()` must preserve downstream messages unless it means to replace them — there is no implicit merge.
+> [!NOTE]
+> `assistant/message` is appended for **every** successful provider call, including a content-less finish and a `max-tokens` finish. Empty content stays out of derived history, but the durable event still records usage and the exact `assistant/chunk` seqs it summarizes (`sourceEventSeqs`, `[]` for a chunkless stream).
+
+> [!PITFALL]
+> The returned `agent/pre-step` decision is authoritative. A listener that wraps `next()` must preserve downstream messages unless it means to replace them — there is no implicit merge.
 
 ## Input reaches the driver through one inbox
 
@@ -139,7 +156,9 @@ inject(input: UserMessage): void {
 
 `followup()` appends to the `next-turn` FIFO and wakes the driver — it becomes the sole ordinary message of its own new turn. `steer()` appends to the `next-step` inbox and wakes the driver, so a running turn picks it up at its very next step boundary. `inject()` appends to that same `next-step` inbox but does **not** wake anything — it waits, parked, until a `followup` or `steer` elsewhere wakes the driver, at which point it rides along.
 
+:::fold[The wake latch: when a wake can't open a turn immediately]
 `wakeDriver()` (`agent.ts:172-193`) is where a wake either starts a fresh `kick()` loop or gets latched (`wakeRequested`) behind an in-flight maintenance task or an already-aborted activity, replayed only once that activity converges to idle. A wake delivered while the agent is genuinely idle always opens a turn boundary, even if the message that triggered it is cleared before the driver gets around to claiming — status will show a transient `idle → running → idle` pair.
+:::
 
 ## `turn()`: opening and closing a turn
 
@@ -249,6 +268,7 @@ while (next < planned.length) {
 
 A call whose `executionMode` is `exclusive` runs alone as a barrier of size one; a run of consecutive `parallel`-classified calls forms one group dispatched through a **bounded rolling pool** capped at `ctx.agentLoop.config.maxParallelToolCalls` (default 10; setting it to 1 makes execution fully serial). Inside `runGroup()`, dispatch/body work may overlap across the pool, but three things stay strictly **model-ordered**: the `tools/pre-execute` policy check that runs before a call starts, the committed `tool/result`, and any `additionalContexts` that call's result contributes back into the next step's inbox. `commitReady()` (`tool-calls.ts:146-160`) walks the settled slots strictly in model order and refuses to skip ahead over an unsettled one, which is what keeps replay deterministic even though dispatch itself can race.
 
+:::fold[Abort mid-flight: every requested call still gets a paired result]
 Abort during tool execution drains started calls to their real result, then appends a synthetic `tool/call` + `tool/result` pair for every call that never got the chance to dispatch, with a fixed error text and code (`appendSkippedToolCall`, `tool-calls.ts:249-258`):
 
 ```ts
@@ -264,6 +284,7 @@ function appendSkippedToolCall(session: Session, turn: number, step: number, blo
 ```
 
 This matters for replay: an assistant message that requested five tool calls must always be followed by exactly five paired results in the log, whether they ran, were skipped by cancellation, or failed outright.
+:::
 
 The inner `tools/pre-execute` → `tools/execute` → `tools/post-execute` → `finalizeContent` → `tool/result` sequence that each individual call passes through belongs to `dsh-tools`, not `dsh-agent-loop`; see the flowchart in `docs/tool-execution-pipeline.md` for exactly where policy, sandboxing, and result rewriting attach without the loop knowing about any of them.
 
@@ -291,9 +312,13 @@ Full signatures, including `Scoped<Agent>` scoping and `@mode` annotations, are 
 
 Two architectural commitments explain every design choice above:
 
+:::decision
 **Model-visible means logged.** Anything that reaches a model request — the system prompt, tool schemas, message history — must be reconstructable from the session log, and a runtime invariant enforces this. That's why `agent/pre-step` and `agent/request` can only *choose among* or *replace* data the loop derives from the log; they cannot inject content that bypasses `user/message`/`assistant/message` recording. `RuntimeContextProjection` (`runtime-context.ts`) is a good small example: dynamic context is folded into the pre-step batch as an ordinary `UserMessage`, tagged with a plugin source, so it survives replay exactly like anything else a user typed.
+:::
 
+:::decision
 **Plugins, not loop changes.** The loop itself never mentions compaction, retries, permission policy, or sandboxing by name. `dsh-compaction-basic` hooks `agent/pre-step` (pressure) and `agent/request-error` (canonical overflow repair); `dsh-llm-retry` hooks `agent/request-error` alone; tool policy hooks the `tools/*` waterfalls. Changing the loop itself is reserved for changes that alter this map — see the "Where new behavior goes" table in `docs/architecture.md` — everything else attaches from outside.
+:::
 
 ## What to read next
 

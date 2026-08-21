@@ -11,6 +11,36 @@ module: extension-memory-seams
 order: 17
 ---
 
+## The short version
+
+The skill capability solves "instructions that don't belong in every prompt" with the same two-tier trick libraries use for large APIs: a cheap `name`/`description` catalog rides in the session up front, and the full instruction body is fetched through a `skill(name)` tool call only when the model decides a skill applies. `ctx.skills` is the Service Definition — a provider registry that merges whatever providers register; `dsh-skill-filesystem` is the shipped provider that discovers `SKILL.md` bundles on disk; `dsh-tool-skill` is the Consumer that publishes the session catalog and owns the `skill` tool. Read on for the registry contract, the layered merge rule, the filesystem discovery provider, and the end-to-end catalog/load flow.
+
+## At a glance
+
+:::concept{term="ctx.skills / SkillRegistry"}
+The Service Definition: a provider registry that merges whatever providers register, resolves duplicate names, and exposes summaries and full definitions. It never knows whether a skill comes from a local directory, an HTTP endpoint, or embedded plugin data.
+:::
+
+:::concept{term="two-tier split"}
+The chapter's core pattern, borrowed from how libraries index large APIs: a cheap catalog of `name`/`description` pairs is published up front; the expensive full instruction body loads only through a `skill(name)` call.
+:::
+
+:::concept{term="SkillSummary"}
+What every model- or human-facing consumer is allowed to see without a full load: name, description, and the resolved invocation policy — never the body or an absolute path.
+:::
+
+:::concept{term="SkillCandidate"}
+The provider-to-registry shape used only during discovery and merging; its `locator` is opaque provider-owned state, handed back verbatim to that same provider's `get()`.
+:::
+
+:::concept{term="SkillDefinition"}
+The complete parsed result the `skill` tool eventually returns.
+:::
+
+:::concept{term="SkillProvider"}
+The provider contract: `list()` returns `SkillCandidate[]` or a partial observation; `get(candidate)` returns a `SkillDefinition`. Slow or remote work belongs inside the awaited `list()`, never in the synchronous factory.
+:::
+
 ## The problem: instructions that don't belong in every prompt
 
 A skill is a reusable, task-specific set of instructions — a Markdown document telling the model how to accomplish something like reviewing a pull request or generating a changelog. A harness could ship dozens of these. If every skill's full body rode in the system prompt on every single request, token cost would scale with the number of skills installed rather than with how many are actually relevant to the current task, and KV-cache prefixes would invalidate every time a skill file changed anywhere in the tree.
@@ -46,6 +76,8 @@ async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition
 
 ### Summary, candidate, and definition are three widening shapes
 
+The three concept terms above, as the registry declares them in code:
+
 ```ts
 // packages/skill/skill/src/index.ts:56-101
 interface SkillSummary {
@@ -71,18 +103,6 @@ interface SkillDefinition extends SkillSummary {
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 ```
-
-:::concept{term="SkillSummary"}
-What every model- or human-facing consumer is allowed to see without a full load: name, description, and the resolved invocation policy — never the body or an absolute path.
-:::
-
-:::concept{term="SkillCandidate"}
-The provider-to-registry shape used only during discovery and merging; its `locator` is opaque provider-owned state, handed back verbatim to that same provider's `get()`.
-:::
-
-:::concept{term="SkillDefinition"}
-The complete parsed result the `skill` tool eventually returns.
-:::
 
 ### The `SkillProvider` contract
 

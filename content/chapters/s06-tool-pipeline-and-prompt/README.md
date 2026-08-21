@@ -10,9 +10,29 @@ module: foundations
 order: 6
 ---
 
-## Two registries build one step
+## The short version
 
-Every step of the agent loop does two things that neither the model nor any single plugin controls end to end: it assembles the request sent to the model, and it executes whatever tool calls the model's reply contains. `core/system-prompt` (`ctx.systemPrompt`) owns the first — dozens of unrelated plugins each contribute a fragment of prompt text or a tool schema, and `SystemPrompt.assemble()` turns those fragments into one deterministic request without giving any single plugin authority over the whole. `core/tools` (`ctx.tools`) owns the second — every tool call, whether `bash`, `read`, `grep`, or a subagent delegation, passes through the same `ToolRuntime.execute()` pipeline, so a tool author writes an `execute()` body once and gets policy, retries, and observability for free.
+Every step of the agent loop does two things that neither the model nor any single plugin controls end to end: it assembles the request sent to the model, and it executes whatever tool calls the reply contains. `ctx.systemPrompt` owns the first — dozens of unrelated plugins each contribute a fragment of prompt text or a tool schema, and `SystemPrompt.assemble()` turns those fragments into one deterministic request without giving any single plugin authority over the whole. `ctx.tools` owns the second — every tool call, whether `bash`, `read`, `grep`, or a subagent delegation, passes through the same `ToolRuntime.execute()` pipeline, so a tool author writes an `execute()` body once and gets policy, retries, and observability for free. Read on for both registries, traced against the code.
+
+## At a glance
+
+Two registries carry the whole chapter, plus the two artifacts each one is built around.
+
+:::concept{term="ctx.systemPrompt / SystemPrompt"}
+The assembly registry. Collects named, ordered prompt fragments (`section`, `context`, `variable`) and tool schemas from every mounted plugin, then fuses them into one deterministic request — once per step.
+:::
+
+:::concept{term="PromptAssembly"}
+The single artifact assembly produces: `sections`, `contexts`, `tools`, and `variables` in one structure, so one waterfall pass sees and reconciles both the prompt text and the tool list regardless of how the wire format later splits them.
+:::
+
+:::concept{term="ctx.tools / ToolRuntime"}
+The execution registry. Owns how a model-issued tool call reaches a definition's `execute()` body — a fixed stage pipeline of policy, guards, dispatch, and post-processing that no tool author re-implements.
+:::
+
+:::concept{term="ToolDefinition / defineTool()"}
+The unit a tool author registers. `defineTool()` infers typed arguments and canonical output straight from a declarative schema and inserts validation before the body ever runs.
+:::
 
 ## One prompt, many owners
 
@@ -154,11 +174,17 @@ flowchart TD
 - A registered variable whose provider returned `undefined` for this assembly throws "has no value for this assembly" — a persona referencing `{{cwd}}` on a config-pre-created stdio agent with no `cwd` fails that turn loudly rather than silently rendering nothing.
 - A lone `{{` with no later `}}` anywhere passes through as literal prose — the one case with no ambiguity about authorial intent.
 
-There is currently no escape syntax for a literal `{{...}}` in prompt prose; the package defers it until an actual prompt needs one. `examples/acp-agent`'s `tests/snapshots/text-turn/system-prompt.expected.md` records exactly what this produces for a plain text turn: identity (order -100), persona with `{{model}}`/`{{cwd}}` interpolated (order 0), then one section per mounted tool package in ascending order, with nothing at all where a tool package registered none.
+> [!LIMITATION]
+> There is currently no escape syntax for a literal `{{...}}` in prompt prose; the package defers it until an actual prompt needs one.
+
+`examples/acp-agent`'s `tests/snapshots/text-turn/system-prompt.expected.md` records exactly what this produces for a plain text turn: identity (order -100), persona with `{{model}}`/`{{cwd}}` interpolated (order 0), then one section per mounted tool package in ascending order, with nothing at all where a tool package registered none.
 
 ## Two failure classes, and where tool schemas live
 
-`toolOrder` misconfiguration illustrates a two-tier "fail loud" discipline. **Shape** violations — a duplicate name, or a missing `<unlisted-tools>` rest entry — are checked once, synchronously, in `validateToolOrder()` at plugin construction (config-load time). **Content** violations — a listed tool name no provider ever registers — can only be known once providers have had a chance to register, so they surface at the *first* `assemble()` call instead, well before the model could act on a broken tool list.
+`toolOrder` misconfiguration illustrates a two-tier "fail loud" discipline:
+
+> [!NOTE]
+> **Shape** violations — a duplicate name, or a missing `<unlisted-tools>` rest entry — are checked once, synchronously, in `validateToolOrder()` at plugin construction (config-load time). **Content** violations — a listed tool name no provider ever registers — can only be known once providers have had a chance to register, so they surface at the *first* `assemble()` call instead, well before the model could act on a broken tool list.
 
 `PromptAssembly.tools: ToolSchema[]` sits next to `sections`, `contexts`, and `variables` in the same structure, even though the wire protocol transmits tool schemas as a separate JSON field from the system-prompt string — "what the model is told it can do" is one coherent fact regardless of how the wire format splits it, so a single waterfall pass can see and reconcile both. `core/tools` registers itself as a tool-schema provider exactly once (`ctx.systemPrompt.tools(context => this.wireSchemas(context.scope))`), and in code-mode deployments additionally registers two ordinary sections (`tools:code-only` at order 99, `tools:sdk` at order 150) that state, in prose, the same restriction `wireSchemas()` enforces in the schema list — without that section the model reads a full catalog of individually-described tools with no statement that only one may actually be called, calls one directly, gets `UNKNOWN_TOOL`, and reasonably concludes the deployment is broken.
 
@@ -239,15 +265,21 @@ A few structural facts this diagram encodes are easy to miss on a first read:
 
 - `register(definition): () => void` — add a trusted, typed, same-process `ToolDefinition`. The calling context's scope decides the layer: a plain plugin context registers globally, while an agent's `agent.ctx` registers only for that agent, shadowing a same-named global tool there.
 - `presentAs(mode)` — override the process-wide `mode` config (`native`/`code`/`both`) for one agent only.
-- `restrict(filter)` — apply an agent-scoped allow/deny mask over the global tool set. This is visibility composition, explicitly not an authority boundary — a restricted-away tool is invisible to that agent, but restriction is not how you enforce "this agent must never do X"; that is `guard()`'s job.
+- `restrict(filter)` — apply an agent-scoped allow/deny mask over the global tool set.
 - `get(name, scope?)` / `schemas(scope?)` — resolve what one scope can see, with shadowing and restriction already applied.
 - `guard(guard: ToolGuard): () => void` — register a monotonic post-`pre-execute` deny. Signature: `(execution: Readonly<ToolExecution>) => string | undefined` (`packages/core/tools/src/index.ts:711`); returning a string is a final denial reason, `undefined` leaves the decision unchanged.
 - `execute(exec)` — run the complete pipeline for one call: snapshot and freeze arguments, assign an opaque `ToolExecutionToken`, run pre-execute → guards → execute → post-execute → finalize, and independently snapshot the frozen outcome before `tools/result` fires.
 - `executionMode(exec)` — resolve `parallel` vs `exclusive` for scheduling (see below).
 
+> [!PITFALL]
+> `restrict()` is visibility composition, explicitly not an authority boundary — a restricted-away tool is invisible to that agent, but restriction is not how you enforce "this agent must never do X"; that is `guard()`'s job.
+
 ### Cancellation is cooperative, not a hard kill
 
-Every `ToolExecutionInput` carries a required, caller-owned `AbortSignal` (`packages/core/tools/src/index.ts:314-338`). A tool body receives it as `exec.signal` and must observe or forward it; only a `tools/execute` wrapper may temporarily replace that signal (to impose a deadline), and the registry re-fuses the original caller signal immediately before the body starts. Cancellation before the body runs settles as `ABORTED_BEFORE_DISPATCH`; cancellation after the body started can only replace a *successful* outcome with `ABORTED` — a more specific failure (denial, wrapper throw, tool throw, post-policy failure, or a timeout wrapper's `TOOL_TIMEOUT`) always wins. The registry cannot hard-terminate same-process code; a tool that ignores its signal simply keeps running.
+Every `ToolExecutionInput` carries a required, caller-owned `AbortSignal` (`packages/core/tools/src/index.ts:314-338`). A tool body receives it as `exec.signal` and must observe or forward it; only a `tools/execute` wrapper may temporarily replace that signal (to impose a deadline), and the registry re-fuses the original caller signal immediately before the body starts. Cancellation before the body runs settles as `ABORTED_BEFORE_DISPATCH`; cancellation after the body started can only replace a *successful* outcome with `ABORTED` — a more specific failure (denial, wrapper throw, tool throw, post-policy failure, or a timeout wrapper's `TOOL_TIMEOUT`) always wins.
+
+> [!PITFALL]
+> The registry cannot hard-terminate same-process code; a tool that ignores its signal simply keeps running. Cancellation is a request the body must honor, not a kill switch.
 
 ## `defineTool()`: typed parameters, canonical output, generated validation
 
@@ -313,7 +345,10 @@ These presenters must be pure functions of their arguments (and, for `presentRes
 
 ## Parallel vs exclusive scheduling
 
-`ctx.tools.executionMode(exec)` decides how the agent loop's rolling pool treats a call. It reports `parallel` only when the resolved definition's `isConcurrencySafe(exec.arguments)` classifier returns exactly `true`; any unknown, hidden, undeclared, invalid-argument, or throwing classification is `exclusive`. The loop groups consecutive `parallel` calls into a bounded pool and treats every `exclusive` call as an ordering barrier — dispatch and body execution may overlap, but policy stages, durable results, and model-visible context all preserve model call order regardless. This is opt-in and conservative by construction: a body that mutates parent-owned state, or whose shared-state races do not commute, must not declare `isConcurrencySafe`.
+`ctx.tools.executionMode(exec)` decides how the agent loop's rolling pool treats a call. It reports `parallel` only when the resolved definition's `isConcurrencySafe(exec.arguments)` classifier returns exactly `true`; any unknown, hidden, undeclared, invalid-argument, or throwing classification is `exclusive`. The loop groups consecutive `parallel` calls into a bounded pool and treats every `exclusive` call as an ordering barrier — dispatch and body execution may overlap, but policy stages, durable results, and model-visible context all preserve model call order regardless.
+
+> [!PITFALL]
+> This is opt-in and conservative by construction: a body that mutates parent-owned state, or whose shared-state races do not commute, must not declare `isConcurrencySafe`.
 
 ## Code Mode: a generated SDK instead of one call at a time
 

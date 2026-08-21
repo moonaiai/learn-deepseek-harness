@@ -11,15 +11,39 @@ module: extension-memory-seams
 order: 16
 ---
 
-## An agent that delegates to another agent
+## The short version
 
-Every chapter so far has followed one agent through one loop: a session, a sequence of turns, a set of tools it can call directly. Subagents break that symmetry on purpose. A tool call can now hand a task to a *different* agent — one running in the same process with a blank or partially-shared history, one running in a different process, or one running inside a completely different product. The parent's turn either waits for that child to finish, or moves on while the child keeps working in the background and reports back later.
+A subagent lets one tool call hand a task to a *different* agent — one running in the same process with a blank or partially-shared history, one in a different process, or one inside a completely different product — and the parent's turn either waits for that child or moves on while it keeps working in the background and reports back later. This is not a special case bolted onto the tool pipeline: it is a capability seam with the same three roles as bash — a Service Definition (`dsh-subagent`) that owns a **named-provider registry**, six Service Providers that each run a child one way, and Consumers that turn a chosen provider into one model-facing tool. The core primitive is a one-shot `start() → SubagentRun`; an optional continuable path lets a child own its own turns across messages. Read on for why this seam is a registry rather than bash's one-executor rule, and for what each provider trades off.
 
-This is not a special case bolted onto the tool pipeline. It is a capability seam with the same three roles you saw with bash in [Chapter 7](../s07-capability-seams-primer/README.md): a Service Definition that owns the vocabulary and the registry, a family of Service Providers that each know how to actually run a child, and a Consumer that turns all of that into one model-facing tool call. What makes this seam worth its own chapter is the shape of its provider family: bash has one executor per context, but `ctx.subagents` is built from the ground up to hold several transports side by side, because a real deployment plausibly wants a cheap in-process child for scoped subtasks *and* a fully isolated Claude Code or Codex process for tasks that call for a different product's tools and judgment — in the same session.
+## At a glance
+
+:::concept{term="ctx.subagents / SubagentRuntime"}
+The Service Definition: a Cordis `Service` that is a **named-provider registry**, not a single fixed executor. Providers register side by side; the delegation tool picks one by name and calls `start(name, request)`.
+:::
+
+:::concept{term="SubagentProvider"}
+The provider contract: a `name`, a static `capabilities` descriptor, a descriptive `inheritsParentContext` flag, a required `start(request)`, and an optional `prepareContinuable(request)`. One provider = one transport.
+:::
+
+:::concept{term="SubagentRun"}
+The handle to a **published**, running child: `{ id, localAgent, result, dispose() }`. `result` never rejects on a child-level failure — it resolves a non-`completed` `stopReason`; `dispose()` is idempotent and must run on every path.
+:::
+
+:::concept{term="SubagentCapabilities"}
+Four static flags — `outputSchema`, `depthLimit`, `toolFilter`, `persona` — checked **before** a run exists, the only point where "reject, don't create the child" is even representable.
+:::
+
+:::concept{term="prepareContinuable"}
+The optional method that gates continuable-child creation. TypeScript's own narrowing is the discovery mechanism — no separate boolean can drift out of sync with whether the method actually exists.
+:::
+
+:::concept{term="inheritsParentContext"}
+A purely descriptive field: whether the child sees the parent's completed conversation (true only for `fork`). It promises nothing about inherited tools, services, or authority.
+:::
 
 ## The Service Definition: `ctx.subagents`
 
-`SubagentRuntime` (`packages/subagent/subagent/src/index.ts:171`) is the Cordis service that claims `ctx.subagents`. It is a **named-provider registry**, not a single fixed executor:
+`SubagentRuntime` (`packages/subagent/subagent/src/index.ts:171`) is the Cordis service that claims `ctx.subagents`:
 
 ```ts
 // packages/subagent/subagent/src/index.ts:362-402
@@ -28,7 +52,7 @@ getProvider(name: string): SubagentProvider | undefined { /* ... */ }
 list(): string[] { /* ... */ }
 ```
 
-Multiple providers register side by side; the delegation tool picks one by name and calls `start(name, request)`. This registry shape deliberately mirrors the LLM adapter registry (`LlmRuntime.registerAdapter`) rather than the bash seam's one-executor-per-context rule, because coexistence is the actual requirement here: a session can load several delegation tools, each bound to a different provider name, and the model sees them as distinctly named tools it can pick between.
+This registry shape deliberately mirrors the LLM adapter registry (`LlmRuntime.registerAdapter`) rather than the bash seam's one-executor-per-context rule, because coexistence is the actual requirement here: a session can load several delegation tools, each bound to a different provider name, and the model sees them as distinctly named tools it can pick between.
 
 The service also owns two things beyond plain registration: the durable `subagent/descriptor` session-event vocabulary that identifies every session-backed child on disk, and — when `ctx.agents` is injected — a **continuation manager** for children whose conversation can be resumed across multiple turns rather than run once and discarded (`packages/subagent/subagent/src/index.ts:183-201`). Both are covered below; the one-shot path is the one worth understanding first.
 
@@ -52,7 +76,10 @@ A request that fails **before** publication rejects `start()` outright, after th
 
 ## Two kinds of optional capability, discovered two different ways
 
-A `SubagentStartRequest` can additionally ask for a JSON-schema-validated structured output, an absolute delegation-depth cap, a scoped tool-filter for the child, or a per-child persona (`packages/subagent/subagent/src/types.ts:100-149`). None of these are universal — an out-of-process Claude Code child cannot have its depth capped by this process, for instance — so the seam needs a way to reject an unsupported request loudly rather than silently ignore the option. It uses two different mechanisms, deliberately:
+A `SubagentStartRequest` can additionally ask for a JSON-schema-validated structured output, an absolute delegation-depth cap, a scoped tool-filter for the child, or a per-child persona (`packages/subagent/subagent/src/types.ts:100-149`). None of these are universal — an out-of-process Claude Code child cannot have its depth capped by this process, for instance — so the seam needs a way to reject an unsupported request loudly rather than silently ignore the option.
+
+> [!WHY]
+> Two different discovery mechanisms, deliberately. The four `SubagentCapabilities` flags are a static descriptor the service checks **before** a run exists — the only point at which "reject, don't create the child" is even representable. Continuable-child creation, by contrast, is gated by the mere *presence* of `prepareContinuable`, so TypeScript's own narrowing is the check and no separate boolean flag can drift out of sync with whether the method exists.
 
 ```ts
 // packages/subagent/subagent/src/types.ts:86-91
@@ -63,8 +90,6 @@ interface SubagentCapabilities {
   readonly persona: boolean
 }
 ```
-
-These four flags are a static descriptor the service checks **before** a run exists, because that is the only point at which "reject, don't create the child" is even representable. Continuable-child creation, by contrast, is gated by the mere *presence* of an optional method:
 
 ```ts
 // packages/subagent/subagent/src/types.ts:285-323
@@ -77,11 +102,13 @@ interface SubagentProvider {
 }
 ```
 
-TypeScript's own narrowing is the discovery mechanism for `prepareContinuable` — no separate boolean flag can drift out of sync with whether the method actually exists. A provider that lacks it is rejected before the continuation manager reserves any child identity; a provider that has it may still serve ordinary one-shot delegations alongside continuable ones. `inheritsParentContext` is a third, purely descriptive field: it says whether the child sees the parent's completed conversation (true only for `fork`), so the delegation tool can generate accurate wording about what the child will and will not know — it makes no promise about inherited tools, services, or authority.
+A provider that lacks `prepareContinuable` is rejected before the continuation manager reserves any child identity; a provider that has it may still serve ordinary one-shot delegations alongside continuable ones. `inheritsParentContext` is a third, purely descriptive field: it says whether the child sees the parent's completed conversation (true only for `fork`), so the delegation tool can generate accurate wording about what the child will and will not know — it makes no promise about inherited tools, services, or authority.
 
 ## Fork and spawn: two providers, not one flag with an option
 
-The in-process family answers a design question the Agent Note is explicit about: should "fresh child" versus "child seeded with parent history" be a boolean on one provider, or two separate providers? The harness chose two providers, `dsh-subagent-spawn-in-process` and `dsh-subagent-fork-in-process`, sharing all of their run mechanics through `dsh-subagent-in-process-driver` and differing only in the session seed.
+:::decision
+"Fresh child" versus "child seeded with parent history" is **two separate providers**, not a boolean on one — the Agent Note is explicit about this. `dsh-subagent-spawn-in-process` and `dsh-subagent-fork-in-process` share all of their run mechanics through `dsh-subagent-in-process-driver` and differ only in the session seed.
+:::
 
 Spawn creates a completely fresh child Agent: new session, empty conversation, inherited cwd, model, and provider by default. Fork instead computes a seed:
 
@@ -104,7 +131,7 @@ Every one of these providers reports `inheritsParentContext: false`, and every o
 
 ## Why this is a capability seam and not a special-cased mechanism
 
-Put the pieces next to each other and the three-role shape from Chapter 7 is exact:
+Put the pieces next to each other and the three-role shape from [Chapter 7](../s07-capability-seams-primer/README.md) is exact:
 
 | Role | Package(s) | Owns |
 |---|---|---|
@@ -114,7 +141,9 @@ Put the pieces next to each other and the three-role shape from Chapter 7 is exa
 
 `docs/capability-seams.md` classifies `ctx.subagents` explicitly as a `seam` row with six known providers and three consumers feeding it. `docs/architecture.md` states the payoff directly: "[Subagent providers] vary just as widely behind one interface, from a fresh child agent to a delegated turn in another product." A deployment can load `dsh-tool-subagent` twice — once bound to `provider: fork` as `toolName: subagent`, once bound to `provider: claude-code` as `toolName: subagent_claude_code` — and the model sees two independently-schema'd tools, neither of which reveals what runs underneath it. Swap the fork provider for a sandboxed variant later, and `dsh-tool-subagent`'s own source does not change at all; it never imports a provider type, only the `SubagentProvider` interface it was handed by the registry.
 
-The alternative the Agent Note explicitly rejects is the bash seam's shape: one executor per context, second load throws. That is correct when there is exactly one way to run a command on a machine. It is wrong here because coexistence — one in-process child for a scoped subtask, one Claude Code child for a task that needs a different product's judgment, in the very same session — is not a hypothetical future requirement; it is the actual reason the registry exists.
+:::decision
+The rejected alternative is the bash seam's shape — one executor per context, a second load throws. That is correct when there is exactly one way to run a command on a machine; it is wrong here because coexistence — an in-process child for a scoped subtask *and* a Claude Code child for a task that needs a different product's judgment, in the very same session — is not a hypothetical future requirement but the actual reason the registry exists.
+:::
 
 ## The delegation tool: one provider, one schema, per instance
 
@@ -136,7 +165,10 @@ The alternative the Agent Note explicitly rejects is the bash seam's shape: one 
 
 A foreground call passes the tool's own execution signal through to `start()`, awaits `run.result`, and always disposes the run before returning — a `completed` result becomes the child's final text, and everything else (`aborted`, `error`, `max-tokens`, `refusal`) becomes an errored tool result that still appends whatever partial output the child produced, so a truncated answer is reported honestly rather than either silently as success or silently dropped.
 
-`maxDepth` deserves a specific mention: it defaults to `3` and is enforced by the in-process driver reading the persisted, monotone `SessionHeader.delegationDepth` — a resumed child can never be re-counted as shallower than it actually is. A numeric cap requires the chosen provider to advertise `depthLimit`; configuring one against a provider that cannot enforce it (every out-of-process provider) fails the plugin at mount time rather than on the first delegation, and those deployments instead set `maxDepth: 'provider-managed'`, handing the recursion budget to the child process's own harness.
+`maxDepth` defaults to `3` and is enforced by the in-process driver reading the persisted, monotone `SessionHeader.delegationDepth` — a resumed child can never be re-counted as shallower than it actually is.
+
+> [!PITFALL]
+> A numeric cap requires the bound provider to advertise `depthLimit`. Configure one against a provider that cannot enforce it — every out-of-process provider — and the plugin fails **at mount time**, not on the first delegation. Those deployments instead set `maxDepth: 'provider-managed'`, handing the recursion budget to the child process's own harness.
 
 ## Background delegation: one-shot Tasks vs. continuable children
 
@@ -145,9 +177,27 @@ A synchronous, foreground `start()` call blocks the parent's current step for th
 - **`one-shot`** (the default) registers a plain `ctx.jobs` Task when the model sets `run_in_background: true`. The generic `job_output`/`job_kill` tools own everything that happens after that: status, final-output collection, cancellation. The subagent seam itself stays task-agnostic here — it's the same background mechanism background bash already uses.
 - **`continuable`** calls `ctx.subagents.startContinuable()` instead, which requires the bound provider's `prepareContinuable` capability. This returns only `{ childId, messageId }` the moment the child's inbox accepts the initial prompt — no Task, no result promise, because the child now owns its own turns from that point on. The optional `send_message` tool (from `dsh-tool-subagent-control`) delivers later turns to the same child conversation; the optional `report` tool (`dsh-tool-subagent-report`), installed *inside* continuable children, lets the child proactively push partial findings back before it's asked. Independently of either, when the child's resident Activation eventually settles, the continuation manager delivers one unconditional settlement notice to the parent — "finished and will do no further work unless you send it more," plus its closing message or the lack of one — regardless of whether the child ever called `report`.
 
-Only the in-process fork and spawn providers currently ship `prepareContinuable` in production composition (fork's is implemented but has no shipped continuable-mode caller, because a continuable child's prompt differs from a one-shot child's by the presence of the `report` tool, which would otherwise invalidate the fork's whole inherited KV-cache prefix). The out-of-process product providers are one-shot only: an ACP or Codex child has no local Session for the continuation manager's Activation and ownership graph to track.
+Only the in-process fork and spawn providers currently ship `prepareContinuable` in production composition. The out-of-process product providers are one-shot only: an ACP or Codex child has no local Session for the continuation manager's Activation and ownership graph to track.
 
-## Diagram: one delegation, start to settlement
+:::fold[Why fork's continuable mode has no shipped caller]
+Fork's `prepareContinuable` is implemented but has no shipped continuable-mode caller: a continuable child's prompt differs from a one-shot child's by the presence of the `report` tool, which would invalidate the fork's whole inherited KV-cache prefix.
+:::
+
+## One delegation, start to settlement
+
+The delegation lifecycle is provider-independent — the same spine no matter which transport serves:
+
+:::timeline
+- model call — the parent model calls the bound delegation tool with `description` + `prompt`
+- build request — `dsh-tool-subagent` builds a `SubagentStartRequest`
+- validate + resolve — `ctx.subagents` checks capabilities against the named provider and resolves a durable descriptor
+- start + publish — the named provider's `start()` publishes the child: a child Agent/Session (or a remote lifecycle id) exists and is running
+- child works — the child runs its own turn(s) with its own tools, session, and log
+- settle — one-shot: `result` resolves to `{ output, structured?, stopReason }`; continuable: a settlement notice goes to the durable direct parent
+- record — the tool result is appended to the parent's own session log
+:::
+
+The full picture, with the provider fan-out and both settlement paths:
 
 ```mermaid
 flowchart TD
@@ -191,7 +241,10 @@ The last edge is deliberately asymmetric: a one-shot result comes back as the *t
 
 ## Recursion, isolation, and delegated policy
 
-Nothing stops an in-process child from seeing the very same delegation tool and recursing — that is exactly why `maxDepth` and `toolFilter` exist as start-time capabilities rather than afterthoughts. Beyond depth, every in-process child's permission scope is fixed at the moment it's created: `captureDelegatedPolicyOverrides()` snapshots the parent's explicit sandbox override and pins the child's approval policy to `'never'` whenever approval is composed, regardless of what the parent's own policy is. A child that hits a wall requiring wider access cannot ask — it is told, via a fixed runtime-context statement, to report the limitation in its reply instead of retrying. This is enforced identically whether the child came from `spawn` or `fork`, and it is why a delegated child is a genuinely bounded blast radius rather than a second copy of the parent's full authority.
+Nothing stops an in-process child from seeing the very same delegation tool and recursing — that is exactly why `maxDepth` and `toolFilter` exist as start-time capabilities rather than afterthoughts. Beyond depth, every in-process child's permission scope is fixed at the moment it's created: `captureDelegatedPolicyOverrides()` snapshots the parent's explicit sandbox override and pins the child's approval policy to `'never'` whenever approval is composed, regardless of what the parent's own policy is.
+
+> [!NOTE]
+> A child that hits a wall requiring wider access cannot ask — a fixed runtime-context statement tells it to report the limitation in its reply instead of retrying. Enforced identically whether the child came from `spawn` or `fork`, this is what makes a delegated child a genuinely bounded blast radius rather than a second copy of the parent's full authority.
 
 ## Known limits worth carrying forward
 

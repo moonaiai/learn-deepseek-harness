@@ -8,9 +8,31 @@ module: foundations
 order: 1
 ---
 
-## 为什么从这里开始
+## 一句话版本
 
-这个仓库里的每一个包——session 日志、工具注册表、模型适配器，乃至 agent loop 本身——都是一个 Cordis 插件。这里没有特权核心：一个插件声明自己需要什么、提供什么，剩下的图连接工作由一个很小的运行时在启动时完成。在任何生成的服务或事件参考文档变得可读之前，你需要先掌握关于这个运行时如何工作的五个核心概念。本章用可运行的示例逐一讲解这五个概念；带真实命令的动手版本在 [`docs/cordis-tutorial/`](https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/cordis-tutorial) 中，本章内容直接取材于此。
+这个仓库里的每一个包——session 日志、工具注册表、模型适配器，乃至 agent loop 本身——都是一个 Cordis 插件，而且没有特权核心：一个插件声明自己需要什么、提供什么，剩下的图连接工作由一个很小的运行时在启动时完成。本章以可运行的示例，讲解解释这个运行时如何工作的五个核心概念——`Service`、`Context`、`inject`、类型化事件与可逆的 effect。带真实命令的动手版本在 [`docs/cordis-tutorial/`](https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/cordis-tutorial) 中，本章内容直接取材于此。掌握这五个概念之后，本课程其余部分生成的服务与事件参考文档，读起来就是一套小而一致的规则的具体应用。
+
+## 五个概念一览
+
+:::concept{term="Service"}
+插件就是实现了 `Service` 的对象——一个裸函数、一个带 `apply` 方法的对象，或一个 `Service` 子类。Cordis 以相同方式加载这三种形态。
+:::
+
+:::concept{term="Context"}
+每个插件收到的 `ctx`：一个代理对象，解析 Cordis 的内置服务，以及任何插件注册的服务——`ctx.tools`、`ctx.llm`、`ctx.sessions`。
+:::
+
+:::concept{term="inject"}
+一个静态字段，声明插件所需的服务。Cordis 会让插件保持 `PENDING`，直到这些服务全部就绪，因此 `apply` 无需判空，也无需手动编排启动顺序。
+:::
+
+:::concept{term="Events"}
+插件之间类型化的发布/订阅，通过五种模式分发（`emit` / `parallel` / `serial` / `bail` / `waterfall`）。`waterfall` 是实现拦截与策略的模式。
+:::
+
+:::concept{term="Effects"}
+每一项注册——服务、监听器、提供方、定时器——都是可逆的 effect，会在其所属插件卸载时自动撤销。
+:::
 
 ## 概念一：插件是实现 Service 的对象
 
@@ -34,22 +56,32 @@ export class MyService extends Service {
 }
 ```
 
-函数插件不需要 `apply` 方法——Cordis 会直接调用这个函数本身，它的 `name` 只用于诊断信息。当一个插件被加载时——无论是来自 `cordis.yml` 中的一个条目，还是来自另一个插件代码里的 `ctx.plugin(child)`——Cordis 都会为这个实例创建一个运行时句柄，称为 **fiber**，然后用一个限定在该插件范围内的上下文调用 `apply(ctx)`（或类构造函数）。
+函数插件不需要 `apply` 方法——Cordis 会直接调用这个函数本身，它的 `name` 只用于诊断信息。当一个插件被加载时——无论是来自 `cordis.yml` 中的一个条目，还是来自另一个插件代码里的 `ctx.plugin(child)`——Cordis 都会为这个实例创建一个运行时句柄，然后用一个限定在该插件范围内的上下文调用 `apply(ctx)`（或类构造函数）。
+
+:::concept{term="fiber"}
+Cordis 为一个已加载插件实例创建的运行时句柄。真正在下方生命周期状态机中流转、并在插件卸载时被释放的，就是它。
+:::
 
 fiber 会在一个小型状态机中流转：
 
-```
-PENDING → LOADING → ACTIVE → UNLOADING → DISPOSED
-                 ↘ FAILED
-```
+:::timeline
+- PENDING——所需服务（见下方概念三）尚不可用
+- LOADING——`apply` 调用正在运行
+- ACTIVE——`apply` 已返回；插件已激活
+- FAILED——`apply` 或配置校验抛出异常（一条旁支，而非后继状态）
+- UNLOADING——拆除正在进行
+- DISPOSED——拆除完成
+:::
 
-`PENDING` 表示所需服务（见下面的概念三）尚不可用；`LOADING`/`ACTIVE` 分别对应 `apply` 正在运行和已经运行完毕；`FAILED` 表示 `apply` 或配置校验抛出了异常；`UNLOADING`/`DISPOSED` 分别对应拆除过程正在进行和已经完成。如果某个插件的模块加载失败，会明确报错——只有路径拼写错误这类情况例外，Cordis 会通过 logger 报告，而不会让进程崩溃，这也是为什么一个新增条目「看起来什么也没做」时，通常应该先检查拼写，而不是怀疑它被静默跳过了。
+如果某个插件的模块加载失败，会明确报错——只有路径拼写错误这类情况例外，Cordis 会通过 logger 报告，而不会让进程崩溃，这也是为什么一个新增条目「看起来什么也没做」时，通常应该先检查拼写，而不是怀疑它被静默跳过了。
 
 `cordis.yml` 中条目列表的顺序没有实质意义——所有条目都会并发启动，一个插件*何时*真正达到 `ACTIVE` 状态完全由概念三（服务依赖）决定，而不是由它在文件中的位置决定。
 
 ## 概念二：上下文是服务的容器
 
-每个插件收到的 `ctx` 参数就是一个**上下文**：一个代理对象，它会解析一组固定的内置属性，以及任何插件已经注册的所有服务。读取 `ctx.events`、`ctx.logger`、`ctx.registry` 或 `ctx.reflect` 会访问 Cordis 自身的引导服务；读取 `ctx.tools`、`ctx.llm` 或 `ctx.sessions` 则会访问以完全相同方式注册的 harness 服务。`Context` 接口本身被声明为一个开放接口，正是为了让更多服务能被添加进去：
+每个插件收到的 `ctx` 参数就是一个**上下文**：一个代理对象，它会解析一组固定的内置属性，以及任何插件已经注册的所有服务。读取 `ctx.events`、`ctx.logger`、`ctx.registry` 或 `ctx.reflect` 会访问 Cordis 自身的引导服务；读取 `ctx.tools`、`ctx.llm` 或 `ctx.sessions` 则会访问以完全相同方式注册的 harness 服务。
+
+`Context` 接口本身被声明为一个开放接口，正是为了让更多服务能被添加进去：
 
 ```ts
 export interface Context {
@@ -78,7 +110,12 @@ export class GreeterService extends Service {
 }
 ```
 
-这个 `super()` 调用会立即把该实例注册为 `'greeter'`；此后，共享这棵上下文树的任何插件都可以通过 `ctx.greeter` 访问它。这里有运行时和编译时两个容易混淆的部分：`super(ctx, 'greeter')` 调用才是真正让 `ctx.greeter` 在运行时可解析的原因；而另一个单独的 `declare module '@deepseek-ai/cordis' { interface Context { greeter: GreeterService } }` 代码块，是 TypeScript 的声明合并，它让 `ctx.greeter` 能够通过类型检查。声明合并不会生成任何代码——没有它服务在运行时仍然可用——但没有它消费方就会失去类型安全和自动补全。`Service` 子类本身就是一个插件（概念一中的类形态），所以它仍然要通过 `ctx.plugin(GreeterService)` 挂载。
+这个 `super()` 调用会立即把该实例注册为 `'greeter'`；此后，共享这棵上下文树的任何插件都可以通过 `ctx.greeter` 访问它。
+
+> [!NOTE]
+> `super(ctx, 'greeter')` 调用才是真正让 `ctx.greeter` 在运行时可解析的原因；而另一个单独的 `declare module '@deepseek-ai/cordis' { interface Context { greeter: GreeterService } }` 代码块是 TypeScript 的声明合并，它让 `ctx.greeter` 能够通过类型检查。声明合并不会生成任何代码——没有它服务在运行时仍然可用——但没有它消费方就会失去类型安全和自动补全。
+
+`Service` 子类本身就是一个插件（概念一中的类形态），所以它仍然要通过 `ctx.plugin(GreeterService)` 挂载。
 
 ## 概念三：通过 `inject` 声明服务依赖
 
@@ -97,7 +134,9 @@ Cordis 会让插件的 fiber 保持在 `PENDING` 状态，直到列出的每个�
 
 `inject` 不是一次性的启动检查——它会被持续地强制执行。如果应用运行期间某个服务的提供方被卸载或热替换，每个注入了该服务的插件也会随之被卸载，并在服务恢复后自动重新加载。这也正是配置中可以安全替换提供方的机制：卸载某个 `shell` 提供方条目，挂载另一个，所有注入 `'shell'` 的插件都会针对新实现干净地重启，不会留下任何悬空的旧引用。
 
-`inject` 只用于硬性依赖。如果某项能力缺失时插件仍然可以运行，应当改用 `ctx.get(name)` 在使用处读取，它会返回 `undefined` 而不是阻塞加载：
+:::decision
+`inject` 只用于硬性依赖——即插件离开它就无法运行的能力。如果某项能力缺失时插件仍然可以运行，应当改用 `ctx.get(name)` 在使用处读取，它会返回 `undefined`，而不是让 fiber 停在 `PENDING`。把一个可选能力写进 `inject`，会让插件为它本可以降级绕过的依赖白白阻塞——并在每次提供方重载时被连带卸载。
+:::
 
 ```ts
 const greeter = ctx.get('greeter')  // 没有任何提供方时为 undefined
@@ -154,7 +193,8 @@ ctx.on('demo/transform', async (input, next) => {
 
 调用 `next()` 会执行下一个已注册的监听器（最终会执行传给 `ctx.waterfall` 本身的最内层默认逻辑）；*不*调用它——直接返回——就会否决它之后的一切。分发 `ctx.waterfall('demo/transform', 'blocked words', async () => 'blocked words')` 时，监听器 1 先运行，它调用了 `next()`，从而执行了监听器 2；监听器 2 看到 `'blocked'`，自行决定了结果，并且不调用 `next()` 就直接返回，因此最内层的默认逻辑从未运行；在返回的路上，监听器 1 把收到的内容转换成了大写。最终可见的结果是 `** BLOCKED **`——否决与包装相互组合的结果。
 
-由此产生一项纪律：**只负责观察或标注的 waterfall 监听器必须调用 `next()`**。一个日志或遥测监听器如果忘了调用 `next()`，就会悄无声息地吞掉整个应用中所有下游监听器的行为。对于真正拥有单一决策权的监听器（比如一个策略插件要回答「批准」还是「拒绝」）而言，短路正是设计意图；但对于本应只是旁观的监听器来说，这就是一个 bug。
+> [!PITFALL]
+> **只负责观察或标注的 waterfall 监听器必须调用 `next()`。** 一个日志或遥测监听器如果忘了调用 `next()`，就会悄无声息地吞掉整个应用中所有下游监听器的行为。对于真正拥有单一决策权的监听器（比如一个策略插件要回答「批准」还是「拒绝」）而言，短路正是设计意图；但对于本应只是旁观的监听器来说，这就是一个 bug。
 
 ## 概念五：注册是可逆的副作用
 
@@ -176,7 +216,10 @@ ctx.effect(() => {
 })
 ```
 
-传给 `effect()` 的回调会立即运行；它返回的 disposer 会在卸载期间运行——热重载时也不例外——对于生命周期与插件一致的资源，你绝不需要自己调用这个 disposer。有一个顺序细节值得尽早记住：disposer 会按注册顺序的逆序启动，但多个**异步** disposer 彼此之间会并发运行。如果拆除步骤确实必须按顺序执行，应当把它们放进同一个 `ctx.effect()` 调用里，在其中依次 `await` 每一步，而不是拆分到多个 `ctx.effect()` 调用中。
+传给 `effect()` 的回调会立即运行；它返回的 disposer 会在卸载期间运行——热重载时也不例外——对于生命周期与插件一致的资源，你绝不需要自己调用这个 disposer。
+
+> [!PITFALL]
+> disposer 会按注册顺序的逆序启动，但多个**异步** disposer 彼此之间会并发运行。如果拆除步骤确实必须按顺序执行，应当把它们放进同一个 `ctx.effect()` 调用里，在其中依次 `await` 每一步，而不是拆分到多个 `ctx.effect()` 调用中。
 
 ## 五个概念如何组合在一起
 

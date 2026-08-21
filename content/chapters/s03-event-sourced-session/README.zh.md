@@ -9,11 +9,33 @@ module: foundations
 order: 3
 ---
 
+## 一句话版本
+
+`@deepseek-ai/dsh-session` 不维护任何可变消息数组。一个 `Session` 是一份仅追加的、类型化 `SessionEvent` 日志;harness 需要的每一个视图——LLM 消息历史、面向人类的文本记录、持久化存储的行——都是从这同一份日志计算出来的*投影*。本章沿这条线走一遍:事件词汇表、`append()` 的提交路径、决定模型真正看到什么的 `surface` 投影,以及建立在同一原语之上的 `fork()` 与运行时不变量。
+
+## 速览
+
+:::concept{term="Session"}
+一份**仅追加的、类型化 `SessionEvent` 日志**——agent 交互中发生的一切的唯一真相之源。不存在一份需要与之同步的"当前状态":日志**就是**状态,其他任何视图都是从它计算出来的投影。
+:::
+
+:::concept{term="SessionEvent"}
+每条日志记录共享的同一个信封:以 `type` 为判别字段的判别式联合,携带 `seq`、`time`、`data`。插件通过 TypeScript 声明合并扩展 `SessionEventMap` 来扩展词汇,无需改动本包。
+:::
+
+:::concept{term="surface"}
+在原始日志之上增量维护的、三种产生消息的事件(`user/message`、`assistant/message`、`tool/result`)的有序投影。它是 `deriveMessages()` 读取的对象;日志里的其他一切都是 log-only。
+:::
+
+:::concept{term="surfaceOp"}
+一个具备 surface 资格的事件如何加入 surface:`'append'` 落在末尾,`{ op: 'replace', start, end }` 遮蔽一段既有范围。底层原始日志始终保持仅追加,变化的只是投影。
+:::
+
 ## 你以为的数组,和你实际拿到的日志
 
 多数 agent 框架把一次对话表示成一个可变的消息数组:压入一条用户回合,压入一条 assistant 回合,在中间插入一条工具结果,再把整个数组交给模型提供方。这套做法在没人需要*观察*这段历史如何变化之前都能工作——一旦出现持久化层、遥测管线、回放工具,或者第二个 UI 标签页,你就要么去轮询这个数组,要么在每个修改点上都挂一套通知系统。这两种表示(数组本身,以及通知系统所声称发生的事)会互相漂移。漏发一次通知,某处修改忘了触发事件,你的追踪记录就会撒谎——它不再反映模型真正看到过什么。
 
-`@deepseek-ai/dsh-session` 从根源上避开了这个问题:它压根没有可变数组。一个 `Session` 是一份**仅追加的、类型化 `SessionEvent` 日志**——它是 agent 交互中发生的一切的唯一真相之源,从轮次边界、原始的模型流分片,到组装完成的消息本身,都记在这里。不存在一份需要与日志保持同步的"当前状态":日志**就是**状态,其他任何视图——LLM 消息历史、面向人类的文本记录、持久化存储的行——都是从它计算出来的*投影*。"实际发生的事"与"记录下来的事"之间的分歧,不是一个需要靠小心避免的 bug,而是结构上不可能发生的事,因为压根不存在另一份可供分歧的东西。
+`@deepseek-ai/dsh-session` 从根源上避开了这个问题:它压根没有可变数组。"实际发生的事"与"记录下来的事"之间的分歧,不是一个需要靠小心避免的 bug,而是结构上不可能发生的事,因为压根不存在另一份可供分歧的东西。下面各节先定义词汇,再自上而下走完整个机制。
 
 ## `SessionEvent`:一份仅追加、可合并扩展的联合类型
 
@@ -60,11 +82,20 @@ export interface SessionEventMap {
 
 信封上有两个字段承担着不显眼却分量很重的工作。`ignorable?: true` 标记一个读取器在遇到不认识的 `type` 时可以安全跳过的事件——缺省即表示*必需*,因此遇到一个不认识的必需类型时,读取器要拒绝重建会话,而不是悄悄恢复出一个内容残缺的会话([版本机制 Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.zh.md) 说明了为什么默认值必须是这个方向)。`sourceEventSeqs`/`surfaceOp` 只在 `SurfaceEventType` 成员(`user/message`、`assistant/message`、`tool/result`)上才通过类型检查——在 `Session.append()` 的调用点上,编译器本身就会拒绝把 surface 元数据附加到 `turn/start` 或 `assistant/chunk` 上。
 
-[生成的持久化目录](../../../../deepseek-harness/docs/persistence-catalog.zh.md)列举了本仓库中出现的每一种事件类型——无论是核心包定义的还是插件合并进来的——各自标注为 `surface` 或 `log-only`,并给出精确的载荷结构和声明位置。需要查某个字段的确切名称时,应该去查那份目录;本章挑选的是理解机制所必需的那部分事件,而不是完整清单。
+> [!NOTE]
+> [生成的持久化目录](../../../../deepseek-harness/docs/persistence-catalog.zh.md)列举了本仓库中出现的每一种事件类型——无论是核心包定义的还是插件合并进来的——各自标注为 `surface` 或 `log-only`,并给出精确的载荷结构和声明位置。需要查某个字段的确切名称时,应该去查那份目录;本章挑选的是理解机制所必需的那部分事件,而不是完整清单。
 
-## `append()`:一次校验,同步提交,提交之后再通知
+## `append()`:一个事件的一生
 
-`session.append(type, data, opts?)` 是事件进入日志的唯一途径:
+`session.append(type, data, opts?)` 是事件进入日志的唯一途径。一个事件穿过它的路径是严格有序的:
+
+:::timeline
+- 校验 —— `snapshotJsonValue` 检查 `data` 是无损 JSON,并在同一趟里完成复制
+- 冻结 —— 在任何观察者看到之前,先 `deepFreeze` 这个事件
+- surface 校验 —— `surfaceManager.validateNext(event)` 拒绝非法的 surface 转换
+- 提交 —— `this.log.push(event)`;事件从此成为持久历史
+- 通知 —— `session/event` 同步触发,在提交之后,发出即忘
+:::
 
 ```ts
 append<T extends SessionEventType>(
@@ -99,9 +130,9 @@ append<T extends SessionEventType>(
 
 ## Surface:哪些事件真正变成了消息
 
-不是每一条记录下来的事件都会变成模型能看到的东西。只有三种类型——`user/message`、`assistant/message`、`tool/result`——属于 `SurfaceEventType`,有资格加入**surface**:这是在原始日志之上维护的、产生消息的事件的有序投影。其他一切(轮次/步骤边界、原始流分片、`todo/write`、`request/header`、`session/end-seed`,以及任何插件合并进来的 log-only 事件)完全没有 surface 条目——它们的存在是为了回放、追踪和持久性,`deriveMessages()` 从不直接查看它们。
+不是每一条记录下来的事件都会变成模型能看到的东西。只有三种类型——`user/message`、`assistant/message`、`tool/result`——属于 `SurfaceEventType`,有资格加入 surface。其他一切(轮次/步骤边界、原始流分片、`todo/write`、`request/header`、`session/end-seed`,以及任何插件合并进来的 log-only 事件)完全没有 surface 条目——它们的存在是为了回放、追踪和持久性,`deriveMessages()` 从不直接查看它们。
 
-每个具备 surface 资格的事件都通过 `surfaceOp` 声明自己**如何**加入 surface:
+每个具备 surface 资格的事件都通过 `surfaceOp` 声明自己如何加入:
 
 ```ts
 export type SurfaceOp =
@@ -226,11 +257,11 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 ## 为什么选事件溯源,而不是可变数组加通知
 
-[事件溯源会话 Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.zh.md) 记录了当初被考虑过、又被否决的替代方案:
+:::decision
+[事件溯源会话 Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.zh.md) 记录了当初被考虑过、又被否决的替代方案:**可变消息数组 + 事件仅作通知发出**——更简单,但状态与日志可能分歧;采用事件溯源后,日志本身即是状态,分歧在结构上不可能发生。驱动这个决策的需求很直白:MVP 要求严格的基于事件的追踪,以及完全可回放的会话,而"通常能保持同步"恰恰是一个追踪与回放产品不能容忍的失败模式。让日志本身成为状态,而不是状态的影子,是把这整类 bug 直接消除掉,而不是去缓解它。
+:::
 
-> **可变消息数组 + 事件仅作通知发出**:更简单,但状态与日志可能分歧;采用事件溯源后,日志本身即是状态,分歧在结构上不可能发生。
-
-驱动这个决策的需求很直白:MVP 要求严格的基于事件的追踪,以及完全可回放的会话。可变数组加通知流"通常"是可以保持同步的,但对一个追踪与回放产品来说,"通常"恰恰是不能容忍的失败模式——漏发一次事件,或者一次忘了通知的修改,持久化下来的记录就不再匹配模型实际处理过的内容。让日志本身成为状态,而不是状态的影子,是把这整类 bug 直接消除掉,而不是去缓解它。同一份 Agent Note 也承认了这个取舍的代价:派生成本会随日志长度增长,而预期的缓解手段是压缩(`dsh-compaction`),而不是退回去直接改写日志。
+同一份 Agent Note 也承认了这个取舍的代价:派生成本会随日志长度增长,而预期的缓解手段是压缩(`dsh-compaction`),而不是退回去直接改写日志。
 
 ## 整体是如何拼起来的
 
@@ -250,8 +281,8 @@ flowchart TD
 
 一条工具结果、一段被总结的范围、一次恢复的对话,以及一个 fork 出来的子会话,底层用的都是同一个原语:事件落进一份仅追加的日志,某个投影只读回自己需要的那部分,而任何抵达模型的内容,都不会存在于日志之外的任何地方。
 
-## 值得记住的已知限制
-
+:::fold[值得记住的已知限制]
 - 预发布阶段 `SESSION_FORMAT_VERSION` 固定为 `0`:`Session` 只接受当前格式的种子,后端会拒绝任何其他版本,并明确说明方向(更新的版本:请升级;更旧的版本:目前还没有升级路径)。普通的事件词汇表增长不会推动这个版本号——那是逐事件的 `ignorable` 标记负责的事([版本机制 Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.zh.md))。
 - `fork()` 只能在存储中一个**实时**会话的稳定边界处切分;对一个已持久化但尚未加载的会话做 fork,不在当前 API 的能力范围内。
 - 把会话分支组织成树结构(多个子会话从任意位置分叉,类似 pi 的风格)被暂缓——目前提供的原语是单亲、基于边界的 `fork()`。
+:::

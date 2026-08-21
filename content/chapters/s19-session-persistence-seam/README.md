@@ -10,27 +10,41 @@ module: extension-memory-seams
 order: 19
 ---
 
-## From log to durable store
+## The short version
 
-[Chapter s03](../s03-event-sourced-session/README.md) established that a `Session` is an append-only log of typed `SessionEvent`s, and that everything else — the LLM message history, the human transcript, a durable storage row — is a projection computed from that log. This chapter picks up exactly where that one stopped: given that the log is the single source of truth, how does it survive a process restart, and how does something outside the live process find a past session again?
+The session log is the single source of truth (chapter s03); this chapter is how that log survives a process restart, and how something outside the live process finds a past session again. `ctx.sessionPersistence` makes one session's log durable through two interchangeable backends — JSONL (one file per session) and SQLite (one shared database) — both honoring the same invariants: append-only, contiguous seq, durability on return. `ctx.sessionQuery` reads *across* sessions, and two smaller riders (projection, session title) derive read models and labels from the same log with no storage of their own. Read on for the crash-recovery rule (close, never truncate), the shared write coordinator both backends compose, and the one boundary this whole family refuses to cross.
 
-Two capability seams answer these questions, and they are deliberately independent of each other:
+## At a glance
+
+Two deliberately-independent capability seams carry this chapter — `ctx.sessionPersistence` and `ctx.sessionQuery` — plus two small riders (projection, session title) that derive from the same log with no storage of their own. The core vocabulary:
 
 :::concept{term="ctx.sessionPersistence"}
-(`dsh-session-persistence`) makes one session's log durable — create it, append to it, reload it after a crash.
+(`dsh-session-persistence`) makes one session's log durable — create it, append to it, reload it after a crash. This is the Service Definition; two sibling packages are the interchangeable providers.
 :::
 
 :::concept{term="ctx.sessionQuery"}
-(`dsh-session-query`) reads *across* sessions — list, filter, full-text search, and trace relationships between them, over whichever sessions happen to be live plus whatever persistence backend happens to be mounted.
+(`dsh-session-query`) reads *across* sessions — list, filter, full-text search, and trace relationships — over whichever sessions happen to be live plus whatever persistence backend happens to be mounted.
 :::
 
-A third, much smaller pair of services rounds out the "memory" story: **session projection** turns the log into whole, log-derived read models for UI carriers, and **session title** derives a short human-readable label for a session from the same log. Neither of these needs its own storage backend — they ride on persistence or read the log directly.
+:::concept{term="SessionHeader"}
+The one thing persisted that is *not* a `SessionEvent`: per-session metadata (format version, id, cwd, lineage, agentPreset). None of it is replayable conversation state, so it rides as `session.header`, never a logged event.
+:::
+
+:::concept{term="PersistenceCoordinator"}
+The shared, backend-agnostic write coordinator both first-party backends compose. It owns per-id write serialization, lazy materialization, crash-tail repair sequencing, bounded batching, and disposal — so JSONL and SQLite differ only in what a row of storage physically looks like.
+:::
 
 ## The persistence seam: Service Definition, Provider, Consumer
 
-`dsh-session-persistence` follows the same three-role split chapter s08 introduced for `dsh-shell`: this package owns only the abstract `SessionPersistence extends Service` class and its shared write-coordination machinery; two sibling packages, `dsh-session-persistence-jsonl` and `dsh-session-persistence-sqlite`, are interchangeable Service Providers; everything that resumes a session, powers `session-query`, or drives the projection cache is a Consumer that injects `ctx.sessionPersistence` and never imports a provider-specific type.
+[Chapter s03](../s03-event-sourced-session/README.md) established that a `Session` is an append-only log of typed `SessionEvent`s, and that everything else — the LLM message history, the human transcript, a durable storage row — is a projection computed from that log. This chapter picks up exactly where that one stopped: given that the log is the single source of truth, how does it survive a process restart, and how does something outside the live process find a past session again? Two deliberately independent capability seams answer these questions.
 
-The persisted unit **is** the existing `SessionEvent` — there is no parallel "persisted message" shape to keep in sync with the live one. What travels separately is `SessionHeader`: format version, `id`, `createdAt`, `cwd`, lineage (`parentSession`, `seedLength`, `origin`, `delegationDepth`), and `agentPreset`. None of this is replayable conversation state, so it stays out of `SessionEventMap` and is attached to a `Session` as `session.header` rather than logged as an event.
+`dsh-session-persistence` follows the same three-role split chapter s07 introduced for `dsh-shell`: this package owns only the abstract `SessionPersistence extends Service` class and its shared write-coordination machinery; two sibling packages, `dsh-session-persistence-jsonl` and `dsh-session-persistence-sqlite`, are interchangeable Service Providers; everything that resumes a session, powers `session-query`, or drives the projection cache is a Consumer that injects `ctx.sessionPersistence` and never imports a provider-specific type.
+
+:::decision
+Persist the existing `SessionEvent` verbatim — there is no parallel "persisted message" shape to keep in sync with the live one. Filtering chunk deltas out of the canonical log was considered and rejected: because `seq = log.length` and `events[i].seq === i` are validated invariants, dropping chunks would leave holes that break both the contiguous-seq contract and crash recovery. Chunk-filtered projections can be added later as derived views with their own renumbering, but they are not the canonical log.
+:::
+
+What travels separately is `SessionHeader`: format version, `id`, `createdAt`, `cwd`, lineage (`parentSession`, `seedLength`, `origin`, `delegationDepth`), and `agentPreset`. None of this is replayable conversation state, so it stays out of `SessionEventMap` and is attached to a `Session` as `session.header` rather than logged as an event.
 
 ```mermaid
 flowchart LR
@@ -60,7 +74,8 @@ The abstract class (`packages/session/session-persistence/src/index.ts:84-228`) 
 | `readFrom(id, fromSeq, signal?)` | Physical suffix read from a watermark, for consumers like the projection cache that only need the tail. |
 | `list(signal?)` / `listSnapshots(signal?)` | Lightweight metadata listing, no full-log parse; `listSnapshots` adds an opaque per-log revision token for change detection. |
 
-Every backend honors the same invariants regardless of storage medium: **append-only** (a crash never truncates — it closes the orphaned turn instead), **contiguous seq** (no gaps, ever), and **durability on return** (`append` doesn't resolve until the batch is on disk).
+> [!NOTE]
+> Every backend honors the same invariants regardless of storage medium: **append-only** (a crash never truncates — it closes the orphaned turn instead), **contiguous seq** (no gaps, ever), and **durability on return** (`append` doesn't resolve until the batch is on disk).
 
 ### Crash recovery closes, never truncates
 
@@ -73,7 +88,12 @@ If a process crashes mid-turn, the reload finds an open `turn/start` with no mat
 - torn tail dropped — only bytes that were never fully written are discarded; everything durably committed survives
 :::
 
-`interrupted` is the one `TurnEndReason` no live loop ever emits itself; it exists purely as this repair marker. Only a genuinely torn tail fragment — bytes that were never fully written — is dropped.
+:::decision
+Close the crashed turn, never truncate it. Truncation was rejected because it would silently destroy real work in long autonomous runs; discarding anything beyond the torn final fragment (a parse error or seq gap at or before the last real `turn/end`) is treated as data corruption and makes the session unloadable rather than silently repaired.
+:::
+
+> [!NOTE]
+> `interrupted` is the one `TurnEndReason` no live loop ever emits itself; it exists purely as this repair marker.
 
 Repair only ever touches *cold* sessions. If the id is still bound to a live `Session` object in the current process, `load(id)` waits for the authoritative in-memory snapshot to become durable and returns it once balanced; an open live turn rejects outright rather than getting a synthetic close grafted onto still-active state. `inspect(id)` goes further: it never commits repair or publishes a `Session` at all, so history-reading code (session-query, a title provider, the projection cache) can safely observe a cold interrupted session without racing a live turn or mutating storage.
 
@@ -81,9 +101,26 @@ Repair only ever touches *cold* sessions. If the id is still bound to a live `Se
 
 Both first-party backends compose the same `PersistenceCoordinator`, implementing only a small `PersistenceBackend<TornMarker>` storage-hook interface (`loadStored`, `readStoredRevision`, `appendBatch`, `commitRepair`, `list`, optional `close`). The coordinator owns everything that is backend-agnostic: per-id write serialization, lazy materialization, crash-tail repair sequencing, bounded write batching, and quiescent disposal. This is why JSONL and SQLite share identical lifecycle correctness — same-id write races, same recovery ordering, same disposal draining — while differing only in what a row of storage physically looks like.
 
+:::decision
+One shared coordinator, composed not inherited. A base class the backends extend was rejected: a backend exposes only the hooks and cannot reach the coordinator's private orchestration state, and a third-party backend may still implement the abstract service directly without the coordinator at all. A wider hook API was also rejected — each candidate folds away (no separate materialize hook, since the first batch must commit atomically with materialization; no separate create-collision probe, since it is just `loadStored(id) !== undefined`; no coordinator pass-through for `list()`).
+:::
+
+:::fold[Write batching: a fixed coalescing window, and the flush barrier]
 Write batching is a fixed coalescing window, not an event-loop or backend-latency bound. `SessionWriteBehind` (`packages/session/session-persistence/src/write-behind.ts:18-52`) copies each live event into a per-session queue; the *first* pending event starts a timer at the configured `writeBatchMaxDelayMs` (default `200`), and later events joining before expiry do not reset that deadline. When the timer fires, one durable write starts; events admitted while that write is in flight form a new, separately-bounded follow-up batch. `session/flush` cancels the wait outright and is the shared quiescence barrier the agent loop uses as its ordering and error-observation checkpoint before starting the next turn — this is the same flush point chapter s03 mentioned as the boundary between "logged" and "still buffered."
+:::
 
 ## Two backends, one contract
+
+Both backends are equally correct implementations of one contract; the choice between them is an operational one (single file per session vs. one queryable database), not a functional one.
+
+| | `dsh-session-persistence-jsonl` | `dsh-session-persistence-sqlite` |
+|---|---|---|
+| Storage unit | one append-only file per session | one shared database, many sessions |
+| `locate()` | pure path → `session.jsonl.zstd` | always `undefined` (no per-session artifact) |
+| Physical layout | immutable header line, then one event/frame per append batch | `sessions` + `events` tables; one event = one row |
+| Lazy materialization | first `append()` writes + `fsync`s a temp file, published without overwrite | first `append()` writes the `sessions` row inside one transaction |
+| `readFrom()` suffix | parses the whole (sequential) log | seeks by `seq` (`WHERE seq >= ?`) via `loadStoredFrom` |
+| Space optimization | `packChunks` collapses ≥3 same-block chunk deltas (~60% smaller) | not applicable |
 
 ### JSONL: one file per session
 
@@ -97,7 +134,9 @@ locate(meta: SessionHeader): SessionLocation {
 }
 ```
 
+:::fold[Physical encoding: independent zstd frames, collision-safe publish]
 The default physical encoding is a concatenation of independent Zstandard frames — one checksummed frame for the header, one per durable append batch — so listing can validate and read only the header frame without decompressing the whole file. Lazy materialization means `create()` writes nothing; the first `append()` writes and `fsync`s a temporary file, then publishes it without overwrite (a POSIX hard link, or `MOVEFILE_WRITE_THROUGH` on Windows) so two processes racing to create the same session id fail instead of silently overwriting each other's log.
+:::
 
 ### SQLite: one database, many sessions
 
@@ -121,7 +160,8 @@ CREATE TABLE IF NOT EXISTS events (
 
 Each `SessionEvent` maps 1:1 onto an `events` row — `data` holds the event payload as JSON text, so the row shape is the event verbatim, chunk events included. A `sessions` row is written only by the first `append` (the same lazy-materialization rule as JSONL, expressed as "no row" instead of "no file"), and `append` wraps the whole batch in one `BEGIN`/`COMMIT` transaction, so a mid-batch `UNIQUE` violation on a duplicated `seq` rolls back cleanly. Because SQLite can seek directly by `seq`, this backend implements the optional `loadStoredFrom` hook (`WHERE seq >= ?`) so `readFrom()` reads only the requested suffix instead of parsing the whole log — a property JSONL's sequential-file medium cannot offer, which is why `readFrom` documents both access patterns as valid.
 
-Both backends are equally correct implementations of one contract; the choice between them is an operational one (single file per session vs. one queryable database), not a functional one. The SQLite package's own README flags a durable TODO: it talks to `node:sqlite` directly today, and would route through a cordis database service instead if one is ever adopted — without changing the `SessionPersistence` contract surface at all.
+> [!NOTE]
+> The SQLite package's own README flags a durable TODO: it talks to `node:sqlite` directly today, and would route through a cordis database service instead if one is ever adopted — without changing the `SessionPersistence` contract surface at all.
 
 ## Session query: searching across sessions
 
@@ -146,10 +186,11 @@ The provider-independent surface includes structural filtering (`filterSessions`
 
 `SqliteSessionQueryEngine` is the first (and currently only) concrete provider, implementing `searchSessions`/`searchEvents` with SQLite FTS5. It maintains its own **dedicated derived index database** — never the persistence database itself — reconciled incrementally against lightweight durable-snapshot revisions so an unchanged session costs nothing on a repeat search. Live sessions get connection-local TEMP rows that shadow the durable base for the same id, so a session's current state is searchable even before it's flushed to persistence.
 
-Two details worth internalizing about how search actually behaves:
+> [!NOTE]
+> **Queries are literal phrases, not FTS5 syntax.** Quotes, `OR`, `NEAR`, `*` are treated as data to search for, not as executable MATCH operators — this is deliberate, not a missing feature, so a model or user typing a literal search term never accidentally triggers boolean query syntax.
 
-- **Queries are literal phrases, not FTS5 syntax.** Quotes, `OR`, `NEAR`, `*` are treated as data to search for, not as executable MATCH operators — this is deliberate, not a missing feature, so a model or user typing a literal search term never accidentally triggers boolean query syntax.
-- **The tokenizer is `unicode61`.** This gives token/phrase recall, not arbitrary substring recall — `AI` will not match inside `BRAID`. For a literal whitespace-flexible substring scan, `filterEvents()`'s regex-based text clause is the intended tool instead.
+> [!PITFALL]
+> **The tokenizer is `unicode61`.** This gives token/phrase recall, not arbitrary substring recall — `AI` will not match inside `BRAID`. For a literal whitespace-flexible substring scan, `filterEvents()`'s regex-based text clause is the intended tool instead.
 
 `openAt` controls when the SQLite handle actually opens: `startup` (default, fails fast before the service activates), `first-search` (defers the import and handle open until the first query, useful for clean startup output), or `never` (full-text search is off entirely — `searchSessions`/`searchEvents` reject with `SESSION_QUERY_SEARCH_DISABLED`, while every inherited exact read/filter/trace keeps working unaffected).
 
@@ -165,8 +206,14 @@ Persistence answers "get the log back"; `ctx.sessionProjections` (`dsh-session-p
 
 `dsh-session-title` derives a short human-readable label for a session, and it is a useful small case study in "everything model-visible or user-visible is a session event" because the title mechanism produces exactly one durable artifact: a `session/title` event (`docs/persistence-catalog.md:639-651`), marked log-only — it never enters `deriveMessages()` or the model surface. There's no separate "titles table"; a title is retrieved by folding the log for the latest `session/title` event, the same way any other derived value comes from replay.
 
-The default path is a deterministic fallback: the first eligible human `user/message` (text-only, non-empty) schedules a title from its first words, bounded by configured word/byte limits, with whitespace normalized and control sequences stripped. A deployment may additionally register exactly one asynchronous model-backed provider (`dsh-session-title-first-prompt-llm` or `dsh-session-title-all-prompts-llm`, both built on shared logic in `dsh-session-title-llm`) — its own pre-dispatch request is separately logged as `session/title-llm-request` (`docs/persistence-catalog.md:655-664`) before the result comes back, so a title-generation request is itself replayable and auditable even if it never completes. An explicit user-issued rename pins the session: later automatic messages no longer schedule an automatic revision until an explicit `refresh` deliberately unpins it. None of this touches the main agent request's tokens or KV-cache prefix — title generation is a side channel entirely separate from the conversation the model is having.
+The default path is a deterministic fallback: the first eligible human `user/message` (text-only, non-empty) schedules a title from its first words, bounded by configured word/byte limits, with whitespace normalized and control sequences stripped. A deployment may additionally register exactly one asynchronous model-backed provider (`dsh-session-title-first-prompt-llm` or `dsh-session-title-all-prompts-llm`, both built on shared logic in `dsh-session-title-llm`) — its own pre-dispatch request is separately logged as `session/title-llm-request` (`docs/persistence-catalog.md:655-664`) before the result comes back, so a title-generation request is itself replayable and auditable even if it never completes. An explicit user-issued rename pins the session: later automatic messages no longer schedule an automatic revision until an explicit `refresh` deliberately unpins it.
+
+> [!NOTE]
+> None of this touches the main agent request's tokens or KV-cache prefix — title generation is a side channel entirely separate from the conversation the model is having.
 
 ## What this seam does not do
 
-Every package in this family is explicit about the same boundary: **there is no deletion or retention API anywhere in this stack.** `dsh-session-persistence` states it directly — pruning stored sessions is out-of-band backend maintenance, not something the seam does for you. `list()` on both backends is unpaginated and unfiltered, fine for a local development store, an explicit non-goal at any larger scale. `dsh-session-query` likewise ships no caller-authorization of its own (that's `dsh-tool-session-query`'s entire job) and no extractor/search-provider registry beyond the one SQLite implementation. None of this is oversight — each README names it under "Known Limitations and Deferred Work" as a boundary a future package would need to own, not a gap this one silently papers over.
+> [!LIMITATION]
+> There is no deletion or retention API anywhere in this stack. `dsh-session-persistence` states it directly — pruning stored sessions is out-of-band backend maintenance, not something the seam does for you.
+
+Every package in this family is explicit about the same boundary. `list()` on both backends is unpaginated and unfiltered, fine for a local development store, an explicit non-goal at any larger scale. `dsh-session-query` likewise ships no caller-authorization of its own (that's `dsh-tool-session-query`'s entire job) and no extractor/search-provider registry beyond the one SQLite implementation. None of this is oversight — each README names it under "Known Limitations and Deferred Work" as a boundary a future package would need to own, not a gap this one silently papers over.

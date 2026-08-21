@@ -8,19 +8,35 @@ module: foundations
 order: 2
 ---
 
-## 启动一个 profile，就是在组合 patch 层
+## 一句话版本
 
-`dsh --profile web` 并不是启动一个功能固定的二进制程序。它做的事情是：解析出一个目录 `$DSH_HOME/profiles/web`，再根据这个目录里声明的各层，组装出一棵插件树。`dsh --profile headless "run the tests"` 用的是同一套机制；任何人手工创建的自定义 profile，用的也是这同一套机制——`apps/cli` 内部没有任何特权的、硬编码的组合逻辑是随附 profile 独享、自定义 profile 享受不到的。
+`dsh --profile web` 启动的不是一个功能固定的二进制程序——它在一个空根之上，按有序的 patch 层叠出一棵插件树。profile 就是一个普通目录，负责声明该叠放哪些组合包；组合包就是一个普通 npm 包，随身带一份 `cordis.patch.yml`。`--dump-config` 会在任何东西挂载之前，把组合后的树打印出来。下文讲清这套固定的分层顺序、随附的三个组合包，以及为什么一份显式列表胜过扫描 `dependencies`。
 
-一个 profile 目录只有两份文件：一个带 `dsh.profile` 字段的 `package.json`，其中 `bundles` 是一份有序列表（该文件也顺带记录 pnpm 管理的树外插件 `dependencies`）；以及 profile 自己的 `cordis.patch.yml`。`bundles` 列表中的名字会先从 `dsh` 安装目录解析，再从 profile 自己的 `node_modules` 解析——因此随附组合包（`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-headless`）永远来自运行中 `dsh` 所在的同一次安装，而某个人手动 `add` 进来的插件则来自 pnpm。
+## 速览
 
-**组合包**（bundle）本身不是什么特殊的运行时概念，它只是一种分发格式。任何 npm 包，只要它的 manifest（元数据清单）里声明了
+:::concept{term="profile"}
+一个普通目录：一个带 `dsh.profile` 字段的 `package.json`（其中 `bundles` 是一份有序列表），外加 profile 自己的 `cordis.patch.yml`。它只负责声明该叠放哪些组合包——仅此而已。
+:::
+
+:::concept{term="组合包（bundle）"}
+一种分发格式，不是什么特殊的运行时概念。任何 npm 包，只要它的 manifest（元数据清单）里声明了
 
 ```json
 "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 ```
 
 就可以作为一层 patch 装进某个 profile 的 `bundles` 列表。`dsh.profile`（profile 自己的 manifest）和 `dsh.bundle`（组合包的 manifest）分属两个不同的字段，所以一份 `package.json` 一眼就能看出自己扮演的是哪种角色。
+:::
+
+:::concept{term="patch 层（cordis.patch.yml）"}
+组合的最小单位：一份有序的列表，由若干行 `insert` 加上按 id 进行的覆盖与禁用组成。组合包、profile、home 目录和每个 `--patch` 标志各自贡献一层。
+:::
+
+## 启动一个 profile，就是在组合 patch 层
+
+`dsh --profile web` 并不是启动一个功能固定的二进制程序。它做的事情是：解析出一个目录 `$DSH_HOME/profiles/web`，再根据这个目录里声明的各层，组装出一棵插件树。`dsh --profile headless "run the tests"` 用的是同一套机制；任何人手工创建的自定义 profile，用的也是这同一套机制——`apps/cli` 内部没有任何特权的、硬编码的组合逻辑是随附 profile 独享、自定义 profile 享受不到的。
+
+一个 profile 目录只有两份文件：一个带 `dsh.profile` 字段的 `package.json`，其中 `bundles` 是一份有序列表（该文件也顺带记录 pnpm 管理的树外插件 `dependencies`）；以及 profile 自己的 `cordis.patch.yml`。`bundles` 列表中的名字会先从 `dsh` 安装目录解析，再从 profile 自己的 `node_modules` 解析——因此随附组合包（`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-headless`）永远来自运行中 `dsh` 所在的同一次安装，而某个人手动 `add` 进来的插件则来自 pnpm。
 
 ## 配置树在空根之上组合而成
 
@@ -35,7 +51,8 @@ const PROFILE_ROOT_CONFIG = `# dsh profile root — an empty entry list. The tre
 `
 ```
 
-这份文件本来就不该有任何内容——整个组合过程就是在 `[]` 之上叠加各层 patch；它存在的唯一原因，是 Loader 需要一个真实的 include 根，用来把相对路径锚定到 profile 目录。
+> [!NOTE]
+> 这份文件本来就不该有任何内容——整个组合过程就是在 `[]` 之上叠加各层 patch；它存在的唯一原因，是 Loader 需要一个真实的 include 根，用来把相对路径锚定到 profile 目录。
 
 ## 随附的三个组合包
 
@@ -90,7 +107,10 @@ const PROFILE_ROOT_CONFIG = `# dsh profile root — an empty entry list. The tre
 
 ## 分层的应用顺序
 
-一条 patch 要么按 `id` 替换目标行的**整个** `config`，要么插入新行——不存在深度合并，因此 profile 覆盖必须重述自己想保留的每个字段。各层严格按照一个固定顺序应用，而这个顺序同时决定了「实际启动的是什么」和「`--dump-config` 打印的是什么」：
+> [!PITFALL]
+> 不存在深度合并。一条 patch 要么按 `id` 替换目标行的**整个** `config`，要么插入新行——因此 profile 覆盖必须重述自己想保留的每个字段。
+
+各层严格按照一个固定顺序应用，而这个顺序同时决定了「实际启动的是什么」和「`--dump-config` 打印的是什么」：
 
 ```mermaid
 flowchart TD
@@ -105,7 +125,18 @@ flowchart TD
   Overlay --> Composed["组合后的配置树——<br/>即 dsh --profile web --dump-config 的输出"]
 ```
 
-home 级文件之所以优先级高于逐 profile 的文件，是因为它承载的是「这台机器上适用于所有 profile」的机器本地偏好，而不只是某一个 profile 的偏好。`apps/cli/src/profile-boot.ts` 正是按这个顺序拼出完整的 patch 列表：
+:::timeline
+- 空的 profile 根——配置树在 `[]` 之上组合而成
+- 组合包层——`dsh.profile.bundles`，按列表顺序：先 `dsh-base`，再 `dsh-web-app` 或 `dsh-headless`
+- profile 自己的 cordis.patch.yml
+- home 级 $DSH_HOME/cordis.patch.yml
+- --patch overlay，按 argv 顺序——即 `--dump-config` 打印出的组合树
+:::
+
+> [!WHY]
+> home 级文件之所以优先级高于逐 profile 的文件，是因为它承载的是「这台机器上适用于所有 profile」的机器本地偏好，而不只是某一个 profile 的偏好。
+
+`apps/cli/src/profile-boot.ts` 正是按这个顺序拼出完整的 patch 列表：
 
 ```ts
 function allPatches(composed: ComposedProfile): PatchOptions[] {
@@ -159,13 +190,17 @@ if (defaultOnly && patches.length > 0) {
 
 ## 为什么是组合包与 profile，而不是扫描
 
-本章描述的这套设计，取代了一套更隐式的早期方案，其中被否决的几个备选思路很能说明问题：
+:::decision
+用一份显式、有序的 `dsh.profile.bundles` 列表来组合，而不是扫描 `dependencies` 再猜一个顺序。单一、确定的真源胜过两个（扫描结果加一条隐式的字母序决胜规则）；而且它意味着一次普通的 `pnpm add` 只是安装一个库，除非你把它显式加进 `bundles`，否则不会激活任何东西。
+:::
 
+本章描述的这套设计，取代了一套更隐式的早期方案。把这件事做对的回报是：一种新的组合表层——一个 TUI、一个提供方扩展包——可以作为普通 npm 包发布，按 profile 安装，仓库不需要为每一种部署形态都专门留一行或专门开一种入口模式。`apps/cli` 本身也因此收缩为 argv 解析、消费 profile 机制，以及一层薄薄的 pnpm 转发器。
+
+:::fold[被否决的三个备选方案]
 - **扫描 `dependencies` 找组合包，未列出的按字母序排列**——这是最初的草案。它有两个真源（扫描结果和一条隐式的字母序决胜规则），而不是一个；一份显式、有序的 `dsh.profile.bundles` 列表更小，也完全确定。这个方案还意味着一次普通的 `pnpm add` 有可能悄悄激活某个 patch 层；而在随附的设计下，`pnpm add` 只是安装一个库，除非你把它显式加进 `bundles`，否则不会激活任何东西。
 - **内置组合包使用 `link:` 条目**——被否决，因为 pnpm 无法对指向 dsh 安装目录的 `link:` 做版本管理、安装或更新，而且 `link:` 会把一个机器专属的路径固化进一份可能被提交或分享的文件里。双锚点解析（先安装目录、后 profile 目录）加上修复过的 `$DSH_HOME/profiles/node_modules` 符号链接回退，能提供同样「组合包必然来自安装目录」的保证，却不带来这两个问题。
 - **组合包的传递式自动应用**——即一个组合包通过自己的依赖图悄悄带出另一个组合包的 patch——被否决。只有直接列在 `dsh.profile.bundles` 中的组合包才会贡献一层；如果一个组合包想要重新导出另一个组合包的配置行，必须在自己的 patch 文件里显式完成。
-
-由此带来的结果是：一种新的组合表层——一个 TUI、一个提供方扩展包——可以作为普通 npm 包发布，按 profile 安装，仓库不需要为每一种部署形态都专门留一行或专门开一种入口模式。`apps/cli` 本身也因此收缩为 argv 解析、消费 profile 机制，以及一层薄薄的 pnpm 转发器。
+:::
 
 ## 把组合包装进一个 profile
 

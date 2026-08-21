@@ -11,21 +11,27 @@ module: orchestration-and-capstone
 order: 23
 ---
 
-## Two failure modes, two different fixes
+## The short version
 
-This chapter is about what happens when something in a running agent goes wrong — not a bug in application code, but a live failure: a user wants to stop a turn, a tool call needs to be interrupted mid-flight, a model request comes back as a transport error. DeepSeek Harness treats these as two distinct problems with two distinct mechanisms:
+When something in a running agent fails — a user stops a turn, a tool call is interrupted mid-flight, a model request comes back as a transport error — this harness reaches for one of two mechanisms. **Cancellation** is deliberate: the loop is *asked* to stop work and waits until that work has actually quiesced, never killed. **Retry** is automatic: a plugin re-sends a failed model request transparently, without the model or the user ever seeing the failure. Both rest on one rule this codebase keeps re-deriving: **never abandon work you can't prove has stopped.** The rest of the chapter traces both mechanisms against the code, then closes with three real postmortems — the failures that actually shipped, and the defensive rules each one left behind.
+
+## At a glance
+
+Three terms carry the whole chapter. Two are the failure modes the driver is built around; the third is the commitment both of them obey.
 
 :::concept{term="Cancellation"}
-Deliberate: someone or something (a user, a parent agent, a hook, disposal) decides a turn or a tool call should stop. The loop cooperates with that decision instead of forcibly killing work.
+Deliberate. Someone — a user, a parent agent, a hook, disposal — decides a turn or a tool call should stop, and the loop cooperates with that decision instead of forcibly killing work.
 :::
 
 :::concept{term="Retry"}
-Automatic: a model request fails in a way that might succeed on a second attempt, and a plugin decides whether to retry it transparently, without the model or the user ever seeing the failure.
+Automatic. A model request fails in a way that might succeed on a second attempt, and a plugin decides whether to retry it transparently — the model and the user never see it.
 :::
 
-Both mechanisms share one design commitment that shows up throughout this codebase: **never abandon work you can't prove has stopped.** A cancelled turn does not return "cancelled" until the work it interrupted has actually reached quiescence. A retried request does not silently duplicate a tool call. This is the same commitment [`docs/defensive-patterns.md`](../../../../deepseek-harness/docs/defensive-patterns.md) states as a general rule — "dispose must reach quiescence, not just request it" — applied specifically to the turn/step driver.
+:::concept{term="Ask, don't kill"}
+The shared commitment: never abandon work you can't prove has stopped. A cancelled turn does not return "cancelled" until its interrupted work has quiesced; a retried request never silently duplicates a tool call.
+:::
 
-The second half of this chapter turns to a different question: given that failures happen, how does this codebase learn from the ones that actually shipped? Three real postmortems show what "defensive engineering" looks like in practice here — not abstract caution, but rules written in direct response to a specific incident.
+This is the same commitment [`docs/defensive-patterns.md`](../../../../deepseek-harness/docs/defensive-patterns.md) states as a general rule — "dispose must reach quiescence, not just request it" — applied specifically to the turn/step driver. The second half of the chapter turns that rule backward-looking: given that failures happen, how does this codebase learn from the ones that actually shipped?
 
 ## Explicit turn cancellation
 
@@ -54,28 +60,26 @@ Calling `cancel()` on an idle agent is a no-op: there is no active holder to abo
 ### What gets durably recorded — and what doesn't
 
 :::decision
-An interrupted live turn closes with the coarse durable outcome `{ kind: 'aborted' }` in its `turn/end` event. That record deliberately does **not** carry which of the four causes triggered it.
-
-:::decision
-The [explicit-turn-cancellation Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) states the reasoning directly:
+An interrupted live turn closes with the coarse durable outcome `{ kind: 'aborted' }` in its `turn/end` event. That record deliberately does **not** carry which of the four causes triggered it. The [explicit-turn-cancellation Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) states the reasoning directly:
 
 > No production replay, UI, ACP, telemetry, or workflow consumer distinguishes `user` from `parent`. Copying the request source into the terminal result would conflate two facts and add Session-specific validation without a consumer.
 :::
 
 This is the "model-visible means logged" rule cutting the other way: the terminal event records *what happened to the turn* (it was aborted), while the *runtime* signal identifies *who* requested it — two different facts, and only the first one earns a place in durable history. Session seed/load actively rejects legacy aborted records carrying a reason field or any other extra field, which forecloses reintroducing caller-owned cancellation detail through replay. A separate process-local `agent/cancel-requested` notification does fire with the resolved cause before work is torn down, but it is not durable — it exists for live observers, not for the log.
-:::
 
 ### Cooperative, not preemptive
 
 The loop checks `signal.aborted` (via `throwIfAborted()`) before and after every awaited boundary — before building a request, after streaming each chunk, before dispatching tool calls — but it never races an in-progress Promise against the abort signal to abandon it early. Work that ignores the signal must still settle before `whenIdle()` resolves, before disposal completes, and before the loop reports quiescence.
 
-This is a direct instance of the "async state is not synchronous state" and "dispose must reach quiescence" defensive rules: `Promise.race`-style abandonment would let the driver report `idle` while the abandoned work's side effects are still landing — for example, a tool still writing a file, or a subprocess still running. Racing the signal is available as an *option* in JavaScript, and this codebase explicitly rejects it for cancellation. The tradeoff is real: uncooperative same-process work can delay how quickly a cancel takes visible effect, but the reported quiescent state stays truthful. Hard termination of genuinely stuck work is a job for a worker or process isolation boundary — outside this control's scope.
+:::decision
+We reject `Promise.race`-style abandonment for cancellation. Racing the signal is *available* in JavaScript, and this codebase explicitly refuses it: abandoning an in-progress promise would let the driver report `idle` while the abandoned work's side effects are still landing — a tool still writing a file, a subprocess still running. Uncooperative same-process work can delay how quickly a cancel becomes visible (the tradeoff is real), but the reported quiescent state stays truthful. Hard termination of genuinely stuck work is a job for a worker or process isolation boundary — outside this control's scope.
+:::
 
-### Where the signal reaches
-
+:::fold[Where the signal reaches — and where it never travels]
 Every participating method, event, and request object receives the same explicit signal for the life of one turn — a fresh one for the next. Concretely: `agent/pre-step`, `agent/request`, model streaming, `agent/request-error` recovery, tool execution, approval, `agent/turn-stopping`, and subagent/workflow requests all carry `signal: AbortSignal` in their payloads. Hook bridges accept `RunHookOptions.signal` so that cancelling a turn reaches all the way down to a bash executor's process-group kill and join. `SystemPrompt.assemble()` accepts `signal?: AbortSignal` as an ordinary optional field, because prompt assembly can also happen outside any turn (e.g. cold rendering), where there is no signal to pass.
 
 `ctx.agents` (the [initiator scope](../s16-subagent-seam/README.md)) continues to carry only the initiating `Agent` — never a turn or a cancellation signal. That is a boundary the design note calls out explicitly: adding turn-lifetime state to a driver-lifetime ambient context would let a stale asynchronous descendant appear to retain authority over a *later* turn on the same agent. Cancellation therefore has exactly one owner and travels only through explicit parameters, never through ambient lookup.
+:::
 
 ## Cooperative tool cancellation
 
@@ -92,18 +96,22 @@ interface ToolExecutionInput {
 
 `ToolExecutionInput.signal`, `ToolExecution.signal`, and `ToolRunContext.signal` are all required, readonly `AbortSignal` fields — not `signal?: AbortSignal`. `defineTool()` types `exec.signal` as required for every registered tool, so a tool body can observe or forward cancellation without a cast or a null check. The registry supplies no overload, no default controller, no never-abort sentinel, and no convenience call path that omits it. Every caller must supply the signal it actually owns.
 
-This is the same "explicit > implicit" convention that runs through the whole codebase: an optional signal would let some caller silently opt out of cancellation, and the registry cannot synthesize a fallback signal that represents a lifetime it doesn't own. Making it required at the type level converts a class of "this tool never got cancelled properly" bugs into a compile error instead of a runtime surprise.
+:::decision
+Make the signal required at the type level. This is the codebase's "explicit > implicit" convention: an optional signal would let some caller silently opt out of cancellation, and the registry cannot synthesize a fallback signal that represents a lifetime it doesn't own. Making it required converts a class of "this tool never got cancelled properly" bugs into a compile error instead of a runtime surprise.
+:::
 
-### Mutability matches the pipeline stage
-
+:::fold[Signal mutability matches the pipeline stage]
 Not every participant in a tool call needs — or should have — the power to *change* the signal. `ToolDispatchExecution` (used only by the `tools/execute` waterfall) is the one type where `signal` is mutable; every other stage — pre-policy, post-policy, result observers, and the tool implementation itself — receives a readonly view. An around-dispatch wrapper may temporarily *replace* `exec.signal` for its own delegated lifetime (for example, to add a deadline), but it cannot delete it or set it to `undefined`; the registry fuses every wrapper replacement with the original caller signal immediately before the tool body runs, and restores the upstream signal unconditionally once the wrapper's scope ends. This lets deadline-style composition exist without ever leaving a tool body running with no cancellation path at all.
+:::
 
 ### Two cancellation codes, because "it might have run" matters
 
 A tool call can be cancelled at several different points: before any policy check, during approval, inside an around-dispatch wait, after the tool body has already started, or while post-policy is still waiting on a completed body. One undifferentiated "aborted" result cannot tell a durable consumer whether the tool's side effects might have already happened. `dsh-tools` therefore exports two distinct codes:
 
-- **`TOOL_ABORTED_BEFORE_DISPATCH`** — cancellation prevented the tool body from ever being invoked. Model text: `Error: tool call aborted before dispatch`.
-- **`TOOL_ABORTED`** — cancellation happened only after the body was already invoked (for example, while an around-wrapper or post-policy listener was waiting on an already-running call). Model text: `Error: tool call aborted`.
+| Code | When it fires | Model text |
+|---|---|---|
+| `TOOL_ABORTED_BEFORE_DISPATCH` | Cancellation prevented the tool body from ever being invoked | `Error: tool call aborted before dispatch` |
+| `TOOL_ABORTED` | Cancellation happened only after the body was already invoked | `Error: tool call aborted` |
 
 The registry marks the exact instant it invokes `ToolDefinition.execute()`, so this distinction is precise, not a guess. A denial, wrapper failure, or tool-level failure remains more specific than either generic cancellation code, and a timeout owned by timeout policy remains its own `TOOL_TIMEOUT` — cancellation codes never paper over a more specific failure.
 
@@ -163,6 +171,17 @@ while (true) {
 }
 ```
 
+That loop is a fixed, ordered cycle. Walked as a step-through:
+
+:::timeline
+- `buildRequest()` assembles one frozen request from durable history
+- stream chunks until `assembler.finish` resolves
+- finish is `error` or `aborted` → fire the `agent/request-error` waterfall (the turn signal is still live)
+- a listener returns `{ kind: 'retry' }` and skips `next()` → short-circuit straight back to `continue`
+- the loop rebuilds from the same durable history and resends as a new step in the same turn
+- no listener retries → the default terminal handler returns `undefined` → throw `LlmError`, closing step and turn
+:::
+
 `agent/request-error` fires once a model streaming attempt has finished as `error` or `aborted`, after the failed step has closed but before the turn itself closes — while the turn's cancellation signal is still live, so a recovery listener can still cooperate with an in-flight cancel. It is a waterfall with exactly two possible outcomes:
 
 ```ts type-equiv
@@ -191,18 +210,21 @@ From the model's point of view, none of this exists. No retry event, delay, prov
 - **Async state is not synchronous state.** `agent/status` or `whenIdle()` is never the result of one particular message: several queued follow-ups, steering, and injected work can share one `running` interval, and cancellation or disposal can discard unstarted items. A caller that genuinely needs to attribute an outcome to one message must define its own interval explicitly (for example, from that message's durable inbox receipt to the agent's next whole-agent `idle`), and describe any output it observes as interval-wide rather than caused by that specific message.
 - **Dispose must reach quiescence, not just request it.** Already covered above: a teardown that issues an abort and returns before the aborted work actually stops leaves orphans. Cleanup awaits the children's exit; kill, then await `done`.
 
-The other four are equally concrete:
-
+:::fold[The other four rules]
 - **Report orthogonal outcomes independently.** A process can time out *and* exit 0, because it trapped the signal. `timedOut`, `signal`, and `exitCode` are three independent facts; nesting one inside another's branch lets a caller misread a cut-short run as a clean success.
 - **Honor public contracts on both sides.** When an implementation can receive a result in several different representations (a thrown exception, or a structured `finish {kind:'error'}` chunk), normalize before crossing the public API boundary, so a consumer never has to guess whether a caught exception came from the provider, a wrapper, or its own assembly code.
 - **Contain callback exceptions in the dispatcher.** A user-supplied listener that throws must not reject the promise it runs inside, and must not starve listeners registered after it. Wrap the dispatch loop in try/catch; one bad subscriber never breaks core lifecycle.
 - **Never hand untrusted output the ambient environment or predictable paths**, and **unlink link-shaped paths with `lstatSync` + `unlinkSync`, never a recursive `rmSync`.** Both are subprocess/filesystem-specific instances of the same idea: don't let one component's disposal or output channel become another component's attack surface.
+:::
 
 ## Three postmortems: what actually broke
 
 A postmortem in this repo is not a design decision — it's a backward-looking record of a failure: what broke, the mechanism, why every safety net missed it, and the concrete guardrail added so the same class of bug fails loudly next time. Three of the four on record are especially instructive because the bug was subtle, the escape was systemic (a gap in tests or conventions, not a typo), and the fix generalizes past this one codebase.
 
 ### Postmortem 0001 — a stray `export default` silently dropped a plugin's `inject`
+
+> [!PITFALL]
+> 178 green unit tests and 100% line coverage — yet the bug lived only on the real Loader path, which no hand-mounted test ever exercised.
 
 The ACP server crashed the instant a real editor connected: `session/new` failed with `cannot get property "agents" without inject`, despite 178 green unit tests and 100% line coverage. The plugin's source file was a normal *namespace* plugin — separate named exports for `name`, `inject`, `Config`, and `apply` — but it had one extra line no other plugin in the repo had: `export default apply`.
 
@@ -214,6 +236,9 @@ Every test missed this because every test mounted the plugin by hand — `ctx.pl
 
 ### Postmortem 0002 — a literal `!!js` object permanently disabled filesystem tools
 
+> [!PITFALL]
+> The snapshot suite passed by recording the failure as the new expected output — a fixture refresh, not a correctness review.
+
 An ACP example composition wanted filesystem tools (`read`, `write`, `edit`) enabled only for certain launch modes, and wrote `disabled: !!js <expression>` on the plugin's Loader entry, expecting Cordis to evaluate the expression and gate the entry conditionally. It never did: Cordis's `!!js` tag is interpolated only inside a plugin's `config` field — `Entry._resolveConfig()` walks and evaluates that field specifically, while `Entry.disabled` reads `entry.options.disabled` directly, with no interpolation step at all. The YAML was syntactically valid, so loading produced no error or warning; every filesystem entry simply saw a truthy JavaScript expression object sitting where a boolean was expected, and stayed disabled in every mode.
 
 Seven filesystem scenarios and a mixed workspace-edit scenario ended up calling tools absent from the registry — `ToolNotFoundError` with code `UNKNOWN_TOOL` — and the snapshot test suite passed anyway, because the *generic failed tool card* rendered deterministically and the fixture refresh simply recorded that failure as the new expected output. The suite proved deterministic replay of the regression, not correct behavior.
@@ -221,6 +246,9 @@ Seven filesystem scenarios and a mixed workspace-edit scenario ended up calling 
 **Fix:** filesystem scenarios now boot an explicit, fixed full-access overlay config (`fs.cordis.yml`) instead of a runtime conditional. **Guardrails:** `verify-cordis-config` now statically parses repository Cordis YAML and rejects expression nodes anywhere in Loader entry metadata (not just `config`), and the snapshot tooling itself rejects a structured `UNKNOWN_TOOL` result from ever being committed as an expected fixture, in a fresh run or in committed session logs. The general lesson: a snapshot refresh is fixture production, not correctness review — a missing registered tool is a semantic impossibility that needs its own assertion, independent of whether the transcript replays deterministically.
 
 ### Postmortem 0004 — a shared stderr prefix let a sandboxed child's own exit code masquerade as sandbox failure
+
+> [!PITFALL]
+> Fake sandbox providers never emitted "benign notice + child-controlled nonzero exit," and real-kernel tests self-skipped — the exact ABI condition that triggers the bug was untested on most CI hosts.
 
 The native Landlock launcher prints exactly one benign line — `landlock-run: partial enforcement (older Landlock ABI)` — on kernels with an older Landlock ABI, then proceeds to execute the child normally. A *launcher failure*, by contrast, prints a different `landlock-run:`-prefixed line and exits 125 without ever running the child. The harness's classification logic collapsed both cases into one check: any nonzero exit code, combined with the presence of the substring `landlock-run: ` anywhere in stderr, was treated as launcher failure.
 

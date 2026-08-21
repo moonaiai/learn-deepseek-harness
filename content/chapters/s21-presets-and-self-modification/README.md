@@ -12,9 +12,53 @@ module: orchestration-and-capstone
 order: 21
 ---
 
+## The short version
+
+This chapter covers two mechanisms that let one Cordis process run differently for different sessions and different moments in a session — **agent presets** and the **self-referential Cordis toolset**. Neither is a capability seam: both are built directly on the registration-scope, loader, and fiber primitives `dsh-scope` already provides, not behind a swappable Definition/Provider trio. A preset points a whole `cordis.yml` at one session *before* it starts; the toolset lets the model add individual plugin rows to its own live session *during* a turn. Read on for how each mounts, what actually bounds its blast radius, and why both are exactly as privileged as what they name.
+
+## At a glance
+
+:::concept{term="agent preset"}
+A directory holding one `agent.cordis.yml`, mounted as a Cordis `include` subtree into a single session's scope to give that session its own tools and persona.
+:::
+
+:::concept{term="host plane / agent plane"}
+The composition split: the host plane (one per process) holds the registries and cross-session facilities; the agent plane (one per session) holds what a single agent contributes to them.
+:::
+
+:::concept{term="standing mount"}
+One composition per preset per process, mounted once under a synthetic scope; each session joins by binding its agent scope as a child of it (`bindScopeParent`).
+:::
+
+:::concept{term="persona row"}
+`dsh-persona` — a scope-only row that shadows the deployment persona for one agent, so a preset can change identity, not just tools.
+:::
+
+:::concept{term="dynamic package"}
+Model-written code recorded immutably by `cordis_define` and activated by `cordis_run`, evaluated in a `node:vm` realm and torn down by ordinary fiber disposal.
+:::
+
+:::concept{term="whitelist context façade"}
+The restricted `Context` a mounted host half receives — declared `inject` only, schema-view tools, no framework plumbing. For correctness, not a security boundary.
+:::
+
+## The end-to-end flow
+
+Both halves of this chapter are one ordered pipeline, traced fully in the mermaid at the end:
+
+:::timeline
+- process boot — the host `cordis.yml` mounts the registries and cross-session facilities once
+- agent factory `setup(agentCtx)` — the preset's `agent.cordis.yml` mounts as an `include` subtree into the agent scope
+- standing mount — one composition per preset per process; the session binds its scope as a child
+- model turn — the session runs under its preset's exact tools and persona
+- `cordis_define` — the model records an immutable dynamic package (nothing runs yet)
+- `cordis_run` — the host half is evaluated in a fresh `node:vm` realm and registered via `harness.defineTool`
+- `cordis_stop` / `cordis_undefine` — ordinary fiber disposal tears the package down
+:::
+
 ## Two composition mechanisms, neither a capability seam
 
-This chapter covers two mechanisms that let one Cordis process run differently for different sessions and different moments in a session. Neither is a capability seam in this course's sense — a Service Definition plus one or more Service Providers plus a Consumer, swappable without touching the others. The generated [`docs/capability-seams.md`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/capability-seams.md) classifies every `ctx.<key>` row's `Role`, and it settles the question directly: `ctx.agentPresets`, `ctx.dynamicCordisRunner`, and `ctx.cordisInspect` are all tagged `core`, never `seam`.
+Neither mechanism is a capability seam in this course's sense — a Service Definition plus one or more Service Providers plus a Consumer, swappable without touching the others. The generated [`docs/capability-seams.md`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/capability-seams.md) classifies every `ctx.<key>` row's `Role`, and it settles the question directly: `ctx.agentPresets`, `ctx.dynamicCordisRunner`, and `ctx.cordisInspect` are all tagged `core`, never `seam`.
 
 That classification is not an oversight to work around. Neither mechanism has a family of interchangeable backends behind one interface:
 
@@ -53,7 +97,9 @@ The deployment ships four presets under `apps/cli/config/agent-presets/`, and th
 
 ### Isolation is the default, and it is measured
 
-Mounting a preset subtree is per-session by default: a twelve-row composition costs roughly 3ms and 600KB per session, per the [per-session preset Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/architecture/2026-08-03-per-session-agent-presets.md). That number matters for a design decision — isolation is cheap enough to make it the default rather than something a preset has to opt into, so a preset authored by a user or by an agent gets the smallest possible blast radius automatically.
+:::decision
+Per-session isolation is cheap enough — a twelve-row composition costs roughly 3ms and 600KB per session, per the [per-session preset Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/architecture/2026-08-03-per-session-agent-presets.md) — to make it the default rather than something a preset opts into. A preset authored by a user or by an agent gets the smallest possible blast radius automatically.
+:::
 
 A preset that genuinely owns something expensive or process-scoped opts *into* sharing with Cordis's own `isolate` vocabulary. A named label is a process-global realm — two subtrees naming the same label resolve to the same instance — while `isolate: <name>: true` gives each mounting session its own private instance of that name. The `code` preset's header comment spells out the rule for a service row directly:
 
@@ -69,23 +115,30 @@ A preset that genuinely owns something expensive or process-scoped opts *into* s
 
 `dsh-agent-presets` rejects a bare, unrealmed service row at mount time rather than letting the collision surface as a silent, unobserved rejection later.
 
-### What a mount rejects
-
+:::fold[What mount() rejects]
 `mount()` proves the composition usable itself, because a directly-plugged subtree never links to a Loader `Entry` and so is invisible to `ctx.loader.entries()` and the ordinary boot audit. Three things fail it:
 
 - **An unscoped target.** Mounting into a context carrying no agent scope would register the preset's rows globally, for every agent in the process.
 - **A row that never became usable** — a row still waiting for a service the composition never supplies.
 - **A row that published a service into the root realm** — process-global, so the second preset mounting it collides with the first. The package invariant re-checks this on every service notification, because a row publishing from a timer or an async continuation would otherwise escape a one-shot audit.
+:::
 
 ### Standing mounts: one composition per process, not per session
 
 A later refinement changed *how many times* a preset's subtree exists without changing what a preset file looks like. The original per-session design mounted one fresh Entry per session. The [standing-mounts Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/architecture/2026-08-08-per-preset-standing-mounts.md) explains why that broke three host readers that assumed the registry surface was static: a cold `session.history` read found no presenters (every card degraded to a generic renderer), the projections block dropped preset-registered keys (a client treats an omitted key as capability absence and clears the row), and the Typert gateway resolved `goals` on the host root and got `service-unavailable`.
 
+:::decision
+We keep **one composition per preset per process**, mounted once under a synthetic standing scope, over the original one-fresh-Entry-per-session design. The per-session mount looked cheaper but broke three host readers that assumed a static registry surface; the standing mount gives every host reader a stable surface again, while per-session isolation is preserved by scope layering (`bindScopeParent`) rather than by re-mounting.
+:::
+
 The fix keeps one composition per preset **per process**, mounted once under a synthetic standing scope; each session joins by binding its own agent scope key as a *child* of that standing scope (`bindScopeParent`). Two `dsh-scope` mechanisms carry the rest: registration views walk the parent chain `agent → preset → global` (nearest shadowing farthest), and scoped event dispatch admits listeners tagged with an ancestor of the carrier key — upward only, so a sibling preset's listeners stay deaf to another preset's agents. This is why the stateful preset plugins (`plan-mode`, `token-meter`, `compaction-basic`) already key their state by Session/Agent rather than by fiber identity — sharing one standing instance across sessions on the same preset is a return to their original design, not a rewrite.
 
 ### Which preset a session runs, and why the header alone is not enough
 
-A session's durable header names the preset it was **created** with. That is a creation fact and stays frozen. If a still-blank session later switches presets (`recompose`), that switch is logged as a distinct `agent-preset/selected` session event appended after the swap commits — required by the model-visible ⟺ logged rule, because the preset decides every tool schema and prompt section the model can see. `resolveSessionPreset(session)` is therefore the function every reconstruction path (resume, fork, a cold transcript's presenters, a picker's summary) actually calls: it resolves header-plus-events, never the header alone. Reading only the header would rebuild a switched session under the composition it was *created* with, replaying tool-call history the new tool set cannot act on.
+A session's durable header names the preset it was **created** with. That is a creation fact and stays frozen. If a still-blank session later switches presets (`recompose`), that switch is logged as a distinct `agent-preset/selected` session event appended after the swap commits — required by the model-visible ⟺ logged rule, because the preset decides every tool schema and prompt section the model can see. `resolveSessionPreset(session)` is therefore the function every reconstruction path (resume, fork, a cold transcript's presenters, a picker's summary) actually calls: it resolves header-plus-events, never the header alone.
+
+> [!PITFALL]
+> Reading only the durable header rebuilds a switched session under the composition it was *created* with, replaying tool-call history the new tool set cannot act on. Every reconstruction path must resolve header-plus-events, never the header alone.
 
 Switching is allowed **only while a session is blank** — once any turn has run, that history was produced under the current preset's exact tools, and swapping would strand logged tool calls the new composition cannot make. `agentPreset.select` returns `agent-preset-locked` once a turn exists. A switch itself is unmount-then-mount: it resolves the new preset before tearing anything down, and restores the previous composition if the new mount fails, because two compositions can never coexist (they'd fight over the same tool names in one layer).
 
@@ -142,7 +195,12 @@ A model or a person cannot submit raw preset text through the roster service. `c
 
 `copy()` refuses three things before anything lands on disk: an id that fails `[a-z0-9][a-z0-9-]*` (containment is a property of the id itself, checked before it becomes a directory name — `../escape`, `a/b`, and an absolute path are all rejected as ids, not sanitized), an id already taken by any root, and an unknown source. `remove()` similarly refuses any preset that ships with the deployment, because the shipped copy is the known-good baseline a broken local preset gets compared against.
 
-`read`, `write`, and `remove` are **loopback-pinned** RPCs. The Agent Note is direct about why: "a composition names the plugins a session runs, so reading one is reconnaissance and writing one is arbitrary capability." `list` and `select` stay ordinary, reachable methods — a LAN client's picker genuinely needs them, and pinning only the *switch* while leaving `session.create`'s `agentPreset` field open would just move the same capability one method over. Note the framing here: the capability being gated is not something the preset *grants* — the deployment's own default preset already carries `bash` and filesystem tools, so any caller allowed to start a session at all can already run commands as this process. The privilege gate exists because editing a composition is qualitatively different from choosing one off a menu, not because a preset elevates trust beyond what session creation already implies.
+`read`, `write`, and `remove` are **loopback-pinned** RPCs.
+
+> [!NOTE]
+> The Agent Note is direct about why writes are loopback-pinned: "a composition names the plugins a session runs, so reading one is reconnaissance and writing one is arbitrary capability." `list` and `select` stay ordinary, reachable methods — a LAN client's picker genuinely needs them, and pinning only the *switch* while leaving `session.create`'s `agentPreset` field open would just move the same capability one method over.
+
+Note the framing here: the capability being gated is not something the preset *grants* — the deployment's own default preset already carries `bash` and filesystem tools, so any caller allowed to start a session at all can already run commands as this process. The privilege gate exists because editing a composition is qualitatively different from choosing one off a menu, not because a preset elevates trust beyond what session creation already implies.
 
 ## Part 2: The self-referential Cordis toolset — the agent edits its own runtime
 
@@ -183,7 +241,9 @@ The toolset's design predates the code presently shipping. The `2026-07-08` Agen
 
 ### Why the API and event catalogs are generated, not hand-written
 
-`cordis_inspect_query` against the `Service`/`Event` providers doesn't read from a hand-maintained reference table — an early version tried exactly that, and the Agent Note records why it was replaced: "a hand table drifts from the JSDoc the moment a signature changes and nothing gates the drift." Instead, `tool-cordis/src/api-catalog.ts` is generated by the same AST walk that produces `docs/subsystems/*.md` — the very page this chapter cites for the extensions subsystem's own Cordis API. `pnpm run gen-cordis-api` regenerates it and `pnpm run verify-cordis-api` gates its freshness in `doc-sync`, so a public-signature or JSDoc edit anywhere in the workspace cannot ship without the catalog the model reads staying in sync.
+:::decision
+An early version fed `cordis_inspect_query` from a hand-maintained reference table; it was replaced because, as the Agent Note records, "a hand table drifts from the JSDoc the moment a signature changes and nothing gates the drift." Instead, `tool-cordis/src/api-catalog.ts` is generated by the same AST walk that produces `docs/subsystems/*.md`, and `pnpm run gen-cordis-api` / `pnpm run verify-cordis-api` keep and gate its freshness in `doc-sync` — a public-signature or JSDoc edit anywhere in the workspace cannot ship without the catalog the model reads staying in sync.
+:::
 
 At runtime, the query intersects that static catalog with the *live* service store: what is running comes from the store, what each service *can do* comes from the catalog, and a live service the catalog doesn't cover (for example, one a mounted dynamic package itself provided) is still reported as reachable, just with no signatures, rather than being silently omitted. Two judgment calls live in the reporting code rather than in the raw reflection data: only *callable methods* are shown (not state, and not symbol-keyed internal seams between plugins that a package façade cannot reach anyway), and only `ctx.<key>` reads a mounted host half can actually make are named — a classification of `injectable` / `not-a-service` / `other-face` pinned and gated so a newly declared key can't silently invite the model to `inject` something that will never arrive.
 
@@ -217,6 +277,7 @@ The mounted plugin body receives a **whitelist context façade**, never the raw 
 
 None of this is a security boundary, and the Agent Note is explicit that the traps and façade are there for **correctness** — steering model-written code onto Cordis services and away from leak-prone Node built-ins it would otherwise guess wrong about — not for containment:
 
+> [!LIMITATION]
 > "the capabilities the façade exposes (`ctx.shell`, `ctx.fs`, `ctx.web`) reach the real runtime, so it is not a security boundary. A real one (separate process, permission prompts) was out of scope for a dev/opt-in toolset and would fight the entire point — handing the model the live runtime."
 
 Both package READMEs make the same statement in nearly identical words: the `tool-cordis` README says to "treat this toolset like bash access," and the `cordis-host-runner` README says to "treat a dynamic package like bash access." Host-realm helpers on the sandbox global remain reachable, so package code can, in principle, reach Node despite the traps. A mounted plugin can call an injected service with the host executor's own privileges and reach the real filesystem and web services. This toolset is loaded exactly as deliberately as a `bash` tool row — an opt-in development capability, not a hardened default — and that is why only the `cordis` preset carries it, never `standard`.
@@ -231,9 +292,9 @@ Given that the sandbox is not a security boundary, three narrower, real mechanis
 
 None of these make arbitrary code safe. They make the mechanism the *same* mechanism as everywhere else in the harness — Cordis registration, fiber disposal, session scoping, the tool-output contract — rather than a parallel, weaker copy of it built just for dynamic code. Self-modification here is bounded specifically in the sense that a mounted plugin cannot register anything the loader's own registries wouldn't validate for an ordinary plugin, and cannot outlive its fiber. It is explicitly **not** bounded in the sense of restricting what a *validly registered* plugin's code can subsequently do at runtime — that authority equals whatever the mounting session's underlying services already permit.
 
-### Cross-mount composition: it's just `provide`/`inject`
-
+:::fold[Cross-mount composition: it's just provide/inject]
 Because a mounted plugin is an ordinary Cordis plugin under the hood, two independently defined dynamic packages compose through the framework's own service semantics, not a bespoke API: mount A calls `ctx.provide('foo', value)`; mount B declares `inject: ['foo']` and activates the instant `foo` exists. Mount B first is fine too — it stays pending, naming the missing service in its own inspect report, until A provides it. Unmounting A sends B back to pending (its own registrations unwind), and a later re-provide re-runs B's `apply` through a fresh sandbox façade. A duplicate provide fails loud, naming the fiber that already owns it — the identical rule an ordinary two-plugin composition would hit.
+:::
 
 ### The `cordis` preset ties both halves together
 

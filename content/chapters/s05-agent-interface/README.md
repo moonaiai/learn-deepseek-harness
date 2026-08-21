@@ -9,6 +9,30 @@ module: foundations
 order: 5
 ---
 
+## The short version
+
+`dsh-agent` (`packages/core/agent`) is the interface every plugin programs against — the `Agent` type, the `AgentRegistry` service at `ctx.agents`, and the `agent/*` event vocabulary — with **zero dependency on the loop** that implements it. The split is the point: a UI, the ACP bridge, or an orchestrator calls `ctx.agents.get(id)` without knowing whether `AgentLoop`, a test double, or some future driver is behind that id. This chapter covers the four things the package owns: the `Agent` contract, the registry lifecycle and its factory pattern, the process-local initiator scope, and the `AgentHandle` ownership model.
+
+## At a glance
+
+Four terms carry the whole chapter. Two are the handle and its directory; two are the subtler ownership and identity mechanisms layered underneath.
+
+:::concept{term="Agent"}
+The loop-independent handle: identity, options, session, inbox, status, a scoped `ctx`, plus `cancel`/`whenIdle`/`send` and the `followup`/`steer`/`inject` presets. It names no turn/step machine — any object satisfying it, including a hand-rolled test double, is a legitimate `Agent`.
+:::
+
+:::concept{term="AgentRegistry (ctx.agents)"}
+The live directory of every running `Agent`, and the home of the factory and initiator-scope machinery. Its lookup surface is small and synchronous; *construction* is delegated to whatever plugin implements `AgentFactory`.
+:::
+
+:::concept{term="AgentHandle"}
+A disposal capability, not a lookup result. `ctx.agents.get(id)` returns a bare `Agent` to anyone; only the caller that received the `AgentHandle` from `create()`/`resume()` holds `dispose()`.
+:::
+
+:::concept{term="initiator scope"}
+An `AsyncLocalStorage<Agent>` that answers "*which* `Agent` caused this async call chain" without threading an explicit `agent` parameter through every helper below the driver. Strictly process-local.
+:::
+
 ## Why this package exists separately from the loop
 
 The previous chapter walked through `AgentLoop` — the concrete state machine that claims inbox input, opens turns, drives model steps, and dispatches tools. `AgentLoop` is one *implementation*. `packages/core/agent` (`@deepseek-ai/dsh-agent`) is the *interface* every other plugin programs against: the `Agent` type, the `AgentRegistry` service at `ctx.agents`, and the `agent/*` event vocabulary. It has zero dependency on `agent-loop`.
@@ -20,9 +44,11 @@ That split is not incidental layering — it is the point. The [core packages ta
 | `core/agent` | The `Agent` interface, live registry, and `agent/*` events | `ctx.agents` |
 | `core/agent-loop` | The default driver implementing that interface | `ctx.agentLoop` |
 
-A UI layer, the ACP bridge, a hook, or an orchestrator that wants to send a message, cancel a run, or watch status transitions imports `dsh-agent` and calls `ctx.agents.get(id)`. None of that code needs to know whether the agent behind that id is driven by `AgentLoop`, a test double, or some future alternative driver — as long as the alternative implements the `Agent` interface and registers through `ctx.agents.register()`. The [package README](../../../../packages/core/agent/README.md) states this directly: "Every plugin (UI, hooks, orchestrators) programs against the `Agent` handle defined here — it has zero loop dependency, so the loop is swappable."
+:::decision
+Interface and driver are separate packages because they are owned and evolved independently: `core/agent` holds the contract every consumer programs against, while `core/agent-loop` holds one swappable implementation of it. A consumer that wants to send a message, cancel a run, or watch status transitions programs against the stable contract and never imports the driver — so the driver can be replaced without a single call site changing.
+:::
 
-This chapter covers four things `dsh-agent` provides that `agent-loop` builds on top of: the `Agent` interface contract, the `AgentRegistry` lifecycle (register/enter/announce, and the factory-based create/resume path), the process-local initiator scope (`withInitiator()`/`currentInitiator()`), and the `AgentHandle` ownership model.
+A UI layer, the ACP bridge, a hook, or an orchestrator that wants to send a message, cancel a run, or watch status transitions imports `dsh-agent` and calls `ctx.agents.get(id)`. None of that code needs to know whether the agent behind that id is driven by `AgentLoop`, a test double, or some future alternative driver — as long as the alternative implements the `Agent` interface and registers through `ctx.agents.register()`. The [package README](../../../../packages/core/agent/README.md) states this directly: "Every plugin (UI, hooks, orchestrators) programs against the `Agent` handle defined here — it has zero loop dependency, so the loop is swappable."
 
 ## The `Agent` interface
 
@@ -95,6 +121,16 @@ export interface AgentFactory {
 
 `CreateAgentOptions.setup(agentCtx)` and `ResumeAgentOptions.setup(agentCtx)` are the hook for composing an agent's scoped world (tools, prompt sections, listeners) *before* either the session or the agent becomes visible — everything registered through `agentCtx` exists before `agent/created`, `agent/session-start`, and the first prompt assembly. Setup is trusted, composition-only, same-process code: it must not start driving the agent, only assembling it. A rejection, a thrown synchronous commit, or owner disposal during setup rolls the whole transaction back without publishing either id.
 
+The ordered creation lifecycle, end to end:
+
+:::timeline
+- setup(agentCtx) — compose the scoped world (tools, prompt sections, listeners) before anything is visible; trusted, composition-only
+- enter() — authoritative id-collision check; insert the entry *unannounced*
+- announce() — emit `agent/created` exactly once, later; a synchronous detach is deferred until this dispatch unwinds
+- agent/session-start — a synchronous, veto-less notification (it cannot gate startup)
+- first prompt assembly — the agent is now fully live
+:::
+
 ## `AgentHandle`: a disposal capability, not a lookup result
 
 ```ts
@@ -149,19 +185,19 @@ this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, 
 
 Every package-private orchestration entry inside the loop — turn scheduling, step scheduling, tool-call dispatch — recovers the exact `Agent` via `ctx.agents.currentInitiator()`/`requireInitiator()`, derives `agent.session` once, and lets operation-local helpers close over that value instead of forwarding the concrete driver instance or a bare `Session` through shallow interfaces. Deep, cross-cutting infrastructure gets a trusted "who is this for" without every intermediate function in the call chain declaring an `agent` parameter it doesn't otherwise need.
 
-### Why creation and setup stay *outside* the child's boundary
-
-Concurrent drivers get independent stores: a child driver's continuations carry the child as initiator, and the moment `withInitiator()` returns, the *caller's* continuation resumes with the parent restored — this is exactly how `AsyncLocalStorage.run()` composes. But creation, persistence load, and unpublished `setup(agentCtx)` deliberately run *outside* the child's own driver boundary. If a parent agent creates a child (e.g. a subagent), the setup callback observes the *parent* as the current initiator (because setup is causally part of the parent's ongoing work), while `agentCtx.agent` inside that same callback explicitly identifies the *child* being constructed. Ambient initiator identity answers "who caused this to happen"; the explicit `agentCtx.agent` field answers "what is this scope for." Conflating them — for instance, by making the setup callback see itself as its own initiator — would be wrong, because setup hasn't started driving anything yet.
-
-### Teardown is deliberately asymmetric between "close" and "drain"
-
-The registry's own teardown effect (`index.ts:294-297`) runs two steps: `disposeInitiators()` then `closeInitiators()`. `closeInitiators()` flips a state flag from `'active'` to `'closing'`, rejecting any *new* `withInitiator`/`withoutInitiator` call. `disposeInitiators()` (`index.ts:625-637`) then waits for every currently-active boundary's returned Promise to settle (tracked by `activeInitiatorRuns`, a plain counter incremented/decremented per boundary in `runWithInitiator` at `index.ts:640-670`) before finally calling `AsyncLocalStorage.disable()` — which Node requires before an ALS instance becomes garbage-collectable, which in turn matters for HMR replacing this service.
-
-The one wrinkle: if an initiator boundary's own inherited async chain is what triggers the owning Cordis fiber's unload — i.e., teardown was reached *from inside* a boundary that's still technically "active" — draining would deadlock waiting on itself. `releaseReentrantInitiatorRuns()` (`index.ts:688-694`) walks the parent chain of the *currently executing* `initiatorRuns` store (tracked in a second, parallel `AsyncLocalStorage<InitiatorRun>` purely for this bookkeeping — it carries no identity, just active/parent links) and releases exactly that nested chain from the drain count, so the unload doesn't wait on itself. Any *unrelated* concurrent boundary still drains normally. This is a narrow, specific answer to "how do I let self-triggered teardown proceed without either deadlocking or accidentally skipping draining for boundaries that have nothing to do with the teardown."
-
 ### What this scope explicitly does not replace
 
 Ambient presence is neither a liveness proof nor an authorization grant. Explicit fields remain authoritative wherever they already exist: `ToolExecution.agent`, `AssembleContext.agent`, job ownership, approval/hook subjects, `cwd` selection, cancellation, worker/process messages, persistence records, and wire identity are all still passed explicitly. A host-aware transport might derive something like an `X-Harness-Session-Id` header from `ctx.agents.requireInitiator().session.id` for deployment-owned outbound calls — but that header stays out of model-visible schema. And the scope is strictly process-local: it does not cross worker threads, child processes, HTTP, or durable queues; anything that needs identity across one of those boundaries must materialize it explicitly into a typed message.
+
+:::fold[Why creation and setup stay outside the child's boundary]
+Concurrent drivers get independent stores: a child driver's continuations carry the child as initiator, and the moment `withInitiator()` returns, the *caller's* continuation resumes with the parent restored — this is exactly how `AsyncLocalStorage.run()` composes. But creation, persistence load, and unpublished `setup(agentCtx)` deliberately run *outside* the child's own driver boundary. If a parent agent creates a child (e.g. a subagent), the setup callback observes the *parent* as the current initiator (because setup is causally part of the parent's ongoing work), while `agentCtx.agent` inside that same callback explicitly identifies the *child* being constructed. Ambient initiator identity answers "who caused this to happen"; the explicit `agentCtx.agent` field answers "what is this scope for." Conflating them — for instance, by making the setup callback see itself as its own initiator — would be wrong, because setup hasn't started driving anything yet.
+:::
+
+:::fold[Teardown: asymmetric between "close" and "drain", and the reentrancy escape]
+The registry's own teardown effect (`index.ts:294-297`) runs two steps: `disposeInitiators()` then `closeInitiators()`. `closeInitiators()` flips a state flag from `'active'` to `'closing'`, rejecting any *new* `withInitiator`/`withoutInitiator` call. `disposeInitiators()` (`index.ts:625-637`) then waits for every currently-active boundary's returned Promise to settle (tracked by `activeInitiatorRuns`, a plain counter incremented/decremented per boundary in `runWithInitiator` at `index.ts:640-670`) before finally calling `AsyncLocalStorage.disable()` — which Node requires before an ALS instance becomes garbage-collectable, which in turn matters for HMR replacing this service.
+
+The one wrinkle: if an initiator boundary's own inherited async chain is what triggers the owning Cordis fiber's unload — i.e., teardown was reached *from inside* a boundary that's still technically "active" — draining would deadlock waiting on itself. `releaseReentrantInitiatorRuns()` (`index.ts:688-694`) walks the parent chain of the *currently executing* `initiatorRuns` store (tracked in a second, parallel `AsyncLocalStorage<InitiatorRun>` purely for this bookkeeping — it carries no identity, just active/parent links) and releases exactly that nested chain from the drain count, so the unload doesn't wait on itself. Any *unrelated* concurrent boundary still drains normally. This is a narrow, specific answer to "how do I let self-triggered teardown proceed without either deadlocking or accidentally skipping draining for boundaries that have nothing to do with the teardown."
+:::
 
 ## Supporting pieces: `dispatch.ts`, `inbox.ts`, `model-selection.ts`, `consumed-work.ts`
 
@@ -183,6 +219,11 @@ Everything this chapter covered is loop-independent. What `agent-loop` adds on t
 
 A few gaps the package README documents explicitly, because they matter for anyone building on this interface:
 
-- Initiator scope is strictly process-local; workers, child processes, HTTP, durable queues, and process restarts must materialize any needed identity explicitly rather than relying on ALS to cross that boundary.
-- `agent/session-start` is a synchronous, veto-less notification — it cannot gate startup. Asynchronous composition that must complete *before* publication belongs in the factory's `setup(agentCtx)` transaction instead.
-- There's still no step-only cancellation that keeps an in-flight *turn* running while stopping just the current step; `cancel(cause, { keepInbox: true })` aborts the turn but preserves queued/steering work, which is as fine-grained as it gets today.
+> [!LIMITATION]
+> Initiator scope is strictly process-local; workers, child processes, HTTP, durable queues, and process restarts must materialize any needed identity explicitly rather than relying on ALS to cross that boundary.
+
+> [!LIMITATION]
+> `agent/session-start` is a synchronous, veto-less notification — it cannot gate startup. Asynchronous composition that must complete *before* publication belongs in the factory's `setup(agentCtx)` transaction instead.
+
+> [!LIMITATION]
+> There's still no step-only cancellation that keeps an in-flight *turn* running while stopping just the current step; `cancel(cause, { keepInbox: true })` aborts the turn but preserves queued/steering work, which is as fine-grained as it gets today.

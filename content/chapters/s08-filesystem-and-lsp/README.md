@@ -10,19 +10,29 @@ module: execution-seams
 order: 8
 ---
 
-## Two execution-world seams, one lesson
+## The short version
 
-[The previous chapter](../s07-capability-seams-primer/README.md) worked through the bash seam in depth — Service Definition, Service Providers, Consumer, and why splitting them pays for itself. This chapter applies the exact same three-role shape to two more capabilities, filesystem and language-server navigation, and spends most of its time on the first because its provider family is the more instructive one: three backends, each answering the same twelve-method contract in a genuinely different way.
+`ctx.fs` is one `FileSystem` contract answered three genuinely different ways — unconfined local disk, a policy-fenced sandbox, and an E2B-remote container — and `ctx.lsp` is the exact same three-role shape shrunk down to four read-only navigation operations. [The previous chapter](../s07-capability-seams-primer/README.md) built the three-role pattern (Service Definition, Service Provider, Consumer) on the bash seam; this chapter replays it on two more capabilities and lands one lesson at a different scale: a Service Definition is sized to the Consumers it actually has, not to the richness of the API it wraps.
 
-`docs/architecture.md` states the point that ties the two seams (and bash) together directly: "Filesystem and subprocess providers share one execution world, so pointing them at a remote sandbox moves Bash, PTY, and LSP with them, with no provider forks." A deployment's choice of *where code and files live* is one decision that several seams honor together, not a filesystem-specific concern.
+`docs/architecture.md` states the point that ties both seams (and bash) together directly: "Filesystem and subprocess providers share one execution world, so pointing them at a remote sandbox moves Bash, PTY, and LSP with them, with no provider forks." A deployment's choice of *where code and files live* is one decision that several seams honor together, not a filesystem-specific concern.
+
+## At a glance
+
+:::concept{term="FileSystem"}
+The `ctx.fs` Service Definition: an abstract Cordis `Service` exposing twelve primitives that describe WHAT a filesystem backend can do without saying HOW. It decodes UTF-8, rejects binary content, and owns the atomic-write and literal-edit critical sections.
+:::
+
+:::concept{term="sandboxMode"}
+An optional capability-fact getter on the Service Definition: `undefined` by default, overridden by a confining backend, and read by the Consumer to decide whether to advertise escalation fields — without importing a single line from any concrete provider.
+:::
+
+:::concept{term="ctx.lsp"}
+The language-server Service Definition: exactly four read-only navigation operations — `goToDefinition`, `findReferences`, `goToImplementation`, `hover` — and no generic JSON-RPC escape hatch.
+:::
 
 ## The `ctx.fs` seam: Service Definition
 
 `packages/fs/fs/` owns `ctx.fs` and nothing else — no local disk access, no policy, no model-facing schema.
-
-:::concept{term="FileSystem"}
-An abstract class extending Cordis `Service`, exposing twelve primitives that describe WHAT a filesystem backend can do without saying HOW:
-:::
 
 ```ts filename="packages/fs/fs/src/index.ts"
 export abstract class FileSystem extends Service {
@@ -49,13 +59,16 @@ export abstract class FileSystem extends Service {
 }
 ```
 
-`super(ctx, 'fs')` claims `ctx.fs` exactly as `ShellExecutor` claimed `ctx.shell` in the previous chapter — a second `FileSystem` provider mounted in the same context throws, Cordis's standard duplicate-service failure. `sandboxMode` is the same capability-fact pattern you saw on `ShellExecutor`: `undefined` by default, overridden by a confining backend, read by the Consumer to decide whether to advertise escalation fields — without importing a single line from any concrete provider.
+`super(ctx, 'fs')` claims `ctx.fs` exactly as `ShellExecutor` claimed `ctx.shell` in the previous chapter — a second `FileSystem` provider mounted in the same context throws, Cordis's standard duplicate-service failure.
 
+:::fold[Where the contract sits, and the optional version guard]
 The contract sits deliberately "half a level above byte-level `cat`/`open`," in the README's own words: it decodes UTF-8, rejects binary content, and owns the atomic-write and literal-edit critical sections, but it does not own line windows, numbered output, or observed-state policy — those belong to layers above it. `writeText` and `editText` both take an *optional* version guard (`FsWriteIntent` / `{ version: FsVersion }`): omit it and the backend performs an unconditional atomic write or edit; supply it and the backend enforces compare-and-swap freshness. That optionality is what makes `ctx.fs` on its own — with no policy plugin loaded — a complete, if unconstrained, storage seam.
+:::
 
-Twelve primitives is a closed set: no delete, rename, copy, or watch, and `listDir` lists one level only. That is a documented scope boundary, not an oversight — recursion, globbing, and search are a different tool's job, covered below.
+> [!NOTE]
+> Twelve primitives is a closed set: no delete, rename, copy, or watch, and `listDir` lists one level only. That is a documented scope boundary, not an oversight — recursion, globbing, and search are a different tool's job, covered below.
 
-## Three Service Providers, three different reasons to swap
+## Three Service Providers, three deployment postures
 
 Three packages implement `FileSystem`, and each answers "where does the file actually live" a different way.
 
@@ -100,7 +113,19 @@ export class SandboxedFileSystem extends LocalFileSystem {
 
 `read-only` denies every mutation, `workspace-write` requires the target to canonicalize under the session workspace root or a platform temp directory (using the same `writableRoots` function the Seatbelt runner profile uses, so bash and fs cannot drift onto different writable sets), and `danger-full-access` delegates unfenced. Its own README is explicit about the threat model this represents: "a policy fence, not a kernel boundary" — the operations are the seam's own (open, rename), only the target path is model-controlled, so canonicalize-then-contain is a complete answer. Kernel-grade isolation of untrusted *code* stays `ctx.shell`'s job (`dsh-bash-sandbox`); this package's job is isolation of untrusted *paths*.
 
+:::decision
+Subclass the local backend rather than reimplement it. `dsh-fs-sandbox` inherits all of `dsh-fs-local`'s storage mechanics and overrides only the two mutating methods with a policy fence, so a bug fix to atomic-write mechanics benefits both backends at once — and the fence can never drift out of sync with the storage it guards.
+:::
+
 **`dsh-fs-e2b`** (`packages/e2b/fs-e2b/`) answers a third need: remote container access, so file state lives in the same E2B sandbox that E2B-backed Bash processes already run in. It shares the SDK handle and remote cwd owned by `ctx.e2b`, projects E2B metadata into the same `FsInfo`/`FsPathInfo` shapes, and reimplements every primitive against the remote controller — GNU `realpath -mz` for canonical identity, atomic same-filesystem rename for replacement, remote `ln -T` for guarded no-replace creation. It does not sync with the host: an empty E2B cwd stays empty until something inside that world populates it.
+
+| | `dsh-fs-local` | `dsh-fs-sandbox` | `dsh-fs-e2b` |
+|---|---|---|---|
+| Where the file lives | host disk | host disk, policy-fenced | E2B remote container |
+| Storage mechanics | own (realpath, temp+rename, DACL) | inherited from `LocalFileSystem` | reimplemented vs the remote controller |
+| Methods overridden | — (it is the base) | `writeText` + `editText` only | all twelve |
+| Confinement | none — `config.cwd` is "not a sandbox" | canonicalize-then-contain under `writableRoots` | the E2B sandbox boundary itself |
+| Threat model | trusted operator | "a policy fence, not a kernel boundary" | kernel-grade isolation of untrusted code |
 
 These are not three variations on a theme picked for variety — they are three genuinely different deployment postures behind the identical `FileSystem` contract, which is exactly the point of the seam: `dsh-tool-fs` (below) never imports `LocalFileSystem`, `SandboxedFileSystem`, or the E2B backend. It calls `ctx.fs.writeText(...)` and gets whichever posture the deployment composed.
 
@@ -178,17 +203,17 @@ flowchart LR
 
 ## The `ctx.lsp` seam: a smaller instance of the same pattern
 
-Language-server navigation is the same three-role shape, scaled down. `packages/lsp/` states its scope directly:
-
-:::concept{term="ctx.lsp"}
-Exactly four semantic operations — `goToDefinition`, `findReferences`, `goToImplementation`, `hover` — and no generic JSON-RPC escape hatch.
-:::
-
-The problem it solves is real language servers (TypeScript, Go, Rust, whatever a deployment configures) speak the Language Server Protocol, an enormous surface with arbitrary requests, notifications, and — critically — mutating capabilities like `workspace/applyEdit` and command execution. `ctx.lsp` deliberately narrows that entire protocol down to four read-only navigation queries, so no protocol payload and no unreviewed mutation ever reaches a provider through the model-facing contract.
+Language-server navigation is the same three-role shape, scaled down. The problem it solves is real: language servers (TypeScript, Go, Rust, whatever a deployment configures) speak the Language Server Protocol, an enormous surface with arbitrary requests, notifications, and — critically — mutating capabilities like `workspace/applyEdit` and command execution. `ctx.lsp` deliberately narrows that entire protocol down to four read-only navigation queries, so no protocol payload and no unreviewed mutation ever reaches a provider through the model-facing contract.
 
 **Service Definition** — `dsh-lsp` (`packages/lsp/lsp/`) owns `ctx.lsp`, a **provider registry** rather than a single fixed executor (the same registry shape `ctx.subagents` uses, not the one-executor-per-context rule bash uses): `registerProvider` reserves a branded provider id plus every file extension it claims, atomically and exclusively — two providers cannot both claim `.ts`. `query(request, signal?)` selects a provider by the file's extension and runs one normalized request, throwing `LSP_UNAVAILABLE` when nothing matches. The result type is a closed discriminated union (`{ kind: 'locations', ... }` or `{ kind: 'hover', ... }`), so consumers `switch` to exhaustiveness rather than parsing an open-ended payload.
 
-**Service Provider** — `dsh-lsp-stdio` (`packages/lsp/lsp-stdio/`) is a generic, multi-server stdio backend: one plugin instance, a configured table of servers, one isolated provider registered per entry. It reads source through `ctx.fs` and launches the server process through `ctx.subprocess` — the same execution-world seams bash and fs already use — so a language server run against a remote sandbox sees the same files and shares the same process world as everything else pointed at that sandbox. Each query opens the document transiently (`didOpen` → the request → `didClose` in `finally`), so the first version needs no persistent document cache or LRU.
+**Service Provider** — `dsh-lsp-stdio` (`packages/lsp/lsp-stdio/`) is a generic, multi-server stdio backend: one plugin instance, a configured table of servers, one isolated provider registered per entry. It reads source through `ctx.fs` and launches the server process through `ctx.subprocess` — the same execution-world seams bash and fs already use — so a language server run against a remote sandbox sees the same files and shares the same process world as everything else pointed at that sandbox. Each query opens the document transiently, so the first version needs no persistent document cache or LRU:
+
+:::timeline
+- didOpen — open the document transiently against the language server
+- request — run the single normalized navigation query
+- didClose — close in `finally`; no persistent document state survives the query
+:::
 
 **Consumer** — `dsh-tool-lsp` (`packages/lsp/tool-lsp/`) is one read-only tool with an `operation` argument selecting among the four operations, plus `file_path`, `line`, `character`. It owns the one-based UTF-16 cursor convention the model uses, converting to and from the seam's zero-based positions; provider, language id, workspace root, and executable never appear in the schema.
 

@@ -8,19 +8,29 @@ module: execution-seams
 order: 8
 ---
 
-## 两个执行世界 seam，同一条经验
+## 一句话版本
 
-[上一章](../s07-capability-seams-primer/README.zh.md) 用 bash seam 深入讲解了三角色形态——Service Definition、Service Provider、Consumer，以及为什么把它们拆开是值得的。这一章把同样的三角色形态套用到另外两个能力上：文件系统与语言服务器导航。本章把大部分篇幅留给前者，因为它的 provider 家族更能说明问题:三个后端,用真正不同的方式回答同一份十二方法约定。
+`ctx.fs` 是同一份 `FileSystem` 约定，由三种真正不同的方式应答——不受限的本地磁盘、加政策围栏的沙箱、以及 E2B 远程容器——而 `ctx.lsp` 则是同一套三角色形态的缩小版，只保留四种只读导航操作。[上一章](../s07-capability-seams-primer/README.zh.md) 在 bash seam 上建立了三角色模式(Service Definition、Service Provider、Consumer);本章把它重放到另外两个能力上,并在不同尺度上落定同一条经验:一个 Service Definition 的大小,要匹配它实际拥有的 Consumer,而不是它包装的 API 有多丰富。
 
-`docs/architecture.md`直接点出了把这两个 seam(以及 bash)联系在一起的那句话:"文件系统与子进程提供方共享同一个执行世界,所以把它们指向一个远程沙箱,会把 Bash、PTY 和 LSP 一并带过去,不需要任何 provider 分叉。"一个部署选择*代码和文件生活在哪里*,是好几个 seam 共同遵守的一个决定,而不是文件系统专属的关切。
+`docs/architecture.md` 直接点出了把这两个 seam(以及 bash)联系在一起的那句话:"文件系统与子进程提供方共享同一个执行世界,所以把它们指向一个远程沙箱,会把 Bash、PTY 和 LSP 一并带过去,不需要任何 provider 分叉。"一个部署选择*代码和文件生活在哪里*,是好几个 seam 共同遵守的一个决定,而不是文件系统专属的关切。
+
+## 速览
+
+:::concept{term="FileSystem"}
+`ctx.fs` 的 Service Definition:一个继承 Cordis `Service` 的抽象类,公开十二个原语,描述文件系统后端**能做什么**,而不规定**怎么做**。它解码 UTF-8、拒绝二进制内容,并拥有原子写入和字面量编辑的临界区。
+:::
+
+:::concept{term="sandboxMode"}
+Service Definition 上一个可选的能力事实 getter:默认为 `undefined`,由约束性后端覆盖,由 Consumer 读取以决定是否展示升级字段——完全不需要从任何具体 provider 导入一行代码。
+:::
+
+:::concept{term="ctx.lsp"}
+语言服务器的 Service Definition:恰好四种只读导航操作——`goToDefinition`、`findReferences`、`goToImplementation`、`hover`——且不提供通用 JSON-RPC 逃生口。
+:::
 
 ## `ctx.fs` seam:Service Definition
 
 `packages/fs/fs/` 拥有 `ctx.fs`,别无其他——没有本地磁盘访问,没有政策,没有面向模型的 schema。
-
-:::concept{term="FileSystem"}
-一个继承 Cordis `Service` 的抽象类,公开十二个原语,描述文件系统后端**能做什么**,而不规定**怎么做**:
-:::
 
 ```ts filename="packages/fs/fs/src/index.ts"
 export abstract class FileSystem extends Service {
@@ -47,13 +57,16 @@ export abstract class FileSystem extends Service {
 }
 ```
 
-`super(ctx, 'fs')` 占用 `ctx.fs`,方式与上一章 `ShellExecutor` 占用 `ctx.shell` 完全一致——在同一个 context 里挂载第二个 `FileSystem` provider 会抛出错误,这是 Cordis 标准的重复服务失败。`sandboxMode` 是与 `ShellExecutor` 相同的能力事实模式:默认为 `undefined`,被约束性后端覆盖,由 Consumer 读取以决定是否展示升级字段——完全不需要从任何具体 provider 导入一行代码。
+`super(ctx, 'fs')` 占用 `ctx.fs`,方式与上一章 `ShellExecutor` 占用 `ctx.shell` 完全一致——在同一个 context 里挂载第二个 `FileSystem` provider 会抛出错误,这是 Cordis 标准的重复服务失败。
 
+:::fold[约定停在哪一层,以及可选的版本防护]
 这份约定刻意停在 README 自己所说的"比字节级 `cat`/`open` 高半层":它解码 UTF-8、拒绝二进制内容,并拥有原子写入和字面量编辑的临界区,但它不拥有行窗口、编号输出,或已观察状态政策——那些属于它上层的角色。`writeText` 和 `editText` 都接受一个*可选*的版本防护(`FsWriteIntent` / `{ version: FsVersion }`):省略它,后端执行无条件的原子写入或编辑;提供它,后端强制执行比较并交换式的新鲜度检查。正是这种可选性,使得 `ctx.fs` 本身——在没有加载任何政策插件的情况下——就是一个完整、只是不受约束的存储 seam。
+:::
 
-十二个原语是一个封闭集合:没有删除、重命名、复制或监视,`listDir` 只列出一层。这是一个记录在案的范围边界,而非疏漏——递归、glob 匹配和搜索是另一个工具的职责,下文会讲到。
+> [!NOTE]
+> 十二个原语是一个封闭集合:没有删除、重命名、复制或监视,`listDir` 只列出一层。这是一个记录在案的范围边界,而非疏漏——递归、glob 匹配和搜索是另一个工具的职责,下文会讲到。
 
-## 三个 Service Provider,三种不同的替换理由
+## 三个 Service Provider,三种部署姿态
 
 三个包实现了 `FileSystem`,每一个对"文件到底存在哪里"给出不同的答案。
 
@@ -98,7 +111,19 @@ export class SandboxedFileSystem extends LocalFileSystem {
 
 `read-only` 拒绝一切变更,`workspace-write` 要求目标规范化后落在会话工作区根目录或某个平台临时目录之下(使用与 Seatbelt 运行器 profile 相同的 `writableRoots` 函数,使 bash 和 fs 不会漂移到不同的可写集合),`danger-full-access` 无围栏地委托下去。它自己的 README 明确说明了这代表的威胁模型:"一个政策围栏,不是内核边界"——操作本身就是 seam 自己的(open、rename),只有目标路径是模型可控的,所以先规范化再检查包含关系就是这个层面的完整答案。对不受信任*代码*的内核级隔离仍是 `ctx.shell` 的职责(`dsh-bash-sandbox`);这个包的职责是对不受信任*路径*的隔离。
 
+:::decision
+选择继承本地后端,而不是重新实现。`dsh-fs-sandbox` 继承了 `dsh-fs-local` 全部的存储机制,只用一道政策围栏覆盖两个变更方法——于是一次原子写入机制的修复能同时惠及两个后端,而且围栏永远不会跟它守护的存储机制脱节。
+:::
+
 **`dsh-fs-e2b`**(`packages/e2b/fs-e2b/`)回答第三种需求:远程容器访问,使文件状态存在于 E2B-backed Bash 进程已经运行的同一个 E2B 沙箱中。它共享由 `ctx.e2b` 拥有的 SDK 句柄和远程 cwd,把 E2B 元数据投影成同样的 `FsInfo`/`FsPathInfo` 形态,并针对远程控制器重新实现了每一个原语——用 GNU `realpath -mz` 做规范身份、用同文件系统原子重命名做替换、用远程 `ln -T` 做带防护的不替换创建。它不与宿主同步:一个空的 E2B cwd 会一直保持空,直到那个世界内部的某个东西填充它。
+
+| | `dsh-fs-local` | `dsh-fs-sandbox` | `dsh-fs-e2b` |
+|---|---|---|---|
+| 文件存在哪里 | 宿主磁盘 | 宿主磁盘,加政策围栏 | E2B 远程容器 |
+| 存储机制 | 自有(realpath、临时文件+重命名、DACL) | 继承自 `LocalFileSystem` | 针对远程控制器重新实现 |
+| 覆盖的方法 | ——(它本身就是基类) | 仅 `writeText` + `editText` | 全部十二个 |
+| 约束 | 无——`config.cwd` "不是沙箱" | 先规范化再在 `writableRoots` 下检查包含 | E2B 沙箱边界本身 |
+| 威胁模型 | 受信任的操作方 | "一个政策围栏,不是内核边界" | 对不受信任代码的内核级隔离 |
 
 这三者不是为了多样性而挑选的三种变体——它们是同一份 `FileSystem` 约定背后三种真正不同的部署姿态,这正是这个 seam 的意义所在:下文的 `dsh-tool-fs` 从不导入 `LocalFileSystem`、`SandboxedFileSystem`,或 E2B 后端。它调用 `ctx.fs.writeText(...)`,得到的是部署方组合出的任何一种姿态。
 
@@ -176,17 +201,17 @@ flowchart LR
 
 ## `ctx.lsp` seam:同一模式的缩小实例
 
-语言服务器导航是同样的三角色形态,只是规模更小。`packages/lsp/` 直接说明了它的范围:
-
-:::concept{term="ctx.lsp"}
-恰好四种语义操作——`goToDefinition`、`findReferences`、`goToImplementation`、`hover`——且不提供通用 JSON-RPC 逃生口。
-:::
-
-它要解决的问题是:真实的语言服务器(TypeScript、Go、Rust,任何部署方配置的语言)讲的是语言服务器协议,这是一个巨大的接口面,包含任意请求、通知,以及——关键的是——诸如 `workspace/applyEdit` 和命令执行这样的变更能力。`ctx.lsp` 刻意把整个协议收窄成四种只读的导航查询,使得没有任何协议载荷、也没有任何未经评审的变更,能通过面向模型的约定到达 provider。
+语言服务器导航是同样的三角色形态,只是规模更小。它要解决的问题是真实存在的:语言服务器(TypeScript、Go、Rust,任何部署方配置的语言)讲的是语言服务器协议,这是一个巨大的接口面,包含任意请求、通知,以及——关键的是——诸如 `workspace/applyEdit` 和命令执行这样的变更能力。`ctx.lsp` 刻意把整个协议收窄成四种只读的导航查询,使得没有任何协议载荷、也没有任何未经评审的变更,能通过面向模型的约定到达 provider。
 
 **Service Definition**——`dsh-lsp`(`packages/lsp/lsp/`)拥有 `ctx.lsp`,这是一个**provider 注册表**,而非单一固定的执行器(与 `ctx.subagents` 相同的注册表形态,而非 bash 那种每上下文一个执行器的规则):`registerProvider` 原子且排他地预留一个品牌化的 provider id 加上它声明的每个文件扩展名——两个 provider 不能同时声明 `.ts`。`query(request, signal?)` 按文件扩展名选择一个 provider,运行一次标准化请求,若无匹配则抛出 `LSP_UNAVAILABLE`。结果类型是一个封闭的可辨识联合(`{ kind: 'locations', ... }` 或 `{ kind: 'hover', ... }`),使消费方能够穷尽式地 `switch`,而不是解析一个开放式载荷。
 
-**Service Provider**——`dsh-lsp-stdio`(`packages/lsp/lsp-stdio/`)是一个通用的多服务器 stdio 后端:一个插件实例,一份配置好的服务器表,每个条目注册一个隔离的 provider。它通过 `ctx.fs` 读取源码,通过 `ctx.subprocess` 启动服务器进程——与 bash 和 fs 已经使用的是同样的执行世界 seam——所以针对远程沙箱运行的语言服务器,看到的是同样的文件,与所有指向该沙箱的其他东西共享同一个进程世界。每次查询都临时打开文档(`didOpen` → 请求本身 → `finally` 中的 `didClose`),所以第一个版本不需要持久化文档缓存或 LRU。
+**Service Provider**——`dsh-lsp-stdio`(`packages/lsp/lsp-stdio/`)是一个通用的多服务器 stdio 后端:一个插件实例,一份配置好的服务器表,每个条目注册一个隔离的 provider。它通过 `ctx.fs` 读取源码,通过 `ctx.subprocess` 启动服务器进程——与 bash 和 fs 已经使用的是同样的执行世界 seam——所以针对远程沙箱运行的语言服务器,看到的是同样的文件,与所有指向该沙箱的其他东西共享同一个进程世界。每次查询都临时打开文档,所以第一个版本不需要持久化文档缓存或 LRU:
+
+:::timeline
+- didOpen——对着语言服务器临时打开文档
+- request——运行这一次标准化的导航查询
+- didClose——在 `finally` 中关闭;查询之外不留任何持久化文档状态
+:::
 
 **Consumer**——`dsh-tool-lsp`(`packages/lsp/tool-lsp/`)是一个只读工具,用一个 `operation` 参数在四种操作中选择,外加 `file_path`、`line`、`character`。它拥有模型使用的从 1 开始的 UTF-16 光标约定,负责与 seam 从 0 开始的坐标相互转换;provider、language id、工作区根目录和可执行文件都不会出现在 schema 里。
 

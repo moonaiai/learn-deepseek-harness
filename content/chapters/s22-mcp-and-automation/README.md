@@ -10,19 +10,41 @@ module: orchestration-and-capstone
 order: 22
 ---
 
+## The short version
+
+Everything before this chapter is about one running agent. This chapter covers the two places where the harness's *process boundary itself* becomes the subject — and they point in opposite directions. As an **MCP client**, `dsh-mcp-client` reaches *out*: it pulls a third-party server's tools onto `ctx.tools` so the model calls them like native tools. As an **SDK/ACP server**, `dsh-sdk-*` and `dsh-acp` let an external process drive a harness agent *in* over JSON-RPC. Neither is a capability seam — both are plain Consumers of seams that already exist (`ctx.tools`, `ctx.agents`). The real design work is correctness at a boundary the harness doesn't own: naming, atomic registration, reconnection budgets, and wire purity.
+
+## At a glance
+
+The two directions organize the whole chapter; the rest is the vocabulary each one coins.
+
+:::concept{term="MCP direction — harness is the client"}
+`dsh-mcp-client` connects to an external MCP server (a third-party process or HTTP endpoint) and republishes its tools on `ctx.tools`. Tools flow IN; the model-facing surface grows by one namespaced tool per advertised capability.
+:::
+
+:::concept{term="SDK/ACP direction — harness is the server"}
+`dsh-sdk-jsonrpc-server` and `dsh-acp` open a JSON-RPC channel over stdio so an external process (a Python script, a parent harness, an IDE) creates sessions and posts prompts. The agent is being driven; the model's own tool surface does not change.
+:::
+
+:::concept{term="Plain Consumer, not a capability seam"}
+Neither package owns a `ctx.<key>`, has sibling Service Providers, or is swappable. Each is one fixed mechanism consuming an existing seam (`ctx.tools` / `ctx.agents`) — one implementation, not a role family.
+:::
+
+:::concept{term="mcp__<serverName>__<tool>"}
+The public name the model sees: a server-namespace prefix plus the raw name, hash-suffixed only when normalization or the 64-char limit would collide two raw names. The raw name is what actually crosses the wire in `tools/call`.
+:::
+
+:::concept{term="Fetch-then-swap generation"}
+`syncTools` registers a server's tool set atomically: drain a full paginated `tools/list` into a pending generation, then swap it in. The model sees the complete new set or none of it — never a partial one.
+:::
+
+:::concept{term="Newline-delimited JSON-RPC"}
+The wire shell both automation directions share: one compact JSON object per newline. `id`+`method` is a request, `id` alone is a response, `method` alone is a notification; malformed lines are ignored, not fatal.
+:::
+
 ## Two directions of connecting to the outside world
 
-Everything in the harness so far has been about one running agent: how it maintains a session, calls tools, asks a human for approval, compacts its context. This chapter covers the two places where the harness's process boundary itself becomes the subject — where the agent either reaches *out* to another program's tools, or *is itself* the thing another program drives.
-
 These are opposite directions, and the codebase keeps them in unrelated package groups because the roles do not overlap:
-
-:::concept{term="MCP direction — the harness is the client"}
-**`packages/mcp/mcp-client`** makes the harness a Model Context Protocol *client*. It connects to an external MCP server (a third-party process or HTTP endpoint) and republishes that server's tools on `ctx.tools`, so the model sees them as native tools it can call — the same way it sees `bash` or `read`.
-:::
-
-:::concept{term="SDK/ACP direction — the harness is the server"}
-**`packages/sdk`** and **`packages/acp`** make the harness a *server* for another process. `dsh-sdk-jsonrpc-server` and `dsh-acp` each open a JSON-RPC channel over stdio; an external program — a Python script, a parent harness, an IDE integration — speaks that protocol to create sessions, send prompts, and collect results. The harness is the thing being automated, not the thing doing the automating.
-:::
 
 ```mermaid
 flowchart LR
@@ -62,7 +84,11 @@ Walk the three-role test against `dsh-mcp-client` directly and every leg fails:
 - **No sibling Service Providers.** There is no second package that implements "being an MCP client" a different way — no sandboxed MCP client, no remote MCP client. One plugin, one mechanism.
 - **Not itself swappable.** A `cordis.yml` entry is one connection to one external server. Configuring three MCP servers means loading `dsh-mcp-client` three times, once per `serverName` — that is a configuration cardinality, the same way three PowerShell scripts are three separate `bash -c` invocations, not three providers of the same seam.
 
-What `dsh-mcp-client` actually is: a plain **Consumer** of `ctx.tools`, exactly like `dsh-tool-fs` or `dsh-tool-web` are Consumers of their respective services — except that instead of hand-writing one `ToolDefinition` per tool at compile time, it discovers an arbitrary number of them at runtime from whatever the connected server advertises, and registers each one through the ordinary `ctx.tools.register()` call every other tool-registering plugin uses. The protocol richness lives entirely on the wire between the harness and the external server; from `ctx.tools`'s point of view, an MCP-discovered tool and a hand-written one are indistinguishable `ToolDefinition` values. **One MCP server config is one plugin instance, not a role split.** The reason `dsh-mcp-client` needs its own chapter is not that it is a seam with unusual shape — it is that it is a clean example of a mechanism that looks pluggable from the protocol's own vocabulary but sits entirely on one side of an existing seam (`ctx.tools`) as an ordinary Consumer, contributing nothing to the roles the seam pattern describes.
+What `dsh-mcp-client` actually is: a plain **Consumer** of `ctx.tools`, exactly like `dsh-tool-fs` or `dsh-tool-web` are Consumers of their respective services — except that instead of hand-writing one `ToolDefinition` per tool at compile time, it discovers an arbitrary number of them at runtime from whatever the connected server advertises, and registers each one through the ordinary `ctx.tools.register()` call every other tool-registering plugin uses. The protocol richness lives entirely on the wire between the harness and the external server; from `ctx.tools`'s point of view, an MCP-discovered tool and a hand-written one are indistinguishable `ToolDefinition` values.
+
+:::decision
+**One MCP server config is one plugin instance, not a role split.** `dsh-mcp-client` earns its own chapter not because it is a seam with unusual shape, but because it is a clean example of a mechanism that looks pluggable from the protocol's own vocabulary yet sits entirely on one side of an existing seam (`ctx.tools`) as an ordinary Consumer, contributing nothing to the roles the seam pattern describes.
+:::
 
 This distinction has a real payoff for how you read the rest of the chapter: nothing below asks "what implements the MCP client role, and what could replace it?" — there is one implementation, and the question doesn't arise. Instead, the interesting design work in `dsh-mcp-client` is entirely about correctness at a process boundary it doesn't own: naming, atomic registration, and reconnection budgets, covered next.
 
@@ -114,11 +140,19 @@ The clean case is verbatim concatenation. When character replacement or 64-chara
 
 ### Reconnection has a budget, not infinite patience
 
-The connection supervisor in [`connection.ts`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/mcp/mcp-client/src/connection.ts#L1-L16) restarts a dropped stdio child or HTTP connection with exponential backoff (`initialDelayMs` doubling to `maxDelayMs`, defaults 500 ms and 30 s). Consecutive failures share one budget capped at `maxAttempts` (default 10); a connection that survives past `maxDelayMs` of uptime resets that budget. The asymmetry is deliberate: an occasionally-flaky server that reconnects and then stays up recovers indefinitely, while a server that crash-loops — even one whose individual connects briefly succeed — still exhausts the cap and stops trying, unregistering its tools rather than leaving stale ones the model would call into a dead transport.
+The connection supervisor in [`connection.ts`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/mcp/mcp-client/src/connection.ts#L1-L16) restarts a dropped stdio child or HTTP connection with exponential backoff (`initialDelayMs` doubling to `maxDelayMs`, defaults 500 ms and 30 s). Consecutive failures share one budget capped at `maxAttempts` (default 10); a connection that survives past `maxDelayMs` of uptime resets that budget.
+
+> [!WHY]
+> The asymmetry is deliberate: an occasionally-flaky server that reconnects and then stays up recovers indefinitely, while a server that crash-loops — even one whose individual connects briefly succeed — still exhausts the cap and stops trying, unregistering its tools rather than leaving stale ones the model would call into a dead transport.
 
 ### What the model actually sees and doesn't
 
-The canonical execution result is `{ content: JsonValue[], structuredContent? }` — the full JSON MCP result survives for programmatic callers (Code Mode). Native/model-facing rendering is lossier by design: text blocks join with newlines into one string, while image, audio, resource, and unsupported blocks become short placeholders like `[image: image/png, content discarded]`. This is a real, documented limitation, not an oversight — richer multimedia projection into model context is deferred work. Resources and Prompts, the other two MCP capability types, have no harness consumer at all; only Tools is bridged. That narrowing is consistent with the "plain Consumer" framing above: `dsh-mcp-client` consumes exactly the one MCP capability that maps onto `ctx.tools`'s existing vocabulary, and does not grow a second registry for the other two.
+The canonical execution result is `{ content: JsonValue[], structuredContent? }` — the full JSON MCP result survives for programmatic callers (Code Mode). Native/model-facing rendering is lossier by design: text blocks join with newlines into one string, while image, audio, resource, and unsupported blocks become short placeholders like `[image: image/png, content discarded]`.
+
+> [!LIMITATION]
+> Lossy model-facing rendering is a real, documented limitation, not an oversight — richer multimedia projection into model context is deferred work. Resources and Prompts, the other two MCP capability types, have no harness consumer at all; only Tools is bridged.
+
+That narrowing is consistent with the "plain Consumer" framing above: `dsh-mcp-client` consumes exactly the one MCP capability that maps onto `ctx.tools`'s existing vocabulary, and does not grow a second registry for the other two.
 
 The [`mcp-memory` example](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/examples/mcp-memory/README.md) makes this concrete: three default-off overlays each wire one third-party memory MCP server (Memorix, the MCP reference memory server, Engram) through the exact same `dsh-mcp-client` config shape, differing only in `serverName`, `command`, and `env`. None of them are DeepSeek-authored — the harness's job is limited to spawning the configured process (or connecting to the configured URL), discovering its tools, and exposing them under `mcp__<serverName>__<tool>`; database initialization, embeddings, and storage remain entirely the third-party server's concern. Three overlays, three separate plugin instances — not three providers behind one seam.
 
@@ -147,7 +181,8 @@ And the notifications the server pushes unprompted, from [`types.ts:92-98`](http
 | `subagent.started` | A new child session is created (from a `parentSession` header) |
 | `subagent.finished` | An in-process subagent run ends (remote subagent runs are not reported) |
 
-`SessionPromptResult.messageId` is deliberately narrow: it identifies that the user message was durably queued, nothing more. It is not a promise about which assistant message will answer it, whether the turn will end, or what the eventual result is — steering, injected context, and other queued work can all land before the caller sees an `idle` transition. A client that wants a request/response feel has to build it itself by combining `session.event` and `session.status`; the protocol only gives the primitives.
+> [!NOTE]
+> `SessionPromptResult.messageId` is deliberately narrow: it identifies that the user message was durably queued, nothing more. It is not a promise about which assistant message will answer it, whether the turn will end, or what the eventual result is — steering, injected context, and other queued work can all land before the caller sees an `idle` transition. A client that wants a request/response feel has to build it itself by combining `session.event` and `session.status`; the protocol only gives the primitives.
 
 ### The server plugin: `dsh-sdk-jsonrpc-server`
 
@@ -168,7 +203,10 @@ async handleRequest(method: string, params: Record<string, unknown> | undefined)
 }
 ```
 
-A hard rule shapes this whole package: **stdout carries only JSON-RPC frames.** A deployment must not compose a stdout logger alongside this plugin — diagnostics belong on stderr, because the wire protocol and human-readable logs cannot share one stream. `shutdown()` answers the request, flushes the response, then disposes the root context so every SDK-owned agent, subscription, and persistence handle reaches quiescence before the process exits with code 0; the app bin owns EOF and signal-triggered exits separately.
+> [!PITFALL]
+> A hard rule shapes this whole package: **stdout carries only JSON-RPC frames.** A deployment must not compose a stdout logger alongside this plugin — diagnostics belong on stderr, because the wire protocol and human-readable logs cannot share one stream.
+
+`shutdown()` answers the request, flushes the response, then disposes the root context so every SDK-owned agent, subscription, and persistence handle reaches quiescence before the process exits with code 0; the app bin owns EOF and signal-triggered exits separately.
 
 ### The client SDK: `dsh-sdk-client`
 
@@ -195,7 +233,11 @@ The Python SDK (`python/`) is the design twin of this package: same protocol, sa
 
 [`@deepseek-ai/dsh-acp`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/acp/acp/README.md) answers the same "drive the harness from outside" need through a different, pre-existing wire protocol: the [Agent Client Protocol](https://agentclientprotocol.com), also newline-delimited JSON-RPC over stdio, but with ACP's own method names (`session/new`, `session/prompt`, `session/cancel`, `session/update`, `session/request_permission`) rather than the SDK's bespoke ones. It is explicitly "a transport adapter, not a UI integration or a capability seam" — advertising no editor navigation, transcript replay, commands, modes, elicitation, or tool presentation. `session/new` creates one fresh agent per call with an absolute `cwd`; a non-empty `additionalDirectories` or `mcpServers` in the request rejects, since this bridge composes exactly one workspace and never forwards MCP server config from an ACP client.
 
-The one place ACP genuinely needs a human-shaped decision, it routes back over the wire instead of resolving it locally. [`packages/acp/acp/src/index.ts:212-229`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/acp/acp/src/index.ts#L212-L229) subscribes to the harness's own `approval/request` waterfall event and turns it into an ACP `session/request_permission` call:
+:::decision
+The one place ACP genuinely needs a human-shaped decision, it routes back over the wire instead of resolving it locally: an in-harness `approval/request` becomes an ACP `session/request_permission` call, and the answer is a one-shot allow/reject that is never remembered as a durable grant.
+:::
+
+[`packages/acp/acp/src/index.ts:212-229`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/acp/acp/src/index.ts#L212-L229) subscribes to the harness's own `approval/request` waterfall event and turns it into an ACP `session/request_permission` call:
 
 ```ts
 ctx.on('approval/request', (request, next) => {
@@ -217,19 +259,31 @@ ctx.on('approval/request', (request, next) => {
 
 This is the automation seam meeting the collaboration plane from an earlier chapter: the ACP client — commonly [`dsh-subagent-acp`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/subagent/subagent-acp/README.md), a parent harness spawning a child harness as an ACP subprocess — answers with a one-shot allow/reject, and the choice is never remembered as a durable grant.
 
-`session/update` streams `agent_message_chunk` notifications, but only for **committed** assistant messages, one chunk per non-empty text block — raw provider deltas and non-message events are intentionally omitted. This is a deliberate trade documented in the README: "Committed-message output intentionally trades token-by-token latency for a clean automation result." A programmatic client gets whole, stable text, never a partial sentence it has to reassemble or discard.
+> [!NOTE]
+> `session/update` streams `agent_message_chunk` notifications, but only for **committed** assistant messages, one chunk per non-empty text block — raw provider deltas and non-message events are intentionally omitted. "Committed-message output intentionally trades token-by-token latency for a clean automation result." A programmatic client gets whole, stable text, never a partial sentence it has to reassemble or discard.
 
 [`examples/acp-agent`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/examples/acp-agent/README.md) is the runnable composition (`pnpm run demo:acp`), loading the ACP app, DeepSeek adapter, sandboxed bash and filesystem, one-shot approval policy, compaction, subagents, workflows, and JSONL persistence — one fresh agent per `session/new`, stdout kept protocol-pure exactly like the SDK server.
 
 ## Why the two automation packages exist separately
 
-`dsh-sdk-protocol`/`client`/`server` and `dsh-acp` solve the identical problem — expose harness agents to an out-of-process caller — with genuinely different wire protocols and different client populations. The SDK protocol is a DeepSeek-original, minimal surface (three methods, four notifications) built for the Python and TypeScript SDKs and their bundled-runtime consumers. ACP is an existing third-party protocol the harness *implements* so that ACP-speaking tooling — including its own in-repository subagent provider, `dsh-subagent-acp` — can drive a harness agent without knowing anything is DeepSeek-specific underneath. Neither is a strict subset of the other: the SDK protocol's `session.event` gives a caller the full session-log stream, something ACP has no equivalent for; ACP's `session/request_permission` gives an interactive-shaped one-shot decision point the SDK protocol does not define at all. A consumer picks based on which wire shape and which capability set it actually needs.
+`dsh-sdk-protocol`/`client`/`server` and `dsh-acp` solve the identical problem — expose harness agents to an out-of-process caller — with genuinely different wire protocols and different client populations. The SDK protocol is a DeepSeek-original, minimal surface built for the Python and TypeScript SDKs and their bundled-runtime consumers. ACP is an existing third-party protocol the harness *implements* so that ACP-speaking tooling — including its own in-repository subagent provider, `dsh-subagent-acp` — can drive a harness agent without knowing anything is DeepSeek-specific underneath.
+
+| | `dsh-sdk-protocol` / client / server | `dsh-acp` |
+|---|---|---|
+| Wire origin | DeepSeek-original, minimal | existing third-party (Agent Client Protocol) |
+| Surface | 3 methods, 4 notifications | ACP method names (`session/new`, `session/prompt`, …) |
+| Unique capability | `session.event` full session-log stream | `session/request_permission` one-shot decision point |
+| Client population | Python + TypeScript SDKs, bundled-runtime consumers | ACP-speaking tooling, incl. `dsh-subagent-acp` |
+
+:::decision
+Neither is a strict subset of the other: the SDK protocol's `session.event` gives a caller the full session-log stream, something ACP has no equivalent for; ACP's `session/request_permission` gives an interactive-shaped one-shot decision point the SDK protocol does not define at all. A consumer picks based on which wire shape and which capability set it actually needs.
+:::
 
 Neither `sdk` nor `acp` is a capability seam by the same three-role test applied above to MCP — but for a different reason than `dsh-mcp-client`'s. Here, `ctx.agents` (the [`dsh-agent`](../s05-agent-interface/README.md) service both packages inject) *is* a seam elsewhere in the harness, with `dsh-agent-loop` as its concrete driver. `dsh-sdk-jsonrpc-server` and `dsh-acp` are Consumers of that existing seam, not Providers of a new one: each is one fixed wire-protocol adapter over the same `ctx.agents` surface a UI or hook plugin would use, and there is exactly one implementation of each protocol, not a swappable family.
 
-## What connects to what
-
+:::fold[What connects to what: the dependency edges]
 `dsh-mcp-client` depends on `dsh-tools` (for `ctx.tools.register`), `dsh-llm` (for `JsonValue`/schema types), `dsh-subprocess`, and `dsh-timeout` — it never touches `dsh-agent` or `dsh-session`, because from the harness's perspective an MCP tool is just another `ToolDefinition`, indistinguishable in kind from a locally-implemented one. The SDK and ACP packages are the mirror image: `dsh-sdk-jsonrpc-server` and `dsh-acp` both inject `agents` and depend on `dsh-session`, because their entire job is agent lifecycle and session-log plumbing, not tool registration. `dsh-sdk-protocol` additionally depends on `dsh-llm` (for `ContentBlock`) and `dsh-subagent` (for `SubagentStopReason`), since its notification payloads stream real session vocabulary rather than an abstracted wire-only shape — the [module dependency graph](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/module-graph.md) traces every one of these edges directly from each package's declared `peerDependencies`.
+:::
 
 ## Known limits worth carrying forward
 
@@ -239,4 +293,5 @@ Both directions share a family of deliberate, documented gaps rather than accide
 - **SDK protocol/server/client**: no protocol-version negotiation beyond an unvalidated `serverInfo.version`; no mid-turn cancel on the wire — abandoning a turn means closing the runtime process; server→client requests are a dead capability today, reserved for future approval flows the Python SDK's responder surface already anticipates.
 - **ACP**: fresh sessions only (no load/list/resume/fork); baseline prompts only (no image, audio, or embedded-context content); one connection owns the lifetime of all its sessions, with no per-session close.
 
-None of these are silent — every one is called out in its package's own `Known Limitations and Deferred Work` section, which is exactly where a future consumer needs to look before building against the gap.
+> [!LIMITATION]
+> None of these are silent — every one is called out in its package's own `Known Limitations and Deferred Work` section, which is exactly where a future consumer needs to look before building against the gap.

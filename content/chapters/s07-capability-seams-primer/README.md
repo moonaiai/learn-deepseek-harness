@@ -10,6 +10,10 @@ module: foundations
 order: 7
 ---
 
+## The short version
+
+A **capability seam** is how the harness makes one backend swappable without its consumers knowing. This chapter defines the three roles behind every seam — **Service Definition**, **Service Provider**, **Consumer** — and works them through the canonical bash trio (`dsh-shell` / `dsh-bash-local` + `dsh-bash-sandbox` / `dsh-tool-bash`). By the end you can name each role, avoid the terminology trap around the word "seam," read the generated capability-seam graph, and judge when a new seam is worth the extra packages.
+
 ## The problem a seam solves
 
 The harness runs bash commands today. Tomorrow it may run them inside a Landlock sandbox, inside a remote E2B container, or under PowerShell on Windows. A naive design bundles "what bash execution is," "how this particular backend runs a command," and "what the model sees when it asks for `bash`" into one package. That bundling is the trap: swap a local executor for a sandboxed one, and the tool schema the model reads changes too — even though the model-facing contract never actually changed. Token budgets shift, KV-cache prefixes invalidate, and prompt-engineering work done against the old schema silently rots.
@@ -22,7 +26,7 @@ The [capability seams Agent Note](../../../.agents/notes/implemented/architectur
 
 Separate these into three roles, own each in its own package, and a provider swap stops at the provider boundary.
 
-## The three roles, precisely
+## At a glance: the three roles
 
 A **capability seam** is one swappable capability made of exactly three roles working together:
 
@@ -120,7 +124,7 @@ export const inject = ['tools', 'shell', 'systemPrompt', 'shellEnv']
 
 Its module doc comment says it outright: "Model-facing Consumer of the `ctx.shell` capability seam." At registration time it reads `ctx.shell.sandboxMode` — a property every `ShellExecutor` implementation exposes — to decide whether to add `sandbox_permissions` and `justification` parameters to the `bash` schema it registers on `ctx.tools`. When `dsh-bash-local` is mounted, `sandboxMode` is `undefined` and those parameters never appear. When `dsh-bash-sandbox` is mounted instead, they do. The tool schema's shape is a pure function of which provider composed underneath it — the Consumer's source code is identical in both compositions.
 
-## The result: swapping a provider swaps the product without touching consumers
+## The payoff: swap the provider, keep the consumer
 
 This is the entire payoff. A `cordis.yml` leaf composes one `ctx.shell` provider:
 
@@ -224,15 +228,18 @@ Four things this excerpt shows about the pattern's range:
 - **`ctx.fs`** shows the same execution-world argument `docs/architecture.md` makes explicitly: `fs-local`, `fs-sandbox`, and `fs-e2b` are filesystem providers that pair with `bash-local`/`bash-sandbox`/`subprocess-e2b` respectively, so a deployment's choice of execution world moves multiple seams together.
 - **`ctx.llm`** is the folded-role counter-example the glossary calls out: its Consumer arrow points directly at `agent-loop` — no separate `tool-llm` package exists, because the Consumer here is the loop itself, not a swappable schema surface.
 
+:::fold[How the generated table classifies every row]
 The full generated table in `docs/capability-seams.md` additionally distinguishes `seam` rows (like all four above) from `core` rows (one fixed owner, no alternate providers expected — `ctx.tools`, `ctx.sessions`) and `bundle` rows (a single named composition point — `ctx.agentLoop`). Only `seam` rows are capability seams in the sense this chapter defines; the table's `Role` column names this classification explicitly for every service in the harness.
+:::
 
 ## Why this is worth the extra packages
 
 Splitting roles is not free. The [Agent Note](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md) names the cost directly: separate packages mean separate `package.json`, `tsconfig`, README, and injection wiring for what would otherwise be one file. The return is what makes it worth paying: Service Providers and Consumers ship and version independently, and a new backend never risks the model-facing contract. When `dsh-bash-sandbox` was added, `dsh-tool-bash` needed zero changes to its own logic — it already had a capability-detection point (`ctx.shell.sandboxMode`) built into the Service Definition from day one, because the Service Definition was designed for every Consumer it needed to serve, not just the first one that existed.
 
-The Agent Note also names what a capability seam is explicitly **not**: `@cordisjs/plugin-capability` is a permission/security service (named permissions with inheritance, tested via `ctx.capability.test`) — a different axis entirely, and a candidate mechanism for deferred `tools/pre-execute` deny/ask policy work, never a way to swap implementations. Confusing the two meanings of "capability" is the exact trap the Agent Note's terminology section exists to prevent.
+> [!NOTE]
+> A capability seam is explicitly **not** `@cordisjs/plugin-capability`. That package is a permission/security service (named permissions with inheritance, tested via `ctx.capability.test`) — a different axis entirely, and a candidate mechanism for deferred `tools/pre-execute` deny/ask policy work, never a way to swap implementations. Confusing the two meanings of "capability" is the exact trap the Agent Note's terminology section exists to prevent.
 
-## Recognizing when to build a seam
+## When to build a seam
 
 Given the rule "don't split preemptively," the practical test is: does this capability already have, or will it soon have, more than one Service Provider or more than one Consumer that must not couple to each other? If a new capability has exactly one conceivable implementation and exactly one caller, it stays one package — Service Definition, implementation, and Consumer usage all in the same file, the way `dsh-llm` folds Service Definition and Consumer together. The moment a second bash backend, a second search vendor, or a second model provider needs to slot in beside the first without the model-facing surface changing shape, that is the signal to extract the Service Definition into its own package and let the two implementations become sibling Service Providers.
 

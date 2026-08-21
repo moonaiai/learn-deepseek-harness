@@ -9,15 +9,40 @@ module: orchestration-and-capstone
 order: 20
 ---
 
+## 一句话版本
+
+在本章之前,从模型视角看一切都是同步的——一次工具调用会阻塞当前 turn,直到它返回结果。有三个子系统打破了这个假设,它们就是本章的全部内容:**Jobs**(`ctx.jobs`)负责即发即弃的后台工作,**Workflow**(`ctx.workflowEngine`)负责前台的 worker-thread 编排,**Schedule** 负责持久化的会话内提醒。其中只有两个是具备 Definition/Provider/Consumer 拆分的真正能力接缝;Schedule 从外观看与它们一模一样,却有意不暴露任何 `ctx` 键。往下读,把这两个真正的接缝与那个只是外形相似的邻居区分开。
+
+## 一览
+
+四个术语撑起整章。两个是真正的接缝;一个是建立在接缝之上的固定策略;一个只是*看起来*像同类。
+
+:::concept{term="Job(ctx.jobs)"}
+一个 producer 的即发即弃输出流,注册进一个通用注册表。模型启动它、继续做别的事,完成时被告知。这是一个真正的接缝:Definition 是 `dsh-jobs`,Provider 是 `dsh-jobs-local`。
+:::
+
+:::concept{term="Workflow 运行(ctx.workflowEngine)"}
+一段由模型编写、在 worker thread 中运行的 JavaScript 编排脚本,通过 `agent()`/`parallel()`/`pipeline()` 向 subagent 扇出。前台且多步骤:父级工具调用会阻塞到整次运行结束。同样是真正的接缝。
+:::
+
+:::concept{term="Ralph"}
+一个完全由 workflow 与 subagent 接缝组合而成的、固定的、由部署方拥有的前台循环——每轮一个全新子 agent,目标不可变。它不是第四种引擎,也不是同会话 goal。
+:::
+
+:::concept{term="Schedule 提醒"}
+一次定时提醒,而不是一个执行中的任务。持久状态直接以 `schedule/change` 事件的形式写在会话日志里;没有 `ctx.schedule`,也没有可替换的 Provider。它明确*不是*接缝。
+:::
+
 ## 三种「工作跨越单次工具调用」的方式
 
-到目前为止,本课程遇到的一切从模型视角看都是同步的:一次工具调用会阻塞当前 turn(轮次),直到它返回结果。有三个子系统打破了这个假设,但其中只有两个是能力接缝(capability seam)。harness 让这三者在结构上保持独立,而不是合并成一个笼统的「后台功能」:
+harness 让这三者在结构上保持独立,而不是合并成一个笼统的「后台功能」,因为它们彼此都不是对方的变体:
 
 - **Jobs**(`ctx.jobs`,`packages/jobs`)——一个通用注册表,任何长时间运行的 producer(后台 bash、后台 subagent)都向它注册。**这是一个能力接缝**:Service Definition 是 `dsh-jobs`,Service Provider 是 `dsh-jobs-local`,还有四个 Consumer(作为 producer 的 `dsh-tool-bash`、`dsh-tool-terminal`、`dsh-tool-subagent`;作为面向模型控制器的 `dsh-tool-jobs`)。一个 job 是**即发即弃**的:模型启动它,继续做别的事,完成时会被告知。
 - **Workflow**(`ctx.workflowEngine`,`packages/workflow`)——一段由模型编写、在 worker thread 中执行的 JavaScript 编排脚本,通过 `agent()`、`parallel()`、`pipeline()` 向许多 subagent 分发工作。**这同样是一个能力接缝**:Service Definition 是 `dsh-workflow`,Service Provider 是 `dsh-workflow-worker-thread`,还有两个 Consumer(`dsh-tool-workflow`、`dsh-tool-ralph`)。**Ralph** 是完全建立在这个接缝加上 subagent 接缝之上的一个固定的、由部署方拥有的策略——不是第四种机制。workflow 和 ralph 都是**前台的、多步骤编排**:父级工具调用会阻塞,直到整次运行结束。
 - **Schedule**(`packages/schedule`)——持久化的、仅限会话内的提醒。**这明确不是一个接缝。** 没有 `ctx.schedule` 键,没有 Service Definition,也没有可替换的 Provider。包自己的 README 直言不讳:「本包有意不公开 Schedule service 或可变数据库。」持久状态直接是归属会话日志中的一系列版本化 `schedule/change` 事件;一个进程内的定时器 owner 读取这份日志,在提醒到期时调用 `followup()`。一条 Schedule 记录是一次**定时提醒**,不是一个在执行的任务——它没有输出可收集,只有一条到期后要投递的提示。
 
-这三者中没有谁是另一个的变体,而且其中只有两个共享同一种形态。一个 job 本身没有轮次或步骤——它就是一个 producer 的一条输出流,在结构上与本课程之前讲过的其他接缝(bash executor、LSP backend)完全一致。一次 workflow(或 ralph)运行内部有结构(子 agent、阶段、轮次),这个结构是被*父级*调用同步等待完成的,而它也是一个接缝——和 `ctx.shell` 一样,每个 context 一个引擎实现。一条 Schedule 记录完全没有输出,也没有可替换的后端可言——它就是直接写进日志的一次唤醒调用。把「background bash」里的「后台」(一个 job,一个接缝)和「background workflow」里的「后台」(尚未实现——见下文[已知局限](#值得记住的已知局限))混为一谈是一种常见的初学误读,而 Ralph 也不是会话内的 [goal](#goal-是第四个邻居本章不展开),尽管两者都在谈论「轮次」。
+> [!PITFALL]
+> 一个 job 本身没有轮次或步骤——它就是一个 producer 的一条输出流,在结构上与本课程之前讲过的其他接缝(bash executor、LSP backend)完全一致。一次 workflow(或 ralph)运行内部有结构(子 agent、阶段、轮次),这个结构是被*父级*调用同步等待完成的,而它也是一个接缝——和 `ctx.shell` 一样,每个 context 一个引擎实现。一条 Schedule 记录完全没有输出,也没有可替换的后端。把「background bash」里的「后台」(一个 job,一个接缝)和「background workflow」里的「后台」(尚未实现——见下文[已知局限](#值得记住的已知局限))混为一谈是一种常见的初学误读,而 Ralph 也不是会话内的 [goal](#goal-是第四个邻居本章不展开),尽管两者都在谈论「轮次」。
 
 ## 对比表
 
@@ -100,11 +125,23 @@ export abstract class JobRegistry extends Service {
 
 runtime 会在调用 `run()` 之前完成所有可能失败的预检;一旦 `run()` 返回,注册就不可能再失败,所以 producer 永远不会拿到一个「对应的任务其实没真正注册成功」的 id。`JobHooks` 只需要向 runtime 交回三样东西:一个同步、幂等的 `cancel(reason?)`;一个永不 reject 的 `done: Promise<JobOutcome>`;以及可选的 `readOutput()`(供流式 producer 使用——像 subagent 这种只有完成时才有结果的最终输出型 producer 会省略它)。状态只有五种:`running`、`stopping`、`completed`、`killed`、`failed`——producer 特有的细节(退出码、停止原因)放在 `JobOutcome.detail` 里,注册表本身从不解读它。
 
+:::timeline
+- ctx.jobs.start() —— 预检先跑;一旦 run() 返回,注册就不可能再失败
+- run() 返回 JobHooks —— cancel(reason?)、一个永不 reject 的 done promise、可选的 readOutput()
+- running / stopping —— 任务一直占用容量,直到 producer 的 done 真正 settle
+- done settle —— completed / killed / failed;细节放在 JobOutcome.detail 里
+- onJobDone 触发 —— 完成通知按 owner 状态路由
+- owner 正忙 —— 通知注入到下一个 step(多个任务同时完成只多花一个 step)
+- owner 空闲 —— 唤醒一个新 turn,受 maxConsecutiveWakes 上限约束
+:::
+
 ### owner 隔离与准入控制
 
 任务 id 是可预测的(`<kind>-N`),所以访问控制靠的是鉴权,而不是保密:每次 read/kill/wait 都会把任务的 owner `SessionId` 和调用方比对。没有 `owner` 的任务(spec 中不带 owner)在服务销毁之前对任何调用方开放。一个 owner 的第一个任务会向该 agent 的 scope 挂一个 effect,因此 owner 销毁时会取消并等待它拥有的每一个任务——除非任务是无主启动的,否则后台工作不会悄悄活得比启动它的 agent 更久。
 
+:::fold[有界准入:为什么 kill 不会释放槽位]
 `dsh-jobs-local` 还实现了一套后加上的有界准入策略,记录在[有界后台任务准入 Agent Note](../../../.agents/notes/implemented/bug-fix/2026-08-11-bounded-background-job-admission.md) 中:`maxConcurrentJobsPerOwner` 默认为 `10`,由每个确切 owner 当前的 `running`+`stopping` 记录动态推导得出(无主任务共享一个桶),而不是另外维护一个可变计数器。只有 producer 的 `done` 真正 settle 才会释放一个 `stopping` 任务占用的容量——kill 请求本身不释放容量,因为一个「正在停止」的 producer 在彻底完成收尾之前可能仍占用着进程或子任务。达到上限时 `start()` 会拒绝,并提示模型 `job_kill` 掉某个任务后重试。
+:::
 
 ### 模型看到什么
 
@@ -143,9 +180,13 @@ export abstract class WorkflowEngine extends Service {
 
 ### 为什么用 worker thread,以及它不是什么
 
-每次运行使用一个 `node:worker_threads` worker,让同步的脚本循环不占用宿主的事件循环,并让 `dispose()` 拥有真正的最终停止手段(`worker.terminate()`)。[worker-thread 引擎的 README](../../../packages/workflow/workflow-worker-thread/README.md) 明确说明了这**不是**什么边界:「worker 内的 `node:vm` 是一种 API 塑形机制,不是安全边界:一段逃逸的脚本可以用宿主进程的权限重新拿到 Node 的能力。」workflow 脚本与模型现有的 bash 访问权限具有相同的信任前提——隔离带来的是对崩溃/挂起的遏制,以及值跨越回宿主时的一个 JSON 序列化边界,而不是针对恶意脚本的沙箱防护。
+:::decision
+每次运行使用一个 `node:worker_threads` worker,配合 `node:vm`——这**不是**为了针对恶意脚本做沙箱,而是为了让同步的脚本循环不占用宿主的事件循环、遏制崩溃/挂起、让 `dispose()` 拥有真正的最终停止手段(`worker.terminate()`),并为跨越回宿主的值提供一个 JSON 序列化边界。[worker-thread 引擎的 README](../../../packages/workflow/workflow-worker-thread/README.md) 明确说明了这*不是*什么边界:「worker 内的 `node:vm` 是一种 API 塑形机制,不是安全边界:一段逃逸的脚本可以用宿主进程的权限重新拿到 Node 的能力。」workflow 脚本与模型现有的 bash 访问权限具有相同的信任前提。
+:::
 
+:::decision
 hook 的严重误用——未知的 `agent()` 选项、超出受支持结构化输出子集的 schema、触发的上限、provider 启动失败——都会抛出一个 `fatal: true` 的 `WorkflowError`,并且 `parallel()`/`pipeline()` 会**重新抛出**致命错误,而不是把该条目映射为 `null`。这是一个刻意的严格性选择:一个拼写错误的选项必须让脚本大声地失败,而不是消解成一个和普通子任务失败无法区分的东西。普通的子任务失败(一个跑完了但没有成功完成的 subagent)*确实*会映射为 `null`——脚本本身应当据此分支处理。
+:::
 
 ### 组合示例
 
@@ -170,9 +211,17 @@ hook 的严重误用——未知的 `agent()` 选项、超出受支持结构化�
 
 Ralph 不是第四种能力——它是一个具体的、写死的*策略*,完全建立在前面已经讲过的 workflow 和 subagent seam 之上。[术语表](../../../docs/glossary.md#ralph-loop)对相关词汇的定义非常精确:
 
-- **Ralph loop**——朝着一个不可变目标运行的、一次前台的、使用全新 agent 的 workflow 运行。这是一个由 workflow 和 subagent 原语组合而成的、面向模型的工具策略,不是同会话 goal、agent-loop 模式、调度器,也不是通用的 workflow 脚本功能。
-- **Ralph round(Ralph 轮次)**——一次 Ralph loop 中的一个全新子会话。这个子 agent **不会**接收父级或此前子 agent 的对话种子;共享工作区加上一份有界的 **Ralph handoff(交接信息)** 承载了全部跨轮次状态。
-- **Ralph handoff**——从一个继续进行的 Ralph 轮次传递到下一轮的、经过归一化的有界结构化报告:`status`、`summary`、`evidence`、`nextSteps`、`blocker`。它是对共享工作区这个权威来源的补充,而不是取代。
+:::concept{term="Ralph loop(Ralph 循环)"}
+朝着一个不可变目标运行的、一次前台的、使用全新 agent 的 workflow 运行。这是一个由 workflow 和 subagent 原语组合而成的、面向模型的工具策略,不是同会话 goal、agent-loop 模式、调度器,也不是通用的 workflow 脚本功能。
+:::
+
+:::concept{term="Ralph round(Ralph 轮次)"}
+一次 Ralph loop 中的一个全新子会话。这个子 agent **不会**接收父级或此前子 agent 的对话种子;共享工作区加上一份有界的 **Ralph handoff(交接信息)** 承载了全部跨轮次状态。
+:::
+
+:::concept{term="Ralph handoff(Ralph 交接)"}
+从一个继续进行的 Ralph 轮次传递到下一轮的、经过归一化的有界结构化报告:`status`、`summary`、`evidence`、`nextSteps`、`blocker`。它是对共享工作区这个权威来源的补充,而不是取代。
+:::
 
 [循环层级](../../../docs/glossary.md#loop-hierarchy)条目精确地界定了这一点:一个 **round(轮次)**是「一次包含着一个 turn 的、更外层的策略迭代——比如一个 goal round 或者一次全新 agent 的 Ralph 尝试」——轮次计数属于该策略自身(Ralph,或者 goal driver),而不是会话中的每一个 turn。
 
@@ -210,9 +259,10 @@ for bounded delegation and fan-out.
 
 ## Schedule:不是接缝——活在会话日志里的提醒,而不是一个调度进程
 
-Schedule 看起来应该和 Jobs、Workflow 放在一起,因为它做的是同一类事情——模型启动、之后会收到通知的某种后台性质的工作——但它建立在一套完全不同的基础之上,而这个区别很关键:**没有 `ctx.schedule` service,没有 Service Definition,也没有可替换的 Provider。** [包 README](../../../packages/schedule/README.md) 开门见山地说明了这一点:
+Schedule 看起来应该和 Jobs、Workflow 放在一起,因为它做的是同一类事情——模型启动、之后会收到通知的某种后台性质的工作——但它建立在一套完全不同的基础之上,而这个区别很关键:
 
-> 本包有意不公开 Schedule service 或可变数据库。工具与 runtime 向 Session stream 追加事件;到期工作通过 Agent 的普通 follow-up 队列进入同一对话。
+> [!NOTE]
+> 没有 `ctx.schedule` service,没有 Service Definition,也没有可替换的 Provider。[包 README](../../../packages/schedule/README.md) 开门见山地说明了这一点:「本包有意不公开 Schedule service 或可变数据库。工具与 runtime 向 Session stream 追加事件;到期工作通过 Agent 的普通 follow-up 队列进入同一对话。」
 
 同一份 README 里的家族表格从结构上印证了这一点——它唯一一行的「ctx key」列写的是一个字面的 `—`,而不是某个 service 名字:
 
@@ -242,6 +292,14 @@ Schedule 看起来应该和 Jobs、Workflow 放在一起,因为它做的是同�
 
 ### 投递:没有回执,没有外部通道
 
+:::timeline
+- schedule_create —— 先等待 ctx.sessions.flush(session),再追加一条版本化的 schedule/change 事件
+- 创建 / 真正的删除 —— 追加事件后再等第二道屏障;屏障失败返回 persistence_uncertain
+- live 定时器 owner —— 读取 fold、等待;仅当会话拥有 live 根 Agent 时才存在
+- 提醒到期 —— owner 占用空闲维护阶段,构造固定框架文本,调用 followup()
+- 一个普通的后续 turn —— 不是 steer();提醒留下的唯一痕迹就是它触发的那条助手回复
+:::
+
 一次性提醒到期时,live 的 owner 会占用 agent 的空闲维护阶段,构造一段固定的框架文本,再调用 `followup()`——这是一个普通的后续 turn,而不是打断当前对话的 `steer()`:
 
 ```
@@ -256,7 +314,8 @@ reminder_prompt_json: <JSON.stringify(prompt)>
 
 ## 值得记住的已知局限
 
-三个家族各自的 README 都记录了自己的缺口,但贯穿三者的模式是一致的:**三者都没有跨进程的持久性**,而且都无法在类别之间互相「升级」。
+> [!LIMITATION]
+> 三个家族各自的 README 都记录了自己的缺口,但贯穿三者的模式是一致的:**三者都没有跨进程的持久性**,而且都无法在类别之间互相「升级」。
 
 - **Job 是进程内的。** 记录会随 harness 进程一起消失;要实现持久化/可跨重启的 job 后端,需要一个实现同一 seam 的不同 `JobRegistry` provider——因为今天的 `JobStart.run()` 传递的是进程内的回调和确切的 `Agent` 对象。
 - **流式 job 的输出只有一个消费型游标。** 独立的观察者(一个 UI、第二个读取方)需要一套单独的非消费式 API;目前默认模型就是唯一的读取方。
@@ -265,6 +324,6 @@ reminder_prompt_json: <JSON.stringify(prompt)>
 - **Ralph 在单轮内没有扇出,也没有独立的评审者。** 一轮就是一个全新子 agent;只有轮次数量(而非 token、费用或墙钟时间)约束着总体投入。
 - **Schedule 的投递仅限于会话内。** 一条提醒只有在其原始会话保持 live 的情况下才会准时触发;没有外部推送通道,冷会话只是在重新打开时简单地补投——Schedule「不会唤醒任何人」,它只是在有人在场时给出正确的答案。这并不是一个可以靠新增 Provider 来弥补的缺口——这里根本没有可以扩展的接缝,只有日志和定时器。
 
-### goal 是第四个邻居,本章不展开
-
+:::fold[goal 是第四个邻居,本章不展开]
 `packages/goal/`(同会话的持久化目标,`active`/`paused`/`blocked`/`complete` 阶段,延续*同一场*对话的 goal round)在概念上与本章这三者相邻,但不在本章范围内——它有自己的一套持久化与激活模型,记录在[`docs/subsystems/goal.md`](../../../docs/subsystems/goal.md)中。这里提到它存在,纯粹是为了避免与上文的 Ralph / goal-round 术语混淆。
+:::

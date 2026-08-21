@@ -12,15 +12,40 @@ module: orchestration-and-capstone
 order: 20
 ---
 
+## The short version
+
+Everything before this chapter is synchronous from the model's point of view — a tool call blocks the turn until it resolves. Three subsystems break that assumption, and they are the whole chapter: **Jobs** (`ctx.jobs`) for fire-and-forget background work, **Workflow** (`ctx.workflowEngine`) for foreground worker-thread orchestration, and **Schedule** for durable session-local reminders. Only the first two are capability seams with a Definition/Provider/Consumer split; Schedule looks identical from the outside but deliberately exposes no `ctx` key at all. Read on to tell the two real seams apart from the one neighbor that only shares their silhouette.
+
+## At a glance
+
+Four terms carry the chapter. Two are real seams; one is a fixed policy composed on top of them; one only *looks* like a sibling.
+
+:::concept{term="Job (ctx.jobs)"}
+One producer's fire-and-forget output stream, registered in a generic registry. The model starts it, keeps working, and is told when it's done. A genuine seam: Definition `dsh-jobs`, Provider `dsh-jobs-local`.
+:::
+
+:::concept{term="Workflow run (ctx.workflowEngine)"}
+A model-written JavaScript orchestration script in a worker thread, fanning out to subagents with `agent()`/`parallel()`/`pipeline()`. Foreground and multi-step: the parent tool call blocks until the whole run settles. Also a genuine seam.
+:::
+
+:::concept{term="Ralph"}
+A fixed, deployment-owned foreground loop built entirely from the workflow and subagent seams — fresh child per round, immutable objective. Not a fourth engine, not a same-session goal.
+:::
+
+:::concept{term="Schedule reminder"}
+A timed nudge, not an executing task. Durable state lives directly as `schedule/change` events in the session log; there is no `ctx.schedule`, no Provider to swap. Explicitly *not* a seam.
+:::
+
 ## Three ways to do work that outlives a tool call
 
-Everything up to this chapter has been synchronous from the model's point of view: a tool call blocks the turn until it resolves. Three subsystems break that assumption, and only two of them are capability seams. The harness keeps all three **structurally separate** rather than folding them into one "background stuff" feature:
+The harness keeps all three **structurally separate** rather than folding them into one "background stuff" feature, because they are not variants of one another:
 
 - **Jobs** (`ctx.jobs`, `packages/jobs`) — a generic registry that any long-running producer (background bash, a background subagent) registers into. **This is a capability seam**: Service Definition `dsh-jobs`, Service Provider `dsh-jobs-local`, and four Consumers (`dsh-tool-bash`, `dsh-tool-terminal`, `dsh-tool-subagent` as producers; `dsh-tool-jobs` as the model-facing controller). A job is *fire-and-forget*: the model starts it, keeps working, and is told when it's done.
 - **Workflow** (`ctx.workflowEngine`, `packages/workflow`) — a model-written JavaScript orchestration script executed in a worker thread, fanning out to many subagents with `agent()`, `parallel()`, and `pipeline()`. **This is also a capability seam**: Service Definition `dsh-workflow`, Service Provider `dsh-workflow-worker-thread`, and two Consumers (`dsh-tool-workflow`, `dsh-tool-ralph`). **Ralph** is a fixed, deployment-owned policy built entirely on top of this seam plus the subagent seam — not a fourth mechanism. Workflow and Ralph are *foreground, multi-step orchestration*: the parent tool call blocks until the whole run settles.
 - **Schedule** (`packages/schedule`) — durable, session-local reminders. **This is explicitly not a seam.** There is no `ctx.schedule` key, no Service Definition, no Provider to swap. The package's own README states it outright: "the package deliberately exposes no public Schedule service or mutable database." Durable state lives directly as versioned `schedule/change` events in the owning session's log; a process-local timer owner reads that log and calls `followup()` when a reminder is due. A Schedule entry is a *timed nudge*, not an executing task — it has no output to collect, only a due prompt to deliver.
 
-None of these three is a variant of another, and only two of them share a common shape. A job has no rounds or steps of its own — it is one producer's output stream, structurally identical to any other seam (bash executors, LSP backends) this course has already covered. A workflow (or Ralph) run has internal structure (children, phases, rounds) that the *parent* call waits out synchronously, and it too is a seam — one engine implementation per context, exactly like `ctx.shell`. A Schedule entry has no output at all and no swappable backend to speak of — it is a wake-up call written straight into the log. Confusing "background" in "background bash" (a job, a seam) with "background" in "background workflow" (not yet built — see [Known Limitations](#known-limitations-worth-remembering)) is a common first misreading, and Ralph is not a same-session [goal](#goal-is-a-fourth-neighbor-not-covered-here) even though both talk about "rounds."
+> [!PITFALL]
+> A job has no rounds or steps of its own — it is one producer's output stream, structurally identical to any other seam (bash executors, LSP backends) this course has already covered. A workflow (or Ralph) run has internal structure (children, phases, rounds) that the *parent* call waits out synchronously, and it too is a seam — one engine implementation per context, exactly like `ctx.shell`. A Schedule entry has no output at all and no swappable backend. Confusing "background" in "background bash" (a job, a seam) with "background" in "background workflow" (not yet built — see [Known Limitations](#known-limitations-worth-remembering)) is a common first misreading, and Ralph is not a same-session [goal](#goal-is-a-fourth-neighbor-not-covered-here) even though both talk about "rounds."
 
 ## Comparison
 
@@ -103,11 +128,23 @@ export abstract class JobRegistry extends Service {
 
 The runtime finishes all failable preflight *before* calling `run()`; once `run()` returns, registration cannot fail, so a producer never gets an id for work that isn't actually registered. `JobHooks` gives the runtime exactly three things back: a synchronous, idempotent `cancel(reason?)`, a `done: Promise<JobOutcome>` that never rejects, and an optional `readOutput()` for stream producers (final-output producers, like a subagent whose result only exists on completion, omit it). Status is one of `running`, `stopping`, `completed`, `killed`, `failed` — producer-specific detail (an exit code, a stop reason) lives in `JobOutcome.detail`, which the registry never interprets.
 
+:::timeline
+- ctx.jobs.start() — preflight runs first; once run() returns, registration cannot fail
+- run() returns JobHooks — cancel(reason?), a never-rejecting done promise, optional readOutput()
+- running / stopping — the job holds capacity until the producer's done actually settles
+- done settles — completed / killed / failed; detail lives in JobOutcome.detail
+- onJobDone fires — completion notice routed by owner state
+- owner busy — notice injected into the next step (many finishes cost one step)
+- owner idle — woken with a follow-up turn, bounded by maxConsecutiveWakes
+:::
+
 ### Owner isolation and admission
 
 Job ids are predictable (`<kind>-N`), so access control is authorization, not secrecy: every read/kill/wait compares the job's owner `SessionId` against the caller. Unowned jobs (no `owner` in the spec) are open to any caller until service disposal. The first job for an owner attaches one effect to that agent's scope, so owner disposal cancels and awaits every job it owns — background work does not silently outlive the agent that started it unless it was started unowned.
 
+:::fold[Bounded admission: why a kill doesn't free a slot]
 `dsh-jobs-local` also owns a bounded-admission policy the [bounded background job admission Agent Note](../../../.agents/notes/implemented/bug-fix/2026-08-11-bounded-background-job-admission.md) added after the fact: `maxConcurrentJobsPerOwner` defaults to `10` and is derived from live `running`+`stopping` records per exact owner (unowned jobs share one bucket), not a second mutable counter. Only producer `done` settlement — not a kill request — releases a `stopping` job's capacity, because a "stopping" producer may still hold its process or child until it actually finishes tearing down. A rejected `start()` at capacity tells the model to `job_kill` something and retry.
+:::
 
 ### What the model sees
 
@@ -147,14 +184,12 @@ The model submits `meta` (name/description, validated as plain data — never ev
 ### Why a worker thread, and what it isn't
 
 :::decision
-One `node:worker_threads` worker per run keeps a synchronous script loop off the host event loop and gives `dispose()` a real final stop (`worker.terminate()`).
+Workflow scripts run one `node:worker_threads` worker per run, with `node:vm` — **not** to sandbox against a hostile script, but to keep the synchronous loop off the host event loop, contain crashes/hangs, give `dispose()` a real final stop (`worker.terminate()`), and force a JSON serialization boundary for values crossing back to the host. The [worker-thread engine README](../../../packages/workflow/workflow-worker-thread/README.md) is explicit about the boundary this is *not*: "`node:vm` inside a worker is an API-shaping mechanism, not a security boundary: an escaped script can recover Node capabilities with the host process's privileges." Workflow scripts carry the same trust premise as the model's existing bash access.
+:::
 
 :::decision
-Workflow scripts run in a worker thread with `node:vm`, **not** to sandbox against a hostile script, but to keep the synchronous loop off the host event loop, contain crashes/hangs, and force a JSON serialization boundary for values crossing back to the host. The [worker-thread engine README](../../../packages/workflow/workflow-worker-thread/README.md) is explicit about the boundary this is *not*: "`node:vm` inside a worker is an API-shaping mechanism, not a security boundary: an escaped script can recover Node capabilities with the host process's privileges." Workflow scripts carry the same trust premise as the model's existing bash access.
-:::
-:::
-
 Fatal hook misuse — an unknown `agent()` option, a schema outside the supported structured-output subset, a tripped cap, a provider-start failure — throws a `WorkflowError` with `fatal: true`, and `parallel()`/`pipeline()` **re-throw** fatal errors rather than mapping the item to `null`. That's a deliberate strictness choice: a typo'd option must kill the script loudly, not dissolve into something indistinguishable from an ordinary child failure. An ordinary child failure (a subagent that ran but didn't complete) *does* map to `null` — the script is expected to branch on that.
+:::
 
 ### Composing it
 
@@ -228,9 +263,10 @@ for bounded delegation and fan-out.
 
 ## Schedule: not a seam — reminders that live in the session log, not a scheduler process
 
-Schedule looks like it belongs beside Jobs and Workflow because it does the same kind of job — background-ish work the model starts and later gets notified about — but it is built on a completely different footing, and the distinction matters: **there is no `ctx.schedule` service, no Service Definition, and no Provider to swap.** The [package README](../../../packages/schedule/README.md) states this outright:
+Schedule looks like it belongs beside Jobs and Workflow because it does the same kind of job — background-ish work the model starts and later gets notified about — but it is built on a completely different footing, and the distinction matters:
 
-> The package deliberately exposes no public Schedule service or mutable database. Tools and runtime append to the Session stream; due work enters the same conversation through the Agent's ordinary follow-up queue.
+> [!NOTE]
+> There is no `ctx.schedule` service, no Service Definition, and no Provider to swap. The [package README](../../../packages/schedule/README.md) states this outright: "The package deliberately exposes no public Schedule service or mutable database. Tools and runtime append to the Session stream; due work enters the same conversation through the Agent's ordinary follow-up queue."
 
 The family table in that same README makes the point structurally — its one row's `ctx key` column reads a literal `—`, not a service name:
 
@@ -260,6 +296,14 @@ Every management operation — create, list, delete — first awaits `ctx.sessio
 
 ### Delivery: no receipt, no external channel
 
+:::timeline
+- schedule_create — await ctx.sessions.flush(session), then append a versioned schedule/change event
+- create / actual delete — wait on a second barrier; a barrier failure returns persistence_uncertain
+- live timer owner — reads the fold, waits; exists only while the session has a live root Agent
+- reminder due — owner claims the idle maintenance phase, builds the fixed framing, calls followup()
+- a normal later turn — not a steer(); the reminder's only trace is the assistant turn it produced
+:::
+
 When a one-shot fires, the live owner claims the agent's idle maintenance phase, builds a fixed framing, and calls `followup()` — a normal later turn, not a `steer()` that interrupts whatever the agent is doing:
 
 ```
@@ -274,7 +318,8 @@ Every `every_seconds` record contributes only its *latest* due occurrence when c
 
 ## Known Limitations worth remembering
 
-Each family documents its own gaps, but the pattern across all three is the same: **none of the three has cross-process durability**, and none can promote work between categories.
+> [!LIMITATION]
+> Each family documents its own gaps, but the pattern across all three is the same: **none of the three has cross-process durability**, and none can promote work between categories.
 
 - **Jobs are process-local.** Records die with the harness process; a durable/cross-restart job backend would need a different `JobRegistry` provider implementing the same seam, since `JobStart.run()` passes in-process callbacks and exact `Agent` objects today.
 - **Stream job output has one consuming cursor.** An independent observer (a UI, a second reader) needs a separate non-consuming API; today the model is assumed to be the only reader.
@@ -283,6 +328,6 @@ Each family documents its own gaps, but the pattern across all three is the same
 - **Ralph has no within-round fan-out and no independent evaluator.** One round is one fresh child; only round count (not tokens, price, or wall-clock time) bounds total effort.
 - **Schedule delivery is session-local only.** A reminder fires on time only while its original session is live; there is no external push channel, and a cold session simply catches up when reopened — Schedule "wakes no one," it just answers correctly once someone is there. This isn't a gap the package could close by adding a Provider — there is no seam here to extend, only the log and the timer.
 
-### Goal is a fourth neighbor, not covered here
-
+:::fold[Goal is a fourth neighbor, not covered here]
 `packages/goal/` (same-session durable objectives, `active`/`paused`/`blocked`/`complete` phase, goal rounds that continue the *same* conversation) sits conceptually beside these three but is out of scope for this chapter — it has its own persistence and activation model documented in [`docs/subsystems/goal.md`](../../../docs/subsystems/goal.md). The reason to know it exists here is purely to avoid the Ralph/goal-round terminology collision above.
+:::

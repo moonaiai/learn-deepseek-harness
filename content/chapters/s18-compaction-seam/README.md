@@ -10,6 +10,30 @@ module: extension-memory-seams
 order: 18
 ---
 
+## The short version
+
+Compaction is the harness's answer to an unbounded context window: when the history `deriveMessages()` projects approaches the provider's limit, the `ctx.compaction` seam replaces a run of older history with one concise, logged, replayable summary checkpoint while keeping the recent tail intact. It ships as a four-package capability seam — an abstract `CompactionEngine`, the default token-pressure backend `compaction-basic`, an optional model-free pruner, and the `/compact` command. Automatic pressure is checked after every successful step, a context-overflow backstop reacts to provider rejections, and every mutation lands as a durable, replay-validated event rather than a silent edit. Read on for how each piece decides *when* history is too large and *what* to summarize.
+
+## At a glance
+
+Four terms carry the chapter: the service, the checkpoint it lands, the log-only events that bracket the mutation, and the shared meter that prices pressure.
+
+:::concept{term="CompactionEngine"}
+The abstract `Service` behind `ctx.compaction`. Three operations — `compactIfNeeded`, `compactNow`, `compactRegion` — state *what* compaction does, never *how*.
+:::
+
+:::concept{term="checkpoint"}
+The single surface mutation: a `user/message` whose `surfaceOp: { op: 'replace', start, end }` shadows a range and inserts the framed summary, citing every removed event through `sourceEventSeqs`.
+:::
+
+:::concept{term="compaction/* log-only events"}
+`compaction/start` → `compaction/summary` → `compaction/end`. They acquire and release a durable lock and record the raw summary for replay, but never join the model-visible surface themselves.
+:::
+
+:::concept{term="ctx.tokenMeter"}
+The shared LLM-family service that prices the canonical envelope and current surface at one consumed-log revision. Compaction never invents its own token model.
+:::
+
 ## What compaction protects against
 
 A `Session` is an append-only log of `SessionEvent`s (see [s03](../s03-event-sourced-session/README.md)), and `deriveMessages()` projects the model's conversation history from it. Nothing bounds that history's growth on its own — a long-running agent conversation, especially a tool-heavy ReAct loop, keeps appending `assistant/message` and `tool/result` events until the derived history approaches the provider's context window. Left unchecked, the model eventually truncates mid-response or the provider rejects the request outright.
@@ -100,7 +124,11 @@ A successful compaction lands five events in order:
 - compaction/end — log-only. Releases the lock.
 :::
 
-Two things follow directly from "model-visible means logged" (the harness's core session-log invariant): the summary text itself lives on `compaction/summary` for full-fidelity replay, and the *only* thing the model ever actually sees is the replacement `user/message` — a summary genuinely is user-role context, so reusing `user/message` rather than inventing a fifth event type is deliberate honesty about what the checkpoint is, not a workaround. `deriveMessages()` renders it exactly like any other surface node; the shadowed raw events remain in the log underneath, so replay is deterministic and a human transcript reading append-origin events can still show what actually happened.
+Two things follow directly from "model-visible means logged" (the harness's core session-log invariant): the summary text itself lives on `compaction/summary` for full-fidelity replay, and the *only* thing the model ever actually sees is the replacement `user/message`. `deriveMessages()` renders it exactly like any other surface node; the shadowed raw events remain in the log underneath, so replay is deterministic and a human transcript reading append-origin events can still show what actually happened.
+
+:::decision
+Reuse `user/message` for the checkpoint rather than inventing a fifth event type. A summary genuinely *is* user-role context, so this is deliberate honesty about what the checkpoint is, not a workaround.
+:::
 
 The surface mutation sits **inside** the lock bracket — `compaction/end` is the last event appended, not the first. This ordering converts a crash mid-summarization from silent corruption into a *detectable orphan*: a `compaction/start` with no matching `compaction/end`. A live unmatched start (one after the newest `session/end-seed`) blocks every compaction entry point; an unmatched start from before that boundary is stale evidence from a prior process lifecycle and does not block a resumed or forked session.
 
@@ -139,7 +167,11 @@ Pressure checking asks the singleton `ctx.tokenMeter` to price "the canonical lo
 
 ### When pressure fires: after a call, not before it
 
-Pressure runs at `agent/pre-step` — a serial waterfall extension point that fires after the *previous* step's assistant output, tool results, buffered context, and steering are already durable, and before the *next* request is derived. The [after-call recovery Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md) explains why this boundary and not an earlier one: `agent/pre-step` observes a completed successful call, while an earlier hook like `agent/request` still sees a provisional request whose routing and tool schemas haven't been frozen yet. Checking after every successful step — not once per turn — is load-bearing for a tool-heavy ReAct turn: such a turn appends an `assistant/message` + `tool/result` pair per step, so the surface grows *within* one turn, and the next pre-step check can compact early closed tool pairs before continuation opens another step.
+Pressure runs at `agent/pre-step` — a serial waterfall extension point that fires after the *previous* step's assistant output, tool results, buffered context, and steering are already durable, and before the *next* request is derived.
+
+:::decision
+Check after a call, not before it. The [after-call recovery Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md) explains why this boundary and not an earlier one: `agent/pre-step` observes a completed successful call, while an earlier hook like `agent/request` still sees a provisional request whose routing and tool schemas haven't been frozen yet. Checking after every successful step — not once per turn — is load-bearing for a tool-heavy ReAct turn: such a turn appends an `assistant/message` + `tool/result` pair per step, so the surface grows *within* one turn, and the next pre-step check can compact early closed tool pairs before continuation opens another step.
+:::
 
 ```ts
 // packages/compaction/compaction-basic/src/index.ts:147-165
@@ -157,7 +189,8 @@ ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecisio
 })
 ```
 
-Note the failure posture: an operational pressure failure warns and calls `next()` — it never rejects the step. Compaction is maintenance, not a gate the conversation must pass.
+> [!NOTE]
+> The failure posture: an operational pressure failure warns and calls `next()` — it never rejects the step. Compaction is maintenance, not a gate the conversation must pass.
 
 ### Context overflow: the reactive backstop
 
@@ -196,7 +229,12 @@ while (keepFromIdx > 0) {
 return { start: surfaceNodes[0]!, end: surfaceNodes[keepFromIdx - 1]! }
 ```
 
-A "unit" here is a complete closed step or one no-step message — never a whole turn. Turn boundaries do not protect old steps inside a runaway turn from compaction; only tool-call/result pairing is a hard structural guard. `toolPairingBalancedBefore`/`After` are exported from the Service Definition package precisely so both `compaction-basic` and any future backend share one edge-checking implementation rather than each reimplementing it. An indivisible open tail step (tool calls with no results yet) makes selection return `null` — compaction declines and retries once that step closes.
+A "unit" here is a complete closed step or one no-step message — never a whole turn.
+
+> [!PITFALL]
+> Turn boundaries do not protect old steps inside a runaway turn from compaction; only tool-call/result pairing is a hard structural guard.
+
+`toolPairingBalancedBefore`/`After` are exported from the Service Definition package precisely so both `compaction-basic` and any future backend share one edge-checking implementation rather than each reimplementing it. An indivisible open tail step (tool calls with no results yet) makes selection return `null` — compaction declines and retries once that step closes.
 
 ### Summarization: a genuine prefix of the last request, not a side quest
 
@@ -218,9 +256,15 @@ const options: GenerateOptions = {
 for await (const chunk of ctx.llm.stream(options)) assembler.push(chunk)
 ```
 
-Replaying the conversation's own prefix rather than composing a fresh minimal prompt is deliberate: it makes the auxiliary call a genuine prefix of the last routed request, so the provider's warm KV-cache prefix is reused instead of invalidated — only the trailing instruction and the summary output are new tokens on the wire. `GenerateOptions.purpose: 'compaction'` is a provider-neutral discriminant adapters may map to transport metadata (the DeepSeek adapter sends `x-deepseek-harness-compact: 1`) without it touching the model-visible request body. Only returned *text* enters the checkpoint — reasoning and tool calls are excluded so the summarizer can't leak private reasoning or fabricate an orphaned tool call, and image output fails closed with `UNSUPPORTED_CONTENT` rather than silently disappearing.
+:::decision
+Replay the conversation's own prefix rather than composing a fresh minimal prompt: it makes the auxiliary call a genuine prefix of the last routed request, so the provider's warm KV-cache prefix is reused instead of invalidated — only the trailing instruction and the summary output are new tokens on the wire.
+:::
 
+`GenerateOptions.purpose: 'compaction'` is a provider-neutral discriminant adapters may map to transport metadata (the DeepSeek adapter sends `x-deepseek-harness-compact: 1`) without it touching the model-visible request body. Only returned *text* enters the checkpoint — reasoning and tool calls are excluded so the summarizer can't leak private reasoning or fabricate an orphaned tool call, and image output fails closed with `UNSUPPORTED_CONTENT` rather than silently disappearing.
+
+:::fold[The `llmStreamCall` marker: proving which call path produced the summary]
 The result carries `llmStreamCall: true` only when it consumed exactly one call through *this* context's `ctx.llm.stream()` — a subclass overriding `summarize()` with a template or remote summarizer must not set that marker, since unmarked `rawOutput` doesn't identify the call path the same way.
+:::
 
 ### Framing and the shared transaction
 
@@ -264,4 +308,13 @@ Because `compactNow` requires the agent to be idle, `/compact` intentionally rep
 
 ## Known limits
 
-Some overflow is structurally out of compaction's reach: a single indivisible unit (a huge pasted `user/message`, or a tool unit whose non-prunable remainder alone exceeds the window) cannot be split by balanced summary compaction, and an envelope that alone approaches the window — the system prompt, tool schemas, or session prefix — is never something surface compaction touches; only derived history shrinks. `/compact` exposes no range or policy arguments; explicit ranges remain the programmatic `compactRegion()` path. There is no model-facing compaction tool — compaction is either automatic policy or direct human command, never something the model can request as a task action.
+Some overflow is structurally out of compaction's reach.
+
+> [!LIMITATION]
+> A single indivisible unit — a huge pasted `user/message`, or a tool unit whose non-prunable remainder alone exceeds the window — cannot be split by balanced summary compaction.
+
+> [!LIMITATION]
+> An envelope that alone approaches the window — the system prompt, tool schemas, or session prefix — is never something surface compaction touches; only derived history shrinks.
+
+> [!LIMITATION]
+> `/compact` exposes no range or policy arguments; explicit ranges remain the programmatic `compactRegion()` path. There is no model-facing compaction tool — compaction is either automatic policy or direct human command, never something the model can request as a task action.

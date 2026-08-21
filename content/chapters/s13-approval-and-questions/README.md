@@ -11,9 +11,27 @@ module: world-and-collab-seams
 order: 13
 ---
 
+## The short version
+
+`packages/interaction/` holds four small packages where a human — not another plugin, not a policy fold — decides something the model cannot decide for itself. Two are genuine capability seams: `ctx.approval` (one-shot permission decisions) and `ctx.userQuestions` (provider-neutral question/answer). A third, `ctx.permissionPresets`, only *bundles* those two seams' knobs into one friendly selector and is classified `core`, not `seam`. This chapter draws that line precisely, then walks each mechanism down to the fail-closed guarantee both seams share.
+
+## At a glance
+
+:::concept{term="ctx.approval"}
+A true capability seam answering exactly one question — *may this specific action proceed?* One-shot: no memory of past answers, no persisted grant, no "always allow this kind of thing."
+:::
+
+:::concept{term="ctx.userQuestions"}
+The second true seam: provider-neutral human Q&A for richer decisions — pick one of several options, type free text, or both — before the agent can continue.
+:::
+
+:::concept{term="ctx.permissionPresets"}
+A `core`-classified bundle over the approval-policy and sandbox-mode knobs, rendered as a single user-facing selector. Explicitly *not* a third seam: it enforces nothing and owns no execution-time decision.
+:::
+
 ## Two seams and one bundle, not three seams
 
-`packages/interaction/` holds four small packages where a human, not another plugin or a policy fold, decides something the model cannot decide for itself. It is tempting to read all four as one undifferentiated "interaction plane," but the project's own generated classification in `docs/capability-seams.md` draws a sharp line through them:
+It is tempting to read all four packages as one undifferentiated "interaction plane," but the project's own generated classification in `docs/capability-seams.md` draws a sharp line through them:
 
 | `ctx` key | Package | Generated `Role` | What it actually is |
 |---|---|---|---|
@@ -22,7 +40,10 @@ order: 13
 | `ctx.permissionPresets` | [`permission-presets`](../../../packages/interaction/permission-presets/README.md) | `core` | A named-preset bundle over the other two knobs |
 | — | [`tool-ask-user`](../../../packages/interaction/tool-ask-user/README.md) | (Consumer, no own `ctx` key) | Model-facing `ask_user_question` tool |
 
-Two of these are genuine [capability seams](../s07-capability-seams-primer/README.md) in the sense that chapter defines precisely: a Service Definition owning a `ctx.<key>`, one or more Service Providers, and one or more Consumers, each free to evolve independently. The third, `ctx.permissionPresets`, is classified `core` — one fixed owner, not a swappable capability — and this is not a technicality to skip past. It bundles two *other* seams' knobs into a friendlier user-facing selector, and it never becomes a third source of truth about what actually executes. Calling it a seam would be exactly the terminology mistake [the glossary](../../../docs/glossary.md#capability-seam) warns against: reserving "seam" for the complete three-role capability, never for a composition point sitting on top of two of them.
+Two of these are genuine [capability seams](../s07-capability-seams-primer/README.md) in the sense that chapter defines precisely: a Service Definition owning a `ctx.<key>`, one or more Service Providers, and one or more Consumers, each free to evolve independently. The third, `ctx.permissionPresets`, is classified `core` — one fixed owner, not a swappable capability — and this is not a technicality to skip past. It bundles two *other* seams' knobs into a friendlier user-facing selector, and it never becomes a third source of truth about what actually executes.
+
+> [!NOTE]
+> Calling `ctx.permissionPresets` a seam is exactly the terminology mistake [the glossary](../../../docs/glossary.md#capability-seam) warns against: "seam" is reserved for the complete three-role capability, never for a composition point sitting on top of two of them.
 
 ## `ctx.approval`: the seam, precisely
 
@@ -63,7 +84,7 @@ The request identifies *which* tool call is being decided through `callId` — a
 
 ### Dispatch: policy first, then the waterfall
 
-`ApprovalService.request(req)` first requires the requesting session to be inside an open turn — the audit pair below must sit inside a `turn/start`/`turn/end` boundary, since an event appended between turns is indistinguishable from a crash tail on reload and would be silently dropped; an idle-session ask throws before touching the log at all. It then appends `approval/asked` (log-only, never in the model transcript), decides an outcome, appends the matching `approval/decided`, and returns:
+`ApprovalService.request(req)` validates the turn boundary, then wraps a single decision in an audit pair:
 
 ```ts filename="packages/interaction/user-approval/src/index.ts"
 async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
@@ -79,7 +100,19 @@ async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
 }
 ```
 
-Inside `decide()`: an already-aborted `req.signal` resolves `cancelled` immediately; otherwise the service checks the session's effective `ApprovalPolicy` *before any waterfall dispatch* — `'never'` resolves `rejected` deterministically right here, so a listener registered with `prepend: true` cannot get in front of this check and override it. Under `'ask'`, the service dispatches the `approval/request` waterfall to composed answerers, racing the result against `req.signal` so a late abort still wins. A failure that prevents either audit event from committing rejects the whole call rather than returning an unlogged decision — the asked/decided pair is a hard invariant, never a best-effort log line.
+The ordered mechanism inside that call:
+
+:::timeline
+- turn boundary — require an open turn; an event appended between turns is indistinguishable from a crash tail on reload and would be silently dropped, so an idle-session ask throws before touching the log at all
+- append approval/asked — log-only, never in the model transcript
+- aborted signal — an already-aborted `req.signal` resolves `cancelled` immediately
+- policy `never` — resolves `rejected` deterministically, *before any waterfall dispatch*, so a `prepend: true` listener cannot get in front of this check and override it
+- policy `ask` — dispatch the `approval/request` waterfall to composed answerers, racing the result against `req.signal` so a late abort still wins
+- append approval/decided — then return the outcome
+:::
+
+> [!PITFALL]
+> The asked/decided pair is a hard invariant, never a best-effort log line: a failure that prevents either audit event from committing rejects the whole call rather than returning an unlogged decision.
 
 ### The ACP bridge as reference answerer
 
@@ -128,13 +161,17 @@ type ApprovalPolicy = 'ask' | 'never'
 
 `'ask'` is the default: delegate to the composed answerer waterfall. `'never'` is the deterministic headless stance (CI, unattended runs) — every ask resolves `rejected` without dispatching any answerer at all. The effective policy is the last `approval/policy` event in the session log, falling back to the plugin's configured default; `setApprovalPolicy(session, policy)` is the single write path, so replaying the log reconstructs the override with no separate catch-up state. Both policy values contribute their complete current meaning to the runtime-context snapshot appended after retained history, so a policy switch never invalidates the KV cache built up before it.
 
-A delegated subagent is a special case worth naming: its approval policy is always pinned to `'never'` regardless of the parent's own policy, recorded as `approval/policy { policy: 'never', source: 'delegation' }`. A child that asked for approval would have no answerer watching it — subagent sessions have no interactive surface of their own — so instead of a silently stuck child, its whole permission story is fixed by its inherited sandbox scope at delegation time, and any widening decision belongs to the parent.
+:::fold[The delegation special case: subagents are pinned to `never`]
+A delegated subagent's approval policy is always pinned to `'never'` regardless of the parent's own policy, recorded as `approval/policy { policy: 'never', source: 'delegation' }`. A child that asked for approval would have no answerer watching it — subagent sessions have no interactive surface of their own — so instead of a silently stuck child, its whole permission story is fixed by its inherited sandbox scope at delegation time, and any widening decision belongs to the parent.
+:::
 
 ## `ctx.permissionPresets`: explicitly not a seam
 
 Approval policy is one of two independent knobs that decide how much an agent may do without asking; the other is [sandbox mode](../s10-sandbox/README.md) (`SandboxMode`: `read-only` | `workspace-write` | `danger-full-access`, owned by `dsh-sandbox-policy`'s `sandbox/mode` event). Exposing both separately to a user is exact but unfriendly. `PermissionPresetService` (`ctx.permissionPresets`) is the thin layer that bundles them into named presets a client renders as one selector.
 
-The generated classification is unambiguous about what this is: `docs/capability-seams.md` lists `ctx.permissionPresets` with `Role = core` — one fixed owner, no alternate Service Providers, no swap story — right next to `ctx.approval`'s `Role = seam` on the adjacent line. This is not an oversight to work around; it is the honest shape of the mechanism. There is exactly one `PermissionPresetService` implementation, it has no Consumer package of its own analogous to `dsh-tool-bash`, and its entire job is writing through *other* services' canonical setters:
+:::decision
+The generated classification is unambiguous: `docs/capability-seams.md` lists `ctx.permissionPresets` with `Role = core` — one fixed owner, no alternate Service Providers, no swap story — right next to `ctx.approval`'s `Role = seam` on the adjacent line. This is not an oversight to work around; it is the honest shape of the mechanism. There is exactly one `PermissionPresetService` implementation, it has no Consumer package of its own analogous to `dsh-tool-bash`, and its entire job is writing through *other* services' canonical setters.
+:::
 
 ```ts
 interface PresetSpec {
@@ -245,7 +282,10 @@ if (!agents.roots().includes(agent)) {
 }
 ```
 
-A delegated subagent has no human answerer of its own and would block forever waiting for one; the fix is architectural, not a timeout — a child must report the unresolved question or decision in its final result instead. This is about *runtime* ownership at the moment of the call, not durable session lineage: a session with historical delegation depth that gets resumed later as a fresh runtime root may ask normally, while a live child owned by another agent is rejected even if its durable lineage depth happens to be zero.
+> [!LIMITATION]
+> A delegated subagent has no human answerer of its own and would block forever waiting for one; the fix is architectural, not a timeout — a child must report the unresolved question or decision in its final result instead.
+
+This is about *runtime* ownership at the moment of the call, not durable session lineage: a session with historical delegation depth that gets resumed later as a fresh runtime root may ask normally, while a live child owned by another agent is rejected even if its durable lineage depth happens to be zero.
 
 ## `ask_user_question`: the Consumer that puts the question in front of the model
 
@@ -288,7 +328,16 @@ flowchart TD
   around --> toolBody
 ```
 
-Concretely, tracing an actual sandbox-escalation approval from the [approval-seam Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-approval-seam.md): the model calls `bash` with `sandbox_permissions: "workspace-write"` and a `justification`; the escalation gate resolves through `ctx.approval.request()`, which logs `approval/asked`, dispatches the waterfall to the ACP bridge, which sends `session/request_permission` to the client with the exact `callId` and two one-shot options. The user picks "Allow once"; the bridge returns `allowed-once`; the service logs `approval/decided`; the call runs under the wider mode; and the grant dies with it — the next call at the same or a wider mode asks again. Reject instead, and nothing executes: the model's tool result carries the asker's exact fail-closed text, `the user rejected escalating this command to "workspace-write"`.
+Concretely, tracing an actual sandbox-escalation approval from the [approval-seam Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-approval-seam.md):
+
+:::timeline
+- the model calls `bash` with `sandbox_permissions: "workspace-write"` and a `justification`
+- the escalation gate resolves through `ctx.approval.request()`, which logs `approval/asked`
+- the waterfall dispatches to the ACP bridge, which sends `session/request_permission` to the client with the exact `callId` and two one-shot options
+- the user picks "Allow once"; the bridge returns `allowed-once`
+- the service logs `approval/decided`; the call runs under the wider mode — and the grant dies with it, so the next call at the same or a wider mode asks again
+- reject instead, and nothing executes: the model's tool result carries the asker's exact fail-closed text, `the user rejected escalating this command to "workspace-write"`
+:::
 
 ## Why the boundary matters
 

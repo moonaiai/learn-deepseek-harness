@@ -9,9 +9,31 @@ module: foundations
 order: 1
 ---
 
-## Why start here
+## The short version
 
-Every package in this repository — the session log, the tool registry, the model adapter, the agent loop itself — is a Cordis plugin. There is no privileged core: a plugin declares what it needs and what it provides, and a small runtime wires the graph together at boot. Before any generated service or event reference makes sense, you need five ideas about how that runtime works. This chapter covers all five with runnable-shaped examples; a hands-on version with real commands lives in [`docs/cordis-tutorial/`](https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/cordis-tutorial), which this chapter draws from directly.
+Every package in this repository — the session log, the tool registry, the model adapter, the agent loop itself — is a Cordis plugin, and there is no privileged core: a plugin declares what it needs and what it provides, and a small runtime wires the graph together at boot. This chapter teaches the five ideas that explain how that runtime works — `Service`, `Context`, `inject`, typed events, and reversible effects — with runnable-shaped examples. A hands-on version with real commands lives in [`docs/cordis-tutorial/`](https://github.com/deepseek-ai/deepseek-harness/tree/master/docs/cordis-tutorial), which this chapter draws from directly. Hold all five and the generated service and event references in the rest of the course read as applications of one small, consistent rule set.
+
+## The five ideas at a glance
+
+:::concept{term="Service"}
+A plugin is an object that implements `Service` — a bare function, an object with an `apply` method, or a `Service` subclass. Cordis loads all three the same way.
+:::
+
+:::concept{term="Context"}
+The `ctx` passed into every plugin: a proxy that resolves Cordis's built-in services plus every service any plugin registers — `ctx.tools`, `ctx.llm`, `ctx.sessions`.
+:::
+
+:::concept{term="inject"}
+A static field naming the services a plugin needs. Cordis holds the plugin `PENDING` until they all exist, so `apply` never null-checks and never hand-sequences boot.
+:::
+
+:::concept{term="Events"}
+Typed pub/sub between plugins, dispatched through five modes (`emit` / `parallel` / `serial` / `bail` / `waterfall`). `waterfall` is the mode that powers interception and policy.
+:::
+
+:::concept{term="Effects"}
+Every registration — service, listener, provider, timer — is a reversible effect, undone automatically when its owning plugin unloads.
+:::
 
 ## Idea 1: a plugin is an object that implements Service
 
@@ -58,11 +80,7 @@ There is no meaningful ordering in a `cordis.yml` entry list — every entry sta
 
 ## Idea 2: a context is a repository of services
 
-The `ctx` argument passed into every plugin is a context:
-
-:::concept{term="context"}
-A proxy object that resolves a fixed set of built-in properties plus every service any plugin has registered. Reading `ctx.events`, `ctx.logger`, `ctx.registry`, or `ctx.reflect` reaches Cordis's own bootstrap services; reading `ctx.tools`, `ctx.llm`, or `ctx.sessions` reaches harness services registered the exact same way.
-:::
+The `ctx` argument passed into every plugin is a context: a proxy object that resolves a fixed set of built-in properties plus every service any plugin has registered. Reading `ctx.events`, `ctx.logger`, `ctx.registry`, or `ctx.reflect` reaches Cordis's own bootstrap services; reading `ctx.tools`, `ctx.llm`, or `ctx.sessions` reaches harness services registered the exact same way.
 
 The `Context` interface itself is declared as an open interface precisely so more services can be added to it:
 
@@ -93,7 +111,12 @@ export class GreeterService extends Service {
 }
 ```
 
-That `super()` call registers the instance under `'greeter'` immediately; from then on any plugin sharing that context tree reaches it as `ctx.greeter`. This has a runtime half and a compile-time half that are easy to conflate: the `super(ctx, 'greeter')` call is what actually makes `ctx.greeter` resolve at runtime, while a separate `declare module '@deepseek-ai/cordis' { interface Context { greeter: GreeterService } }` block is TypeScript declaration merging that makes `ctx.greeter` typecheck. The declaration merge generates no code — a service works at runtime without it — but consumers lose type safety and autocomplete without it. A `Service` subclass is itself a plugin (the class form from idea 1), so it still gets mounted with `ctx.plugin(GreeterService)`.
+That `super()` call registers the instance under `'greeter'` immediately; from then on any plugin sharing that context tree reaches it as `ctx.greeter`.
+
+> [!NOTE]
+> The `super(ctx, 'greeter')` call is what makes `ctx.greeter` resolve at runtime; a separate `declare module '@deepseek-ai/cordis' { interface Context { greeter: GreeterService } }` block is TypeScript declaration merging that makes `ctx.greeter` typecheck. The merge generates no code — the service works at runtime without it — but consumers lose type safety and autocomplete without it.
+
+A `Service` subclass is itself a plugin (the class form from idea 1), so it still gets mounted with `ctx.plugin(GreeterService)`.
 
 ## Idea 3: declare service dependency via `inject`
 
@@ -112,7 +135,9 @@ Cordis holds the plugin's fiber at `PENDING` until every named service exists, s
 
 `inject` is not a one-time boot check — it's continuously enforced. If a service's provider unloads or hot-reloads while the app is running, every plugin that injected it is unloaded too, and reloads automatically once the service comes back. That is also the mechanism that makes provider swaps in config safe: unload one `shell` provider entry, mount a different one, and every plugin injecting `'shell'` restarts cleanly against the new implementation, with no stale reference left dangling.
 
-`inject` is for hard requirements only. A capability a plugin can live without is read with `ctx.get(name)` instead, which returns `undefined` rather than blocking:
+:::decision
+`inject` is for hard requirements only — a capability the plugin cannot run without. For a capability it *can* live without, read it with `ctx.get(name)` at the point of use, which returns `undefined` instead of holding the fiber at `PENDING`. Declaring an optional capability in `inject` would needlessly block the plugin — and cascade-unload it on every provider reload — for something it could have degraded around.
+:::
 
 ```ts
 const greeter = ctx.get('greeter')  // undefined if nothing provides it
@@ -169,7 +194,8 @@ ctx.on('demo/transform', async (input, next) => {
 
 Calling `next()` invokes the next-registered listener (and eventually the innermost default passed to `ctx.waterfall` itself); *not* calling it — returning directly — vetoes everything downstream. Dispatching `ctx.waterfall('demo/transform', 'blocked words', async () => 'blocked words')` runs listener 1 first, which calls `next()` and thereby invokes listener 2; listener 2 sees `'blocked'`, decides the outcome, and returns without calling `next()`, so the innermost default never runs; on the way back out, listener 1 uppercases whatever it received. The visible result is `** BLOCKED **` — the veto and the wrap composed around each other.
 
-The discipline this creates: **a waterfall listener that only observes or annotates must call `next()`**. A logging or telemetry listener that forgets `next()` silently swallows every downstream listener's behavior for the whole application. Short-circuiting is the *design* for a listener that legitimately owns a single-decision event — a policy answering "approve" or "deny" — but it is a bug for a listener that was only supposed to watch.
+> [!PITFALL]
+> **A waterfall listener that only observes or annotates must call `next()`.** A logging or telemetry listener that forgets `next()` silently swallows every downstream listener's behavior for the whole application. Short-circuiting is the *design* for a listener that legitimately owns a single-decision event — a policy answering "approve" or "deny" — but it is a bug for a listener that was only supposed to watch.
 
 ## Idea 5: registrations are reversible effects
 
@@ -191,7 +217,10 @@ ctx.effect(() => {
 })
 ```
 
-The callback passed to `effect()` runs immediately; the disposer it returns runs during unload — including hot reload — and you never call that disposer yourself for a plugin-lifetime resource. One ordering detail worth internalizing early: disposers start in reverse registration order, but multiple *async* disposers run concurrently with each other. If teardown steps genuinely must happen in sequence, keep them inside one disposer and `await` each step there rather than splitting them across multiple `ctx.effect()` calls.
+The callback passed to `effect()` runs immediately; the disposer it returns runs during unload — including hot reload — and you never call that disposer yourself for a plugin-lifetime resource.
+
+> [!PITFALL]
+> Disposers start in reverse registration order, but multiple *async* disposers run concurrently with each other. If teardown steps genuinely must happen in sequence, keep them inside one disposer and `await` each step there rather than splitting them across multiple `ctx.effect()` calls.
 
 ## How the five ideas compose
 

@@ -9,9 +9,27 @@ module: world-and-collab-seams
 order: 13
 ---
 
+## 一句话版本
+
+`packages/interaction/` 下有四个很小的包,坐镇在这样一个位置上——不是另一个插件,不是某种策略折叠,而是由人类来决定一件模型自己无法决定的事情。其中两条是真正的能力 seam:`ctx.approval`(一次性权限决策)与 `ctx.userQuestions`(与提供方无关的问答)。第三条,`ctx.permissionPresets`,只是把这两条 seam 的旋钮*打包*成一个对用户友好的选择器,因此被分类为 `core` 而非 `seam`。本章先把这条界线划清楚,再逐一走进每个机制,直到两条 seam 共同拥有的那个失败即拒绝的保证。
+
+## 速览
+
+:::concept{term="ctx.approval"}
+一条真正的能力 seam,只回答一个问题——*这个具体动作现在可以继续吗?*一次性:不记得过去的答案,不持久化任何授权,也没有「以后同类事情都放行」这种概念。
+:::
+
+:::concept{term="ctx.userQuestions"}
+第二条真正的 seam:与提供方无关的人机问答,用于更丰富的决定——从若干选项中挑一个、输入自由文本,或者两者兼有——然后 agent 才能继续。
+:::
+
+:::concept{term="ctx.permissionPresets"}
+一个被分类为 `core` 的打包点,把审批策略与沙箱模式两个旋钮捆绑成单个面向用户的选择器。明确*不是*第三条 seam:它从不强制执行任何东西,也不拥有任何执行期决策。
+:::
+
 ## 两条 seam,一个打包点,而不是三条 seam
 
-`packages/interaction/` 下有四个很小的包,坐镇在这样一个位置上——不是另一个插件,不是某种策略折叠,而是由人类来决定一件模型自己无法决定的事情。把这四者笼统地读作一个不加区分的「交互平面」很有诱惑力,但项目自己在 `docs/capability-seams.md` 中生成的分类,已经在它们之间划出了一条清晰的界线:
+把这四个包笼统地读作一个不加区分的「交互平面」很有诱惑力,但项目自己在 `docs/capability-seams.md` 中生成的分类,已经在它们之间划出了一条清晰的界线:
 
 | `ctx` 键 | 包 | 生成的 `Role` | 实际上是什么 |
 |---|---|---|---|
@@ -20,7 +38,10 @@ order: 13
 | `ctx.permissionPresets` | [`permission-presets`](../../../packages/interaction/permission-presets/README.md) | `core` | 建立在另外两个旋钮之上的具名预设打包 |
 | — | [`tool-ask-user`](../../../packages/interaction/tool-ask-user/README.md) | (Consumer,没有自己的 `ctx` 键) | 面向模型的 `ask_user_question` 工具 |
 
-其中两个是[能力 seam](../s07-capability-seams-primer/README.zh.md)那一章精确定义意义上的真正 seam:一个拥有 `ctx.<key>` 的 Service Definition(服务定义)、一个或多个 Service Provider(服务提供方)、一个或多个 Consumer(消费方),各自可以独立演进。第三个,`ctx.permissionPresets`,被分类为 `core`——单一固定的所有者,不是可替换的能力——这不是一个可以一带而过的技术细节。它把*另外两条*seam 的旋钮打包成一个对用户更友好的选择器,而且它绝不会成为「究竟执行了什么」的第三个信源。把它称为 seam,恰恰会犯下[术语表](../../../docs/glossary.md#capability-seam)所警告的那个错误:把「seam」这个词留给完整的三角色能力,而不是留给架设在其中两者之上的一个组合点。
+其中两个是[能力 seam](../s07-capability-seams-primer/README.zh.md)那一章精确定义意义上的真正 seam:一个拥有 `ctx.<key>` 的 Service Definition(服务定义)、一个或多个 Service Provider(服务提供方)、一个或多个 Consumer(消费方),各自可以独立演进。第三个,`ctx.permissionPresets`,被分类为 `core`——单一固定的所有者,不是可替换的能力——这不是一个可以一带而过的技术细节。它把*另外两条*seam 的旋钮打包成一个对用户更友好的选择器,而且它绝不会成为「究竟执行了什么」的第三个信源。
+
+> [!NOTE]
+> 把 `ctx.permissionPresets` 称为 seam,恰恰会犯下[术语表](../../../docs/glossary.md#capability-seam)所警告的那个错误:「seam」这个词留给完整的三角色能力,而不是留给架设在其中两者之上的一个组合点。
 
 ## `ctx.approval`:精确意义上的 seam
 
@@ -30,7 +51,9 @@ order: 13
 type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
 ```
 
+:::concept{term="ApprovalOutcome"}
 `allowed-once` 是唯一的放行,而且只授权请求中描述的那一个动作——不更宽,也不管以后。剩下三个,从调用方角度看都是拒绝:人类明确的拒绝、被撤回的请求(调用方的 `AbortSignal` 触发)、或者应答者根本给不出决定。缺失的应答者、抛异常的应答者,以及返回值不在闭合词汇表内的应答者,统统归一化为 `unavailable`,而不会悄悄变成放行。不存在任何一条代码路径能让「没人回答」变成「继续执行」。
+:::
 
 ### 三个角色,具体来看
 
@@ -50,11 +73,16 @@ interface ApprovalRequest {
 }
 ```
 
-工具参数被刻意省略了。请求通过 `callId` 标识*究竟是哪一次*工具调用正在被决定——UI 应答者把提示附加到已经流式呈现给用户的那次工具调用上,而不是再渲染一份可能与实际执行内容产生偏差的参数副本。`agent` 用于路由这个问题(应答者只会为它所拥有的 agent 应答),并决定审计轨迹落到哪个会话上。
+:::decision
+请求通过 `callId` 标识*究竟是哪一次*工具调用正在被决定——UI 应答者把提示附加到已经流式呈现给用户的那次工具调用上,而不是再渲染一份可能与实际执行内容产生偏差的参数副本。`agent` 用于路由这个问题(应答者只会为它所拥有的 agent 应答),并决定审计轨迹落到哪个会话上。
+:::
+
+> [!WHY]
+> 工具参数被刻意省略了。提示通过 `callId` 引用一次已经流式呈现的工具调用,因此不需要第二份参数副本——两份副本也就永远没有产生偏差的机会。
 
 ### 分发:先看策略,再走 waterfall
 
-`ApprovalService.request(req)` 首先要求发起请求的会话处于一个尚未结束的轮次内——下面的审计事件对必须被包裹在 `turn/start`/`turn/end` 边界内,因为在轮次之间追加的事件,重新加载时无法与崩溃尾部区分,会被静默丢弃;空闲会话发起的请求会在触碰日志之前就直接抛出异常。随后它追加 `approval/asked`(仅写日志,永远不进入模型 transcript),决定一个结果,追加对应的 `approval/decided`,然后返回:
+`ApprovalService.request(req)` 先校验轮次边界,然后把一次决定包裹在一对审计事件里:
 
 ```ts filename="packages/interaction/user-approval/src/index.ts"
 async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
@@ -70,7 +98,19 @@ async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
 }
 ```
 
-在 `decide()` 内部:已经处于中止状态的 `req.signal` 会立即解析为 `cancelled`;否则服务会*在任何 waterfall 分发之前*检查该会话的生效 `ApprovalPolicy`——`'never'` 会在这里就确定性地解析为 `rejected`,因此即便有监听器以 `prepend: true` 注册,也无法抢在这个检查之前把它绕过去。在 `'ask'` 下,服务把 `approval/request` waterfall 分发给已组合的应答者,并把结果与 `req.signal` 赛跑,确保后到的中止信号依然能生效。如果两条审计事件中的任意一条在提交前失败,整次调用都会拒绝,而不会返回一个未记录在案的决定——asked/decided 这一对是硬性不变量,绝不是尽力而为的日志行。
+这次调用内部的有序机制:
+
+:::timeline
+- 轮次边界——要求处于未结束的轮次内;在轮次之间追加的事件,重新加载时无法与崩溃尾部区分,会被静默丢弃,因此空闲会话发起的请求会在触碰日志之前就直接抛出异常
+- 追加 approval/asked——仅写日志,永远不进入模型 transcript
+- 已中止信号——已经处于中止状态的 `req.signal` 会立即解析为 `cancelled`
+- 策略 `never`——在这里就确定性地解析为 `rejected`,而且*先于任何 waterfall 分发*,因此即便有监听器以 `prepend: true` 注册,也无法抢在这个检查之前把它绕过去
+- 策略 `ask`——把 `approval/request` waterfall 分发给已组合的应答者,并把结果与 `req.signal` 赛跑,确保后到的中止信号依然能生效
+- 追加 approval/decided——然后返回这个结果
+:::
+
+> [!PITFALL]
+> asked/decided 这一对是硬性不变量,绝不是尽力而为的日志行:如果两条审计事件中的任意一条在提交前失败,整次调用都会拒绝,而不会返回一个未记录在案的决定。
 
 ### 作为参照实现的 ACP 应答者
 
@@ -119,13 +159,17 @@ type ApprovalPolicy = 'ask' | 'never'
 
 `'ask'` 是默认值:委托给已组合的应答者 waterfall。`'never'` 是确定性的无头姿态(CI、无人值守运行)——每次询问都会解析为 `rejected`,连 waterfall 都不会分发。生效策略取会话日志中最后一条 `approval/policy` 事件,回退到插件配置的默认值;`setApprovalPolicy(session, policy)` 是唯一的写入路径,因此回放日志就能重建覆盖值,不需要任何独立的追赶状态。两种策略值都会把各自完整的当前含义贡献给保留历史之后追加的运行时上下文快照,因此一次策略切换永远不会使切换之前已经建立起来的 KV cache 失效。
 
-值得单独一提的一种特殊情形是:被委派的 subagent(子智能体),其审批策略无论父级自身的策略如何,始终会被固定为 `'never'`,记录为 `approval/policy { policy: 'never', source: 'delegation' }`。一个请求审批的子级本来就没有任何应答者在关注它——subagent 会话没有自己的交互界面——因此,与其让子级静默卡住,不如把它整个的权限故事在委派那一刻就由继承而来的沙箱范围一次性固定下来,任何拓宽的决定都属于父级。
+:::fold[委派特例:subagent 被固定为 `never`]
+被委派的 subagent(子智能体),其审批策略无论父级自身的策略如何,始终会被固定为 `'never'`,记录为 `approval/policy { policy: 'never', source: 'delegation' }`。一个请求审批的子级本来就没有任何应答者在关注它——subagent 会话没有自己的交互界面——因此,与其让子级静默卡住,不如把它整个的权限故事在委派那一刻就由继承而来的沙箱范围一次性固定下来,任何拓宽的决定都属于父级。
+:::
 
 ## `ctx.permissionPresets`:明确不是一条 seam
 
 审批策略是决定 agent 在不请示的情况下能做多少事的两个独立旋钮之一;另一个是[沙箱模式](../s10-sandbox/README.zh.md)(`SandboxMode`:`read-only` | `workspace-write` | `danger-full-access`,由 `dsh-sandbox-policy` 的 `sandbox/mode` 事件拥有)。把这两个旋钮分别暴露给用户虽然精确,却并不友好。`PermissionPresetService`(`ctx.permissionPresets`)是一层很薄的封装,把二者打包成具名预设,供客户端渲染为单个选择器。
 
-生成的分类对这一点毫不含糊:`docs/capability-seams.md` 把 `ctx.permissionPresets` 标为 `Role = core`——单一固定所有者,没有替代的 Service Provider,没有可替换的故事——就紧挨着相邻一行 `ctx.approval` 的 `Role = seam`。这不是一个需要绕过去的疏漏,而是这个机制诚实的形态。这里只有一个 `PermissionPresetService` 实现,它没有类似 `dsh-tool-bash` 那样的自有 Consumer 包,它的全部工作就是通过*其他*服务已经拥有的规范 setter 去写入:
+:::decision
+生成的分类对这一点毫不含糊:`docs/capability-seams.md` 把 `ctx.permissionPresets` 标为 `Role = core`——单一固定所有者,没有替代的 Service Provider,没有可替换的故事——就紧挨着相邻一行 `ctx.approval` 的 `Role = seam`。这不是一个需要绕过去的疏漏,而是这个机制诚实的形态。这里只有一个 `PermissionPresetService` 实现,它没有类似 `dsh-tool-bash` 那样的自有 Consumer 包,它的全部工作就是通过*其他*服务已经拥有的规范 setter 去写入。
+:::
 
 ```ts
 interface PresetSpec {
@@ -236,7 +280,10 @@ if (!agents.roots().includes(agent)) {
 }
 ```
 
-一个被委派的 subagent 没有属于自己的人类应答者,如果放任不管就会永远阻塞等待;这个修复是架构层面的,而不是一个超时——子级必须把尚未解决的问题或决策写进自己的最终结果里。这里判断的是调用那一刻的*运行时*归属,而不是持久化的会话谱系:一个带有历史委托深度的会话,在之后被恢复为全新的运行时根时,可以正常提问;而一个归属于另一个 agent 的存活子级,即便它持久化记录的委托深度恰好是零,依然会被拒绝。
+> [!LIMITATION]
+> 一个被委派的 subagent 没有属于自己的人类应答者,如果放任不管就会永远阻塞等待;这个修复是架构层面的,而不是一个超时——子级必须把尚未解决的问题或决策写进自己的最终结果里。
+
+这里判断的是调用那一刻的*运行时*归属,而不是持久化的会话谱系:一个带有历史委托深度的会话,在之后被恢复为全新的运行时根时,可以正常提问;而一个归属于另一个 agent 的存活子级,即便它持久化记录的委托深度恰好是零,依然会被拒绝。
 
 ## `ask_user_question`:把问题递到模型面前的 Consumer
 
@@ -279,7 +326,16 @@ flowchart TD
   around --> toolBody
 ```
 
-具体来看,追踪[审批 seam 的 Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-approval-seam.md)中一次真实的沙箱升权审批:模型调用 `bash`,携带 `sandbox_permissions: "workspace-write"` 与一段 `justification`(理由);升权闸门通过 `ctx.approval.request()` 解析,先记录 `approval/asked`,再把 waterfall 分发给 ACP 桥接层,后者向客户端发送 `session/request_permission`,携带确切的 `callId` 与两个一次性选项。用户选择「Allow once」;桥接层返回 `allowed-once`;服务记录 `approval/decided`;调用在更宽的模式下执行;授权也随之终结——下一次调用即便是同一种或更宽的模式,依然要重新询问。反过来,如果用户选择拒绝,则什么都不会执行:模型的工具结果会携带发起方那段确切的失败即拒绝文本,`the user rejected escalating this command to "workspace-write"`。
+具体来看,追踪[审批 seam 的 Agent Note](../../../.agents/notes/implemented/feature/2026-07-06-approval-seam.md)中一次真实的沙箱升权审批:
+
+:::timeline
+- 模型调用 `bash`,携带 `sandbox_permissions: "workspace-write"` 与一段 `justification`(理由)
+- 升权闸门通过 `ctx.approval.request()` 解析,先记录 `approval/asked`
+- waterfall 被分发给 ACP 桥接层,后者向客户端发送 `session/request_permission`,携带确切的 `callId` 与两个一次性选项
+- 用户选择「Allow once」;桥接层返回 `allowed-once`
+- 服务记录 `approval/decided`;调用在更宽的模式下执行——授权也随之终结,下一次调用即便是同一种或更宽的模式,依然要重新询问
+- 反过来,如果用户选择拒绝,则什么都不会执行:模型的工具结果会携带发起方那段确切的失败即拒绝文本,`the user rejected escalating this command to "workspace-write"`
+:::
 
 ## 为什么这条界线很重要
 

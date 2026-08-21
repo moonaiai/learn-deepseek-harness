@@ -11,22 +11,47 @@ module: world-and-collab-seams
 order: 15
 ---
 
+## The short version
+
+The `hooks/` package group is **not** a capability seam — there is no `ctx.hooks` service and no Service Definition anywhere in it. It is two *bridge plugins* (`dsh-hooks-claude-code`, `dsh-hooks-codex`) that each consume two unrelated seams — `ctx.shell` to run a command, `ctx.sessionPersistence` to locate the session log — plus one *shared library* (`dsh-hook-protocol`) that owns the dialect-neutral matcher/codec/merge/runner primitives. Their whole job is compatibility: run a `hooks.json` a user already wrote for Claude Code or Codex, faithfully, by translating it onto the harness's typed interception points. Read on for why this dual identity is the correct shape, not a gap.
+
+## At a glance
+
+The hooks family is two kinds of thing at once — a shared library and two ordinary Consumers — plus the neutral shapes they hand back and forth. Four terms carry the chapter:
+
+:::concept{term="Hooks bridge (Consumer)"}
+An ordinary plugin that reads an *existing* CC or Codex `hooks.json`, spawns each configured shell command at the matching extension point via `ctx.shell`, and translates the exit-code/stdout protocol into typed decisions. Owns no service.
+:::
+
+:::concept{term="dsh-hook-protocol (shared library)"}
+A library, not a plugin — registers nothing with Cordis, injects nothing. Owns exactly the dialect-neutral primitives: `matcher`, `runHook`, `parseHookOutput`, `mergeHookOutputs`, the `hook/*` appenders, and `createDetachedRuns`.
+:::
+
+:::concept{term="HookOutput"}
+The single dialect-neutral outcome shape every hook funnels into — block, allow, ask, add context, warn, halt — decoded from a process's exit code, stdout, and stderr. "Faithful but degraded."
+:::
+
+:::concept{term="hook/* session events"}
+`hook/invoked` / `hook/result`, a log-only audit pair declaration-merged into `SessionEventMap`. Not a `SurfaceEventType` — they exist for replay and audit, never for UI.
+:::
+
 ## Not a seam — a Consumer of two seams, plus a shared library
 
-The `hooks/` package group looks, at first glance, like it should be its own capability seam: it has a shared library and two interchangeable-looking bridge plugins, the same shape as the shell trio from the [capability seams primer](../s07-capability-seams-primer/README.md). It is not. There is no `ctx.hooks` service, no Service Definition anywhere in the group, and `docs/capability-seams.md`'s generated graph confirms it: `hooks-claude-code` and `hooks-codex` never appear as an Owner or an Implementation in any row — they appear only in the **Direct consumers** column of two entirely different seams:
+The `hooks/` package group looks, at first glance, like it should be its own capability seam: it has a shared library and two interchangeable-looking bridge plugins, the same shape as the shell trio from the [capability seams primer](../s07-capability-seams-primer/README.md). It is not. `docs/capability-seams.md`'s generated graph confirms it: `hooks-claude-code` and `hooks-codex` never appear as an Owner or an Implementation in any row — they appear only in the **Direct consumers** column of two entirely different seams:
 
 - `ctx.shell` (`seam`, owned by `dsh-shell`, implemented by `dsh-bash-local`/`dsh-bash-sandbox`/`dsh-pwsh-local`) lists `hooks-claude-code` and `hooks-codex` alongside `tool-bash`/`tool-pwsh` as direct consumers — confirmed at `docs/capability-seams.md:448`.
 - `ctx.sessionPersistence` (`seam`, owned by `dsh-session-persistence`, implemented by the JSONL/SQLite backends) lists the same two bridges alongside `agent-loop`/`tool-bash`/`session-query`/`message-feedback` — confirmed at `docs/capability-seams.md:422`.
 
 Both bridges declare this in source, not just in the generated graph: `export const inject = ['shell']` is the only mandatory injection each plugin's `apply()` receives (`hooks-claude-code/src/index.ts:39-42`, mirrored in `hooks-codex/src/index.ts`). `sessionPersistence` is read opportunistically through `ctx.get('sessionPersistence')` rather than injected — a hook still runs without a persistence backend loaded, just with an empty `transcript_path`/`session_id` locator field, exactly the optional-service pattern the rest of the harness uses for a service that must not become a hard dependency of an otherwise-independent plugin.
 
-So the hooks family has a **dual identity**: `dsh-hook-protocol` is a shared library (no Cordis registration, no injection, nothing to be a Consumer of), and the two bridge plugins are ordinary Consumers layered *on top of* two unrelated seams — one for running a command (`ctx.shell`), one for locating the session's durable log path to stamp into a hook's stdin payload (`ctx.sessionPersistence`). Neither bridge owns a Service Definition of its own, and nothing in the harness is meant to swap "the hooks bridge" for a different implementation the way a sandboxed executor swaps for a local one. What follows is why that's the correct shape, not a gap.
+So the hooks family has a **dual identity**: `dsh-hook-protocol` is a shared library (no Cordis registration, no injection, nothing to be a Consumer of), and the two bridge plugins are ordinary Consumers layered *on top of* two unrelated seams — one for running a command (`ctx.shell`), one for locating the session's durable log path to stamp into a hook's stdin payload (`ctx.sessionPersistence`). Neither bridge owns a Service Definition of its own, and nothing in the harness is meant to swap "the hooks bridge" for a different implementation the way a sandboxed executor swaps for a local one. The rest of this chapter is why that's the correct shape, not a gap.
 
 ## What a "hook" means here
 
 `hooks.json` is not a deepseek-harness invention. It is the on-disk config format Claude Code and Codex already use to let a user run their own shell commands at fixed points in an agent's lifecycle — before a prompt is accepted, before or after a tool runs, when a session starts, when the agent wants to stop. Users arrive at deepseek-harness with these files already written. The harness's job is not to invent a third hook format; it is to run those existing files **faithfully**, without asking anyone to rewrite them.
 
-The important reframe, spelled out in [the interception extension-points Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-interception-extension-points.md), is that **a "native hook" is not a package at all**. The harness's real extension surface is a set of typed Cordis events — `agent/session-start`, `agent/pre-step`, `tools/pre-execute`, `tools/post-execute`, `agent/turn-stopping`, `subagent/start`, `subagent/end` — and any ordinary plugin can subscribe to them with full `ctx` access and typed return values. A plugin author writing fresh code should use these directly; nothing about shell hooks is required.
+> [!WHY]
+> A "native hook" is not a package at all. The harness's real extension surface is a set of typed Cordis events — `agent/session-start`, `agent/pre-step`, `tools/pre-execute`, `tools/post-execute`, `agent/turn-stopping`, `subagent/start`, `subagent/end` — and any ordinary plugin can subscribe to them with full `ctx` access and typed return values. A plugin author writing fresh code should use these directly; nothing about shell hooks is required. (Spelled out in [the interception extension-points Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-interception-extension-points.md).)
 
 What `packages/hooks/*` adds is a **bridge**: a plugin that reads an *existing* CC or Codex `hooks.json`, spawns each configured shell command at the matching extension point via `ctx.shell`, and translates the command's stdout/exit-code protocol into the same typed decisions a native plugin would return. Anything a bridge does — deny a tool, inject context, force another step — a native plugin can do more powerfully, with no serialization boundary and no subprocess. The bridge exists purely as a **compatibility path** for hook configs a user already has.
 
@@ -73,6 +98,19 @@ flowchart LR
   codexbridge --> presetp & pretool & posttool & stopping
 ```
 
+## One hook invocation, end to end
+
+The mermaid above shows who talks to whom; this is the ordered lifecycle a single configured hook passes through, and the sections after it expand each stage:
+
+:::timeline
+- match — at an extension point, `matchesMatcher` selects the configured hooks for it (dialect `mode`: literal-or-regex vs always-regex)
+- run — `runHook` serializes the stdin payload, sets env, and executes through `ctx.shell` with timeout and cancellation; it never throws
+- decode — `parseHookOutput` folds exit code + stdout + stderr into one neutral `HookOutput` (exit `2` = block)
+- merge — `mergeHookOutputs` folds the N matched hooks into a single `MergedHookOutcome`, precedence **deny > ask > allow**
+- decide — the bridge maps the outcome onto its extension-point's typed Decision (`PreToolDecision`, a pre-step `enter`, …)
+- record — `appendHookInvoked` / `appendHookResult` write the log-only `hook/*` audit pair
+:::
+
 ## Why a shared library instead of two independent bridges
 
 The reference implementations of both tools' hook engines share a striking amount of structure. Codex's own source names its hook engine after Claude's and comments where it "intentionally diverges" — it reuses the same `hooks.json` matcher-group shape, the same exit-code/structured-stdout output contract, and the same command-hook execution model. Given that, writing two bridge plugins from scratch would mean copy-pasting the majority of the protocol and letting the copies drift.
@@ -90,7 +128,9 @@ The reference implementations of both tools' hook engines share a striking amoun
 
 The single axis the two dialects actually differ on for matching is folded into one `mode` parameter rather than two functions — see [`matcher.ts:37-65`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/matcher.ts#L37-L65). Claude Code treats a pure `[A-Za-z0-9_|]+` pattern as a literal (`|` meaning exact-match alternation) and anything else as a regex; Codex is always an unanchored regex. `matcherDiagnostic` validates a configured pattern at parse time so a bad regex fails the whole config load with a stable message; `matchesMatcher` is the runtime predicate, which never throws — an invalid regex it somehow still sees just returns `false`, so a direct library caller can never crash the agent loop over a matcher string.
 
-This split was not accidental from day one and was tightened once. [The tighten-hook-protocol-contract Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/simplification/2026-07-04-tighten-hook-protocol-contract.md) records a concrete case: the `hook/result` stderr-truncation rule and the `decision ?? (continue === false ? 'stop' : 'pass')` derivation were originally byte-identical copies living in both `hooks-claude-code/src/index.ts` and `hooks-codex/src/index.ts`. Because `dsh-hook-protocol` *declared* the `hook/result` event but did not *own* its semantics, the two bridges could silently drift — a different truncation cap, a different fallback — without either package's tests catching it. The fix moved both rules into `appendHookResult` in the library (now at [`events.ts:92-104`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/events.ts#L92-L104)), alongside the reference default `DEFAULT_STDERR_SUMMARY_MAX_CHARS`. The rule this generalizes: whichever package **declares** a durable event's shape should also own any derivation logic that fills it in, not leave that logic duplicated in every producer.
+:::decision
+Whichever package **declares** a durable event's shape should also own the derivation logic that fills it in. This split was not accidental from day one and was tightened once: [the tighten-hook-protocol-contract Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/simplification/2026-07-04-tighten-hook-protocol-contract.md) records that the `hook/result` stderr-truncation rule and the `decision ?? (continue === false ? 'stop' : 'pass')` derivation were originally byte-identical copies in both bridges. Because the library *declared* `hook/result` but did not *own* its semantics, the copies could silently drift. The fix moved both rules into `appendHookResult` in the library ([`events.ts:92-104`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/events.ts#L92-L104)), alongside `DEFAULT_STDERR_SUMMARY_MAX_CHARS` — not left duplicated in every producer.
+:::
 
 ## The dialect-neutral outcome: `HookOutput`
 
@@ -112,7 +152,10 @@ export interface HookOutput {
 }
 ```
 
-Every field is optional because a real hook exercises only a subset, and a bridge honors only the subset meaningful for its own dialect and hook point — "faithful but degraded," in the library's own words. The decode logic in [`codec.ts:59-89`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/codec.ts#L59-L89) treats exit code `2` as a block with `stderr` as the reason (both CC and Codex share this convention), any other nonzero or missing exit as a non-blocking error, and a clean exit's stdout as either plain text or, when it starts with `{`, lenient JSON. It also normalizes a subtlety both reference schemas share but keep apart: the legacy top-level `decision` field is only ever `approve`/`block`, while `allow`/`deny`/`ask` are reserved for a nested `hookSpecificOutput.permissionDecision`. `HookOutput.decision` folds both channels into one enum, with the nested `permissionDecision` overriding the legacy field when both are present.
+> [!NOTE]
+> Every field is optional because a real hook exercises only a subset, and a bridge honors only the subset meaningful for its own dialect and hook point — "faithful but degraded," in the library's own words.
+
+The decode logic in [`codec.ts:59-89`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/codec.ts#L59-L89) treats exit code `2` as a block with `stderr` as the reason (both CC and Codex share this convention), any other nonzero or missing exit as a non-blocking error, and a clean exit's stdout as either plain text or, when it starts with `{`, lenient JSON. It also normalizes a subtlety both reference schemas share but keep apart: the legacy top-level `decision` field is only ever `approve`/`block`, while `allow`/`deny`/`ask` are reserved for a nested `hookSpecificOutput.permissionDecision`. `HookOutput.decision` folds both channels into one enum, with the nested `permissionDecision` overriding the legacy field when both are present.
 
 `mergeHookOutputs` then folds every hook that matched one extension point into a single `MergedHookOutcome`, using the precedence **deny > ask > allow** ([`merge.ts:34-52`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/merge.ts#L34-L52)): a `deny` from any one of several matched hooks wins over an `allow` from the rest, `continue: false` is sticky on the first hook that raises it, and multiple block reasons are joined with a blank line. Both bridges run their matched hooks **serially, in config order** rather than concurrently like the reference engines do — deliberate, because it keeps each hook's `hook/invoked`/`hook/result` pair adjacent in the session log, and the fold is order-independent for the final decision anyway.
 
@@ -122,13 +165,16 @@ A hook is, at bottom, a shell command that needs to run with a JSON payload on s
 
 This is the seam relationship stated in the opening section made concrete: `dsh-shell`'s Service Providers (`dsh-bash-local`, `dsh-bash-sandbox`, `dsh-pwsh-local`) are exactly the same executors `dsh-tool-bash`/`dsh-tool-pwsh` use for model-facing tool calls. Swap a local executor for a sandboxed one at the `ctx.shell` seam, and every hook a user configured runs sandboxed too, with zero changes to either bridge — the same swap transparency the seam pattern promises any Consumer.
 
+:::fold[Detached runs: how a fire-and-forget hook shuts down cleanly]
 Every emit-shaped hook point (`SessionStart`, `SubagentStart`, `SubagentStop`) runs **detached** — no extension point awaits these hooks, since they are pure notifications with no return value to fold into a decision. A detached hook that outlives its session would leak a process and could still fire a late injection into a disposed context. `createDetachedRuns()` ([`detached.ts:43-62`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/detached.ts#L43-L62)) is the fix: each bridge tracks the full run chain (the hook process plus its continuation — an `agent.inject()` call, a warning log) in a `Set`, hands the tracker's `AbortSignal` into every `runHook` call, and registers `drain()` as its Cordis dispose effect. Disposing the bridge fires the abort signal — killing any still-running hook process rather than waiting out its timeout — then resolves once every tracked chain has settled. `fiber.dispose()` resolving therefore genuinely means no detached hook work can fire into an already-disposed context, which is exactly the "dispose reaches quiescence, not just requests it" defensive pattern the rest of the harness follows.
+:::
 
 ## The `hook/*` session events are log-only
 
 Every hook invocation and its outcome are recorded durably: `hook/invoked` before the process runs, `hook/result` after, paired by a `handlerId`. These are declaration-merged into `SessionEventMap` from `dsh-hook-protocol`'s own `types.ts`, exactly like `compaction/*` — **not** a `SurfaceEventType`, carrying no `surfaceOp`, because they exist purely for audit and replay, not for UI presentation. `appendHookResult` derives the durable `decision` string as the hook's own parsed decision, falling back to `'stop'` on `continue: false`, else `'pass'`; `stderrSummary` is trimmed and capped at a bridge-configured character count (`stderrSummaryMaxChars`, reference default `500`).
 
-A hook record must sit inside an open turn — the mid-turn points (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`) satisfy that by construction, since they only ever fire once a turn is open. `SessionStart` runs before turn 1 exists at all, so it gets no `hook/*` record; its injected context sits in the session's inbox until the first turn opens and picks it up.
+> [!NOTE]
+> A hook record must sit inside an open turn — the mid-turn points (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`) satisfy that by construction, since they only ever fire once a turn is open. `SessionStart` runs before turn 1 exists at all, so it gets no `hook/*` record; its injected context sits in the session's inbox until the first turn opens and picks it up.
 
 The design decision behind keeping this event pair in the library rather than the extension-point Service Definition is explicit in [the interception extension-points Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-interception-extension-points.md): a native plugin using the typed decisions directly needs no external hook log at all, so `hook/*` belongs to the bridge protocol, not to the canonical surface every plugin shares.
 
@@ -138,11 +184,15 @@ Both bridges' agent-scoped stdin payloads carry `session_id` and a `transcript_p
 
 ## Dialect-specific: what each bridge owns alone
 
-Both bridges are ordinary function/namespace plugins — `name`/`inject`/`Config`/`apply` as named exports, `inject = ['shell']` — that parse a `configPath` **once at load** (a relative path resolves against the process launch cwd, so today one config applies to the whole process; per-session discovery is an open `TODO(per-session-hook-config)` in both READMEs). A parse or read failure is contained: the bridge logs a warning and registers nothing rather than taking the agent down over a typo'd path.
+Both bridges are ordinary function/namespace plugins — `name`/`inject`/`Config`/`apply` as named exports, `inject = ['shell']` — that parse a `configPath` **once at load** (a relative path resolves against the process launch cwd, so today one config applies to the whole process; per-session discovery is an open `TODO(per-session-hook-config)` in both READMEs). A parse or read failure is contained: the bridge logs a warning and registers nothing rather than taking the agent down over a typo'd path. Within that shared skeleton, each bridge owns its dialect alone:
 
-**`dsh-hooks-claude-code`** supports seven of CC's current hook points (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStart`, `SubagentStop` — 23 of Claude Code's 30 documented events remain unsupported and are dropped at parse). It builds CC-shaped stdin payloads, performs `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PROJECT_DIR}` substitution in command strings at config-parse time (see `substituteCommand` in `hooks-claude-code/src/config.ts`), and exports `CLAUDE_PROJECT_DIR` to the hook process — defaulting it to the agent's session workspace when the config omits `projectDir`, since real unmodified hooks commonly reference that variable. `PreToolUse`'s `deny`/`ask` decisions map onto `tools/pre-execute`'s `PreToolDecision`, with `ask` resolving through the optional approval seam rather than being a terminal bridge decision.
-
-**`dsh-hooks-codex`** supports five of Codex's ten points (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`), always uses regex matchers (no literal fast path), writes snake_case payloads with `turn_id`/`model` extras and **no** trailing newline on stdin (CC's payload does carry one), performs no plugin-env injection or placeholder substitution, and has no `allow`/`ask` path for `PreToolUse` — only `block` is honored, mapping to `PreToolDecision.deny`.
+| | `dsh-hooks-claude-code` | `dsh-hooks-codex` |
+|---|---|---|
+| Hook points supported | 7 of CC's — `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStart`, `SubagentStop` (23 of CC's 30 events dropped at parse) | 5 of Codex's 10 — `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` |
+| Matcher mode | literal-or-regex | always regex, no literal fast path |
+| stdin payload | CC-shaped, **with** trailing newline | snake_case with `turn_id`/`model` extras, **no** trailing newline |
+| Command/env handling | `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PROJECT_DIR}` substitution at parse (see `substituteCommand` in `hooks-claude-code/src/config.ts`); exports `CLAUDE_PROJECT_DIR`, defaulting to the session workspace when `projectDir` is omitted | no plugin-env injection, no placeholder substitution |
+| `PreToolUse` decisions | `deny`/`ask` → `PreToolDecision`; `ask` resolves through the optional approval seam, not a terminal bridge decision | only `block` honored → `PreToolDecision.deny` |
 
 Both READMEs carry a `Known Limitations and Deferred Work` section enumerating exactly which hook fields are parsed-but-ignored today: `updatedInput` (tool-input rewrite) is logged and warned but never applied, `systemMessage` is logged and warned but never surfaced to the model, and the Stop-hook consecutive-block loop guard both reference tools implement is not yet tracked (`TODO(stop-loop-guard)`), so an unconditionally blocking `Stop` hook force-continues every step until it self-limits.
 
@@ -150,9 +200,9 @@ Both READMEs carry a `Known Limitations and Deferred Work` section enumerating e
 
 Every message a bridge injects — `SessionStart` context, `additionalContext` folded into a downstream `agent/pre-step` decision, a `Stop` hook's steering reason — carries an explicit `{ kind: 'plugin', plugin: 'hooks-claude-code' }` or `'hooks-codex'` source. This is a small but deliberate guard: without it, hook-provided text could be mistaken in the log or in a later prompt-reconstruction pass for something the *user* actually typed. Both bridge test suites pin this source on the resulting `user/message` event.
 
-## A related but distinct footgun: default exports and the Loader
-
+:::fold[A related but distinct footgun: default exports and the Loader]
 The [hook bridges Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-hook-bridges.md) is explicit that both bridge plugins export `name`/`inject`/`Config`/`apply` as separate named exports with **no default export**, and cites [postmortem 0001](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/postmortem/0001-acp-default-export-drops-inject.md) as the reason. That postmortem's actual incident was in a different package (`@deepseek-ai/dsh-acp`, the ACP bridge), not in the hooks family — its root cause was a stray `export default apply` line that made Cordis's `Loader.unwrapExports` prefer the bare function over the module namespace, silently discarding `inject` and crashing the plugin the instant it tried to read an injected service. The lesson generalizes directly to every namespace plugin in the repo, hooks bridges included: **a namespace plugin and a default export are mutually exclusive under the Cordis Loader.** Both `hooks-claude-code/src/index.ts` and `hooks-codex/src/index.ts` follow the rule the postmortem produced — `export const name`, `export const inject`, `export const Config`, `export function apply` — precisely because getting this wrong would silently zero out `inject = ['shell']` and take down the entire bridge at load time, the same way it took down `session/new` in the ACP incident. Re-checking both bridges' current source confirms the rule still holds: neither file contains a `default` export anywhere.
+:::
 
 ## Known limitations worth carrying forward
 

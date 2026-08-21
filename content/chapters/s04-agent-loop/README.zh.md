@@ -9,9 +9,13 @@ module: foundations
 order: 4
 ---
 
-## 两个精确定义的词
+## 一句话版本
 
-harness 只定义了两个运行中 agent 的工作单元，整个循环都建立在它们之上：
+Agent loop 是 harness 中唯一含有具体循环逻辑的包——`packages/core/agent-loop/src/agent.ts` 里的 `ReactLoopAgent`。它只定义两个工作单元：**步骤（step）**（一次模型请求，加上这次请求触发的工具调用）与**轮次（turn）**（零个或多个步骤），并用这两个单元搭出整个驱动器：打开一个轮次、跑完它的步骤、不再欠下任何工作时把它关掉。其余一切——压缩、重试、权限策略、沙箱——都是挂在指名扩展点上的插件，从不是循环里的一个分支。下文对照代码，讲清完整的轮次生命周期。
+
+## 速览
+
+四个词撑起整章。两个是驱动器赖以搭建的工作单元；两个是事件所用的两套词汇——一套落日志、可回放，一套实时交给监听器。
 
 :::concept{term="步骤 (step)"}
 一次模型请求，加上这次请求触发的工具调用。
@@ -21,26 +25,36 @@ harness 只定义了两个运行中 agent 的工作单元，整个循环都建�
 零个或多个步骤。它在领取首条输入之前打开，并在不再欠下任何工作——没有存活的工具调用、没有新的 steering——时关闭。
 :::
 
-本章剩下的内容全部是「如何打开一个轮次、跑完它的步骤、再把它关掉」的机制细节。这套流程最权威的表述是 `docs/architecture.zh.md`「轮次流程」一节——这里把它做成一个可以分步运行的序列：
+:::concept{term="持久会话事件"}
+`turn/*`、`step/*`、`user/message`、`assistant/*`、`tool/*`。每一个都在发生的当下追加进会话日志，因此整个运行过程都能仅凭日志完整回放。
+:::
+
+:::concept{term="实时扩展点"}
+`agent/pre-step`、`agent/request`、`llm/stream`、`tools/*` 这一系列。它们不落日志——是 waterfall（瀑布式），因此每个监听器都必须调用 `next()` 才能把控制权委托下去，否则链条就在那里短路。`agent/turn-stopping` 是唯一的 `serial`（串行）点：没有 `next()`，只能通过副作用（steering）来否决。
+:::
+
+## 轮次生命周期
+
+本章剩下的内容，全部是「如何打开一个轮次、跑完它的步骤、再把它关掉」的机制细节。这套流程最权威的表述是 `docs/architecture.zh.md`「轮次流程」一节——这里把它做成一个可以分步运行的序列：
 
 :::timeline
 - turn/start — 打开轮次；领取 next-step 输入和一条入队消息
 - assemble prompt — 组装 prompt 段与工具 schema
-- agent/pre-step — reject 或 enter(messages);首个空 enter 会以零 step 关闭该轮
-- step/start — 追加 enter 的消息为 user/message;从日志派生模型历史
+- agent/pre-step — reject 或 enter(messages)；首个空 enter 会以零 step 关闭该轮
+- step/start — 追加 enter 的消息为 user/message；从日志派生模型历史
 - agent/request → llm/stream — assistant/chunk* → assistant/message
 - tool/call* — tools/pre-execute → tools/execute → tools/post-execute → tool/result*
 - step/end — 工具还欠一个请求，或 next-step 输入已到 → 领取 → 下一个 step
-- agent/turn-stopping — 串行(serial)否决(steering)
+- agent/turn-stopping — 串行（serial）否决（steering）
 - turn/end — 关闭轮次
 :::
 
-这段时序里交织着两套词汇。`turn/*`、`step/*`、`user/message`、`assistant/*` 和 `tool/*` 是**持久会话事件**——每一个都会追加到日志中，可以被回放。`agent/pre-step`、`agent/request`、`llm/stream` 和三个 `tools/*` 事件是**实时扩展点**,不直接落日志;它们是 waterfall(瀑布式事件),因此每个监听器都必须调用 `next()` 才能把控制权委托下去,否则链条就在那里短路。`agent/turn-stopping` 是 `serial` 事件——没有 `next()`,只能通过副作用(steering)来否决。
+带着这两套词汇去读这段时序：持久事件是日志记录下的每一行；扩展点是循环运行之中把控制权交给监听器的地方。
 
 > [!NOTE]
-> 持久事件可回放;扩展点是实时 waterfall。这条区分,正是循环既可追踪又可替换的根本原因。
+> 持久事件可回放；扩展点是实时 waterfall。这条区分，正是循环既可追踪又可替换的根本原因。
 
-本章会对照具体实现来走一遍这张图：`packages/core/agent-loop/src/agent.ts` 中的 `ReactLoopAgent`，它是 harness 里唯一包含具体循环逻辑的包。除此之外的一切——压缩、重试、权限策略、沙箱——都是挂在本章所指名的扩展点上的插件。
+本章会对照具体实现走一遍这套流程：`packages/core/agent-loop/src/agent.ts` 中的 `ReactLoopAgent`，它是 harness 里唯一包含具体循环逻辑的包。除此之外的一切——压缩、重试、权限策略、沙箱——都是挂在上面指名的扩展点上的插件。
 
 ## 完整时序图
 
@@ -71,41 +85,41 @@ sequenceDiagram
   alt proposed step rejected or pre-step failed
     Driver-->>Driver: claimed batch stays removed, the open turn spends no step
   else enter proposed step
-  Driver->>Session: step/start
-  Driver->>Session: user/message per entered message
-  Driver->>Prompt: system-prompt/assemble waterfall
-  Driver->>LLM: agent/request waterfall, then llm/stream waterfall
-  LLM-->>Driver: StreamChunk*
-  Driver->>Session: assistant/chunk*
-  Session-->>SDK: session/event assistant/chunk*
-  alt final adapter or terminal in-band request failure
+    Driver->>Session: step/start
+    Driver->>Session: user/message per entered message
+    Driver->>Prompt: system-prompt/assemble waterfall
+    Driver->>LLM: agent/request waterfall, then llm/stream waterfall
+    LLM-->>Driver: StreamChunk*
+    Driver->>Session: assistant/chunk*
+    Session-->>SDK: session/event assistant/chunk*
+    alt final adapter or terminal in-band request failure
+      Driver->>Session: step/end
+      Driver->>Hooks: agent/request-error waterfall
+      Hooks-->>Driver: return retry action or preserve the original error
+    else model request succeeded
+    Driver->>Session: assistant/message
+    Driver->>Tools: classify pending call by executionMode
+    loop barriers and bounded rolling pool, reclassify before start
+      opt call starts
+        Driver->>Session: tool/call
+        Driver->>Tools: ordered pre, concurrent execute
+        Tools-->>Session: tool-owned events when applicable
+      end
+      opt next model-order result ready
+        Driver->>Tools: ordered post
+        Driver->>Session: tool/result
+      end
+    end
     Driver->>Session: step/end
-    Driver->>Hooks: agent/request-error waterfall
-    Hooks-->>Driver: return retry action or preserve the original error
-  else model request succeeded
-  Driver->>Session: assistant/message
-  Driver->>Tools: classify pending call by executionMode
-  loop barriers and bounded rolling pool, reclassify before start
-    opt call starts
-      Driver->>Session: tool/call
-      Driver->>Tools: ordered pre, concurrent execute
-      Tools-->>Session: tool-owned events when applicable
+    opt natural stop and next-step inbox empty
+      Driver->>Hooks: agent/turn-stopping serial terminal checkpoint
     end
-    opt next model-order result ready
-      Driver->>Tools: ordered post
-      Driver->>Session: tool/result
+    opt next-step input is pending
+      Driver-->>Driver: claim pending next-step input
+      Driver-->>SDK: agent/inbox/claimed { message, turn } per message
+      Driver->>Hooks: agent/pre-step waterfall
+      Hooks-->>Driver: authoritative reject or enter(messages)
     end
-  end
-  Driver->>Session: step/end
-  opt natural stop and next-step inbox empty
-    Driver->>Hooks: agent/turn-stopping serial terminal checkpoint
-  end
-  opt next-step input is pending
-    Driver-->>Driver: claim pending next-step input
-    Driver-->>SDK: agent/inbox/claimed { message, turn } per message
-    Driver->>Hooks: agent/pre-step waterfall
-    Hooks-->>Driver: authoritative reject or enter(messages)
-  end
   end
   end
   Driver->>Session: turn/end
@@ -114,8 +128,11 @@ sequenceDiagram
 
 两个实现细节能立刻让这张图更清晰：
 
-- `assistant/message` 会为**每一次**成功的提供方调用追加一条，包括无内容结束和以 `max-tokens` 结束的调用。空内容不会进入派生历史，但这条持久事件仍然记录用量，以及它汇总的确切 `assistant/chunk` seq（`sourceEventSeqs`，流没有分片时为 `[]`）。
-- 返回的 `agent/pre-step` 决策是权威结果。包装 `next()` 的监听器必须保留下游消息，除非它确实想替换掉这些消息——这里没有隐式合并。
+> [!NOTE]
+> `assistant/message` 会为**每一次**成功的提供方调用追加一条，包括无内容结束和以 `max-tokens` 结束的调用。空内容不会进入派生历史，但这条持久事件仍然记录用量，以及它汇总的确切 `assistant/chunk` seq（`sourceEventSeqs`，流没有分片时为 `[]`）。
+
+> [!PITFALL]
+> 返回的 `agent/pre-step` 决策是权威结果。包装 `next()` 的监听器必须保留下游消息，除非它确实想替换掉这些消息——这里没有隐式合并。
 
 ## 输入通过一个 inbox 抵达驱动器
 
@@ -138,7 +155,9 @@ inject(input: UserMessage): void {
 
 `followup()` 追加到 `next-turn` FIFO 并唤醒驱动器——它会成为自己那个新轮次里唯一的普通消息。`steer()` 追加到 `next-step` inbox 并唤醒驱动器，所以一个正在运行的轮次会在下一个步骤边界立即领取它。`inject()` 同样追加到 `next-step` inbox，但**不**唤醒任何东西——它会一直停在那里，直到别处的一次 `followup` 或 `steer` 唤醒驱动器，届时它会顺路被一并领取。
 
-`wakeDriver()`（`agent.ts:172-193`）是唤醒要么启动一轮新 `kick()` 循环、要么被锁存（`wakeRequested`）在一个正在进行的维护任务或已中止的活动后面、等该活动收敛到空闲后才重放的地方。在 agent 真正空闲时送达的一次唤醒总会打开一个轮次边界，即便触发它的消息在驱动器真正领取之前就已经被清除——此时 status 会短暂显示 `idle → running → idle` 这一对瞬态转换。
+:::fold[唤醒锁存：当一次唤醒无法立即打开轮次]
+`wakeDriver()`（`agent.ts:172-193`）是这样一个地方：一次唤醒要么启动一轮新的 `kick()` 循环，要么被锁存（`wakeRequested`）在一个正在进行的维护任务或已中止的活动后面，等该活动收敛到空闲后才重放。在 agent 真正空闲时送达的一次唤醒总会打开一个轮次边界，即便触发它的消息在驱动器真正领取之前就已经被清除——此时 status 会短暂显示 `idle → running → idle` 这一对瞬态转换。
+:::
 
 ## `turn()`：打开与关闭一个轮次
 
@@ -248,6 +267,7 @@ while (next < planned.length) {
 
 `executionMode` 为 `exclusive` 的调用会作为大小为一的屏障单独运行；一串连续被分类为 `parallel` 的调用则组成一个组，通过一个受 `ctx.agentLoop.config.maxParallelToolCalls` 限制（默认 10；设为 1 即变成完全串行）的**有界滚动池**来调度。在 `runGroup()` 内部，分发与调用主体的执行可以跨调用重叠，但有三件事严格保持**模型顺序**：调用启动前运行的 `tools/pre-execute` 策略检查、已提交的 `tool/result`，以及该调用结果贡献回下一步骤 inbox 的任何 `additionalContexts`。`commitReady()`（`tool-calls.ts:146-160`）严格按模型顺序遍历已就绪的槽位，拒绝跳过尚未就绪的那个——这正是即便分发本身可能出现竞争、回放依然保持确定性的原因。
 
+:::fold[执行中途中止：每个被请求的调用仍会得到配对结果]
 工具执行期间的中止会先把已启动的调用排空到它们真实的结果，然后为每一个从未有机会分发的调用追加一对合成的 `tool/call` + `tool/result`，携带固定的错误文案和错误码（`appendSkippedToolCall`，`tool-calls.ts:249-258`）：
 
 ```ts
@@ -263,6 +283,7 @@ function appendSkippedToolCall(session: Session, turn: number, step: number, blo
 ```
 
 这一点对回放至关重要：一条请求了五个工具调用的 assistant 消息，后面必须总是跟着恰好五对结果，不论它们是真正跑完了、因取消而被跳过，还是彻底失败。
+:::
 
 每个单独调用要经过的内层 `tools/pre-execute` → `tools/execute` → `tools/post-execute` → `finalizeContent` → `tool/result` 序列属于 `dsh-tools`，不属于 `dsh-agent-loop`；具体策略、沙箱与结果重写在哪里介入而循环本身对此一无所知，参见 `docs/tool-execution-pipeline.zh.md` 中的流程图。
 
@@ -290,9 +311,13 @@ function appendSkippedToolCall(session: Session, turn: number, step: number, blo
 
 上面每一个设计选择都能追溯到两条架构承诺：
 
+:::decision
 **模型可见即已记录。** 任何抵达模型请求的内容——系统提示词、工具 schema、消息历史——都必须能从会话日志重建，并由一项运行时不变量强制断言这一点。这就是为什么 `agent/pre-step` 和 `agent/request` 只能*从*循环从日志派生出的数据中*选择*或*替换*，而不能注入绕过 `user/message`/`assistant/message` 记录的内容。`RuntimeContextProjection`（`runtime-context.ts`）是个很好的小例子：动态上下文会被折叠成 pre-step 批次里一条普通的 `UserMessage`，并标注上插件来源，因此它在回放时和用户手动输入的任何内容一样完好无损。
+:::
 
+:::decision
 **新行为归属插件，而不是改动循环本身。** 循环自身从不提及压缩、重试、权限策略或沙箱这些名字。`dsh-compaction-basic` 挂在 `agent/pre-step`（观测压力）和 `agent/request-error`（规范的溢出修复）上；`dsh-llm-retry` 单独挂在 `agent/request-error` 上；工具策略挂在 `tools/*` 系列 waterfall 上。改动循环本身仅保留给那些确实要改动这张映射关系的变更——参见 `docs/architecture.zh.md` 中「新行为的归属位置」表——其余一切都从外部挂接进来。
+:::
 
 ## 接下来读什么
 

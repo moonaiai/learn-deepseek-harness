@@ -9,6 +9,26 @@ module: execution-seams
 order: 9
 ---
 
+## 一句话版本
+
+harness 里所有要运行子进程或分配终端的模块——bash、LSP 主机、PTY shell 后端,以及三个进程外 subagent 传输——都经由同一条底层 seam `ctx.subprocess` 来 spawn。换掉这一个 Provider,上述每一个 Consumer 会同时迁入另一个执行世界;这种扇出,而非任何单一 Consumer,才是它的收益。在它之上还叠着第二条更小的 seam `ctx.terminals`,服务于那些身份必须跨越多次工具调用存活、而非在一次调用内完成的交互式会话。本章先讲基底,再讲建在它之上的会话 seam。
+
+## 速览
+
+三个术语组织起整章——一个执行世界,两条纵向叠放的 seam:
+
+:::concept{term="execution world"}
+一组就「进程在哪里跑、文件在哪里存」达成一致的 Provider。把文件系统与子进程 Provider 指向远程沙箱,Bash、PTY 与 LSP 会一起迁移——无需任何 Provider 分叉。
+:::
+
+:::concept{term="ctx.subprocess / SubprocessRuntime"}
+底层的进程 spawn seam:一个抽象 Service Definition,只有三个动词(`resolveExecutable`、`spawn`、`spawnTerminal`),配一个本地 Provider 与一个远程(`e2b`)替代。
+:::
+
+:::concept{term="ctx.terminals / TerminalSessionService"}
+建在 `ctx.subprocess.spawnTerminal` 之上的一条独立的、更小的 seam:限定所有者范围的持久 PTY 会话,在显式关闭前可跨越多次独立工具调用接受任意次操作。
+:::
+
 ## 一个执行世界,两层 seam
 
 [能力接缝入门](../s07-capability-seams-primer/README.zh.md)以 `ctx.shell` 为范例,完整讲解了三角色组合。本章再往下深入一层:`dsh-bash-local` 自己并不 spawn 进程。它把 `ShellExecRequest` 解析为 `ShellExecSpec`,再把真正的 spawn 操作交给它注入的另一个服务——`ctx.subprocess`。这个服务本身就是一个独立的能力 seam,它的 Consumer 并不限于 bash。持久 PTY 后端、LSP 主机,以及三个进程外 subagent 提供方,全都通过同一个 `ctx.subprocess` seam 来 spawn 进程,这正是 `docs/architecture.md` 直接点明的收益:
@@ -156,6 +176,17 @@ Service Definition 的 JSDoc 明确指出这是刻意保留的、对管道模型
 
 1. **能够存活的、限定所有者范围的身份。**`TerminalSessionService`「生成不透明的会话 id,通过具名后端路由创建操作,将每个操作限制在完全相同的活跃 `Agent` 内」。`TerminalSessionId` 对除了创建它的那个 agent 以外的任何 agent 都没有意义——`dsh-tool-terminal` 的 README 把这一点表述为一项安全属性:「即使模型获知另一个 agent 的 id,也无法操作其终端。」普通的子进程句柄没有这种概念;它只属于调用 `spawn()` 的那段代码,通常也不会活过那次调用。
 2. **对一个活跃会话的多次操作。**子进程句柄只写入一次(或流式传输一次)然后等待结算。而终端会话接受一次 `spawn`,之后可以在跨越多个独立工具调用回合的过程中,进行任意次数的 `startSend`/`read`/`signal` 调用,直到显式的 `terminal_close`——或所有者 Agent 被 dispose——才会关闭它。「一个会话最多接受一个活跃的发送操作……在当前操作结算前,另一项发送会失败」,这是一种只有为反复重用而设计的会话才需要的并发约定。
+
+### 会话生命周期,端到端
+
+一个持久终端会话从分配到拆除有明确的形态——而且与一次性 `spawn` 不同,它的每个阶段都是一个独立的工具调用回合:
+
+:::timeline
+- terminal_open —— 通过具名后端路由创建;`ctx.subprocess.spawnTerminal` 分配 PTY,服务生成一个限定到确切所有者 `Agent` 的不透明会话 id
+- terminal_send / terminal_read / terminal_signal —— 跨越多个独立工具调用回合的任意次操作;同一时刻最多一个活跃 send,另一项发送在当前操作结算前会失败
+- terminal_close —— 显式拆除,或由所有者 `Agent` 的 dispose 拆除会话
+- 终止升级 —— dispose 经由共享的 `SIGTERM` → `graceMs` → `SIGKILL` 进程树终止动词触达每个会话成员,并等待至完全停稳
+:::
 
 `dsh-terminal-bash` 是连接这两个 seam 的包。它的 `inject` 是 `['terminals', 'sandboxPolicy', 'subprocess']`:
 

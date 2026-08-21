@@ -10,6 +10,30 @@ module: world-and-collab-seams
 order: 15
 ---
 
+## 一句话版本
+
+`hooks/` 这个包分组**不是**一个能力 seam——整组里没有 `ctx.hooks` 服务，也没有任何 Service Definition。它是两个*桥接插件*(`dsh-hooks-claude-code`、`dsh-hooks-codex`)——各自消费两个互不相关的 seam:`ctx.shell` 用来跑一条命令，`ctx.sessionPersistence` 用来定位会话日志——外加一个*共享库*(`dsh-hook-protocol`)，负责方言无关的 matcher/codec/merge/runner 原语。它们存在的全部意义是兼容：把用户早已为 Claude Code 或 Codex 写好的 `hooks.json` **忠实地**跑起来，翻译成 harness 自身的类型化拦截点。下文讲清为什么这种双重身份是正确形态，而不是一个缺口。
+
+## 速览
+
+hooks 家族同时是两种东西——一个共享库和两个普通 Consumer——再加上两者之间来回传递的中立形状。支撑整章的是四个词：
+
+:::concept{term="Hooks 桥接（Consumer）"}
+一个普通插件：读取用户*已有*的 CC 或 Codex `hooks.json`，通过 `ctx.shell` 在对应的扩展点上启动每条配置的 shell 命令，并把退出码/stdout 协议翻译成类型化决策。不拥有任何服务。
+:::
+
+:::concept{term="dsh-hook-protocol（共享库）"}
+一个库，不是插件——不向 Cordis 注册任何东西，也不注入任何东西。只拥有方言无关的原语：`matcher`、`runHook`、`parseHookOutput`、`mergeHookOutputs`、`hook/*` 追加器，以及 `createDetachedRuns`。
+:::
+
+:::concept{term="HookOutput"}
+所有钩子都汇入的同一个方言无关结果形状——阻断、放行、请求确认、追加上下文、警告、整体停止——从一个进程的退出码、stdout、stderr 解码而来。用库自己的话说，"忠实但降级"。
+:::
+
+:::concept{term="hook/* 会话事件"}
+`hook/invoked` / `hook/result`，一对只写日志的审计事件，声明合并进 `SessionEventMap`。不是 `SurfaceEventType`——它们只为回放与审计而存在，从不为 UI。
+:::
+
 ## 不是 seam——而是两个 seam 的 Consumer，外加一个共享库
 
 `hooks/` 这个包分组乍一看很像应该自成一个能力 seam：它有一个共享库和两个看起来可以互换的桥接插件，和[能力 seam 导论](../s07-capability-seams-primer/README.zh.md)里讲的 shell 三件套长得一模一样。但事实并非如此。这个分组里没有 `ctx.hooks` 服务，也没有任何一个 Service Definition；`docs/capability-seams.md` 生成的图谱证实了这一点：`hooks-claude-code` 与 `hooks-codex` 从未作为某一行的 Owner 或 Implementation 出现——它们只出现在两个完全不同的 seam 各自的 **Direct consumers** 一列里：
@@ -25,7 +49,8 @@ order: 15
 
 `hooks.json` 不是 deepseek-harness 发明的东西。它是 Claude Code 与 Codex 早已使用的磁盘配置格式,让用户在 agent 生命周期的固定节点上运行自己的 shell 命令——接受一条 prompt 之前、工具执行前后、会话启动时、agent 打算停止时。用户带着已经写好的这些文件来到 deepseek-harness。harness 的任务不是再发明第三套钩子格式,而是**忠实地**运行这些既有文件,不要求任何人重写它们。
 
-关键的重新框定在[拦截扩展点 Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-interception-extension-points.md)中说得很清楚:**"原生钩子"根本不是一个包**。harness 真正的扩展接口是一组类型化的 Cordis 事件——`agent/session-start`、`agent/pre-step`、`tools/pre-execute`、`tools/post-execute`、`agent/turn-stopping`、`subagent/start`、`subagent/end`——任何普通插件都可以订阅它们,拥有完整的 `ctx` 访问权限和类型化的返回值。如果是从零编写新代码的插件作者,应当直接使用这些扩展点;不需要与 shell 钩子有任何关系。
+> [!WHY]
+> "原生钩子"根本不是一个包。harness 真正的扩展接口是一组类型化的 Cordis 事件——`agent/session-start`、`agent/pre-step`、`tools/pre-execute`、`tools/post-execute`、`agent/turn-stopping`、`subagent/start`、`subagent/end`——任何普通插件都可以订阅它们,拥有完整的 `ctx` 访问权限和类型化的返回值。如果是从零编写新代码的插件作者,应当直接使用这些扩展点;不需要与 shell 钩子有任何关系。(在[拦截扩展点 Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-interception-extension-points.md)中有完整说明。)
 
 `packages/hooks/*` 增加的是一种**桥接**:一个读取用户*已有*的 CC 或 Codex `hooks.json`、通过 `ctx.shell` 在对应扩展点上启动每条配置的 shell 命令、并把该命令的 stdout/退出码协议翻译成原生插件本应返回的同一套类型化决策的插件。桥接能做的任何事——拒绝一次工具调用、注入上下文、强制再走一步——原生插件都能做得更强,没有序列化边界,也不需要子进程。桥接存在的唯一理由,是为用户手头已有的钩子配置提供一条**兼容路径**。
 
@@ -72,6 +97,19 @@ flowchart LR
   codexbridge --> presetp & pretool & posttool & stopping
 ```
 
+## 一次钩子调用的完整生命周期
+
+上面的 mermaid 讲的是谁和谁对话；这里则是一个已配置钩子要走过的有序生命周期，后续几节会逐一展开每个阶段：
+
+:::timeline
+- 匹配 —— 在某个扩展点上，`matchesMatcher` 选出为它配置的钩子（方言 `mode`：字面量或正则 vs 恒为正则）
+- 运行 —— `runHook` 序列化 stdin payload、设置环境变量，并通过 `ctx.shell` 执行，带超时与取消；它永不抛出
+- 解码 —— `parseHookOutput` 把退出码 + stdout + stderr 折叠成一个中立的 `HookOutput`（退出码 `2` = 阻断）
+- 合并 —— `mergeHookOutputs` 把 N 个匹配的钩子折叠成单一的 `MergedHookOutcome`，优先级 **deny > ask > allow**
+- 决策 —— 桥接把结果映射到它所在扩展点的类型化 Decision(`PreToolDecision`、一次 pre-step 的 `enter`…)
+- 记录 —— `appendHookInvoked` / `appendHookResult` 写下只写日志的 `hook/*` 审计对
+:::
+
 ## 为什么需要一个共享库,而不是两个独立的桥接实现
 
 两个工具的钩子引擎参考实现有惊人的结构重合。Codex 自己的源码把它的钩子引擎命名为 Claude 引擎的同名物,并在"有意分歧"的地方留下注释——它复用了同样的 `hooks.json` matcher-group 形状、同样的退出码/结构化 stdout 输出约定、同样的 command hook 执行模型。既然如此,从零写两个桥接插件就意味着复制协议的大部分内容,并让两份拷贝随时间彼此漂移。
@@ -89,7 +127,9 @@ flowchart LR
 
 两种方言在匹配上唯一真正不同的那根轴,被折叠进一个 `mode` 参数,而不是两个独立函数——见 [`matcher.ts:37-65`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/matcher.ts#L37-L65)。Claude Code 把纯 `[A-Za-z0-9_|]+` 的模式当作字面量(`|` 表示精确匹配的多选一),其余一律当正则;Codex 则永远是无锚点正则。`matcherDiagnostic` 在解析配置时校验一个模式,一个非法正则会让整份配置加载失败并附带稳定的诊断信息;`matchesMatcher` 是运行时谓词,永不抛出——即便它遇到一个非法正则,也只会返回 `false`,所以直接调用这个库的代码永远不会因为一个 matcher 字符串而让 agent 循环崩溃。
 
-这个划分不是从第一天就完美无缺,后来还被收紧过一次。[收紧 hook-protocol 契约的 Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/simplification/2026-07-04-tighten-hook-protocol-contract.md)记录了一个具体案例:`hook/result` 的 stderr 截断规则和 `decision ?? (continue === false ? 'stop' : 'pass')` 这条推导规则,原本在 `hooks-claude-code/src/index.ts` 与 `hooks-codex/src/index.ts` 里是字节级相同的两份拷贝。由于 `dsh-hook-protocol` *声明*了 `hook/result` 事件,却没有*拥有*它的语义,两个桥接就可能悄悄产生分歧——不同的截断上限、不同的兜底值——而任何一个包的测试都不会发现。修复方式是把这两条规则都搬进库里的 `appendHookResult`(现位于 [`events.ts:92-104`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/events.ts#L92-L104)),与参考默认值 `DEFAULT_STDERR_SUMMARY_MAX_CHARS` 放在一起。这个案例概括出的规律是:**谁声明了一个持久化事件的结构,谁就该拥有填充它的推导逻辑**,而不是把这份逻辑散落地复制在每个生产者里。
+:::decision
+谁**声明**了一个持久化事件的结构,谁就该拥有填充它的推导逻辑。这个划分从第一天起就不是偶然,而且还被收紧过一次:[收紧 hook-protocol 契约的 Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/simplification/2026-07-04-tighten-hook-protocol-contract.md)记录了 `hook/result` 的 stderr 截断规则与 `decision ?? (continue === false ? 'stop' : 'pass')` 这条推导,原本在两个桥接里是字节级相同的两份拷贝。由于库*声明*了 `hook/result` 却没有*拥有*它的语义,这两份拷贝就可能悄悄漂移。修复方式是把两条规则都搬进库里的 `appendHookResult`(现位于 [`events.ts:92-104`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/events.ts#L92-L104)),与 `DEFAULT_STDERR_SUMMARY_MAX_CHARS` 放在一起——而不是留在每个生产者里各自复制一份。
+:::
 
 ## 方言无关的结果:`HookOutput`
 
@@ -111,7 +151,10 @@ export interface HookOutput {
 }
 ```
 
-每个字段都是可选的,因为真实钩子只会用到其中的一部分,而某个桥接也只会理会对自己的方言与钩子点有意义的那一部分字段——用协议库自己的话说,叫"忠实但降级"。[`codec.ts:59-89`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/codec.ts#L59-L89)里的解码逻辑把退出码 `2` 当作附带 `stderr` 作为原因的阻断(CC 和 Codex 都遵循这个约定),其余非零或缺失的退出码都是非阻断性错误,而干净退出时的 stdout 要么是纯文本,要么——当它以 `{` 开头时——被当作宽松解析的 JSON。它还规范化了一个两套参考 schema 都保留但分得很开的细节:旧版顶层 `decision` 字段只能是 `approve`/`block`,而 `allow`/`deny`/`ask` 专属于嵌套的 `hookSpecificOutput.permissionDecision`。`HookOutput.decision` 把两个通道折叠成一个枚举,当两者都存在时以嵌套的 `permissionDecision` 覆盖旧字段。
+> [!NOTE]
+> 每个字段都是可选的,因为真实钩子只会用到其中的一部分,而某个桥接也只会理会对自己的方言与钩子点有意义的那一部分字段——用协议库自己的话说,叫"忠实但降级"。
+
+[`codec.ts:59-89`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/codec.ts#L59-L89)里的解码逻辑把退出码 `2` 当作附带 `stderr` 作为原因的阻断(CC 和 Codex 都遵循这个约定),其余非零或缺失的退出码都是非阻断性错误,而干净退出时的 stdout 要么是纯文本,要么——当它以 `{` 开头时——被当作宽松解析的 JSON。它还规范化了一个两套参考 schema 都保留但分得很开的细节:旧版顶层 `decision` 字段只能是 `approve`/`block`,而 `allow`/`deny`/`ask` 专属于嵌套的 `hookSpecificOutput.permissionDecision`。`HookOutput.decision` 把两个通道折叠成一个枚举,当两者都存在时以嵌套的 `permissionDecision` 覆盖旧字段。
 
 `mergeHookOutputs` 随后把匹配同一个扩展点的所有钩子折叠成单一的 `MergedHookOutcome`,采用 **deny > ask > allow** 的优先级([`merge.ts:34-52`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/merge.ts#L34-L52)):只要有一个匹配的钩子给出 `deny`,就压倒其余钩子给出的 `allow`;`continue: false` 一旦由某个钩子提出就具有粘性;多个阻断原因用空行拼接。两个桥接都是**按配置顺序串行**运行匹配到的钩子,而不是像参考引擎那样并发——这是刻意的选择,因为串行能让每个钩子的 `hook/invoked`/`hook/result` 在会话日志里保持相邻,而合并结果本身与顺序无关,不会因为串行而改变最终决策。
 
@@ -121,13 +164,16 @@ export interface HookOutput {
 
 这正是开篇提到的 seam 关系的具体体现:`dsh-shell` 的各个 Service Provider(`dsh-bash-local`、`dsh-bash-sandbox`、`dsh-pwsh-local`)和 `dsh-tool-bash`/`dsh-tool-pwsh` 给模型可见的工具调用所用的执行器完全相同。在 `ctx.shell` 这个 seam 上把本地执行器换成沙箱执行器,用户配置的每一个钩子也会随之变得沙箱化,两个桥接的代码零改动——这正是 seam 模式承诺给任何 Consumer 的那种可替换透明性。
 
+:::fold[分离运行：一个即发即弃的钩子如何干净地关闭]
 每一个以"发出通知"形式存在的钩子点(`SessionStart`、`SubagentStart`、`SubagentStop`)都以**分离(detached)**方式运行——没有任何扩展点会等待这些钩子,因为它们本质上是纯通知,没有需要折叠进决策的返回值。一个比会话本身活得更久的分离钩子会泄漏进程,甚至可能在一个已被销毁的 context 里触发一次迟到的注入。`createDetachedRuns()`([`detached.ts:43-62`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/hooks/hook-protocol/src/detached.ts#L43-L62))就是为此而生:每个桥接把完整的运行链(钩子进程本身,加上它的后续处理——一次 `agent.inject()`调用,一条警告日志)记录在一个 `Set` 里,把追踪器的 `AbortSignal` 传入每一次 `runHook` 调用,并把 `drain()` 注册为自己的 Cordis dispose effect。销毁这个桥接时会先触发中止信号——杀死任何仍在运行的钩子进程,而不是等它超时——然后在所有被追踪的运行链都settle之后才resolve。`fiber.dispose()` 的resolve因此真正意味着不会再有分离的钩子工作能触达一个已经销毁的 context,这正是 harness 其余部分遵循的"销毁必须达到静默,而非仅仅发出请求"这条防御性模式。
+:::
 
 ## `hook/*` 会话事件只用于记录
 
 每一次钩子调用及其结果都会被持久化记录:进程运行前是 `hook/invoked`,运行后是 `hook/result`,二者通过 `handlerId` 配对。这两个事件是从 `dsh-hook-protocol` 自身的 `types.ts` 声明合并进 `SessionEventMap` 的,和 `compaction/*` 一样——**不是** `SurfaceEventType`,不带 `surfaceOp`,因为它们的存在纯粹是为了审计与回放,不是为了 UI 呈现。`appendHookResult` 推导出持久化的 `decision` 字符串:优先取钩子自己解析出的决策,否则在 `continue: false` 时回退为 `'stop'`,再否则是 `'pass'`;`stderrSummary` 会被裁剪并限制在一个由桥接配置的字符数上限内(`stderrSummaryMaxChars`,参考默认值 `500`)。
 
-一条钩子记录必须落在某个已打开的回合(turn)内——回合中段的几个钩子点(`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`)天然满足这一点,因为它们只会在回合已经打开之后才触发。`SessionStart` 在第 1 个回合存在之前就运行,所以它不产生 `hook/*` 记录;它注入的上下文会停留在会话的收件箱中,直到第一个回合打开并取走它。
+> [!NOTE]
+> 一条钩子记录必须落在某个已打开的回合(turn)内——回合中段的几个钩子点(`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`)天然满足这一点,因为它们只会在回合已经打开之后才触发。`SessionStart` 在第 1 个回合存在之前就运行,所以它不产生 `hook/*` 记录;它注入的上下文会停留在会话的收件箱中,直到第一个回合打开并取走它。
 
 把这一对事件放在库里而不是拦截点的 Service Definition 里,这个设计决策在[拦截扩展点 Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-interception-extension-points.md)里说得很明确:一个直接使用类型化决策的原生插件完全不需要外部钩子日志,所以 `hook/*` 属于桥接协议,不属于所有插件共享的那套规范接口。
 
@@ -137,11 +183,15 @@ export interface HookOutput {
 
 ## 方言专属:各桥接独自拥有的部分
 
-两个桥接都是普通的函数式/命名空间插件——`name`/`inject`/`Config`/`apply` 作为独立的命名导出,`inject = ['shell']`——都会在加载时**一次性**解析 `configPath`(相对路径相对于进程启动时的工作目录解析,所以目前一份配置作用于整个进程;按会话发现配置仍是两份 README 里公开标注的 `TODO(per-session-hook-config)`)。解析或读取失败会被兜住:桥接记录一条警告并且不注册任何钩子,而不是因为一个写错的路径就让 agent 整体崩溃。
+两个桥接都是普通的函数式/命名空间插件——`name`/`inject`/`Config`/`apply` 作为独立的命名导出,`inject = ['shell']`——都会在加载时**一次性**解析 `configPath`(相对路径相对于进程启动时的工作目录解析,所以目前一份配置作用于整个进程;按会话发现配置仍是两份 README 里公开标注的 `TODO(per-session-hook-config)`)。解析或读取失败会被兜住:桥接记录一条警告并且不注册任何钩子,而不是因为一个写错的路径就让 agent 整体崩溃。在这副共享骨架之内,每个桥接只拥有自己的方言:
 
-**`dsh-hooks-claude-code`** 支持 CC 当前钩子点中的七个(`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`、`SubagentStart`、`SubagentStop`——Claude Code 文档中的 30 个事件里还有 23 个不受支持,在解析阶段就被丢弃)。它构造 CC 形状的 stdin payload,在配置解析阶段就对命令字符串执行 `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PROJECT_DIR}` 替换(见 `hooks-claude-code/src/config.ts` 里的 `substituteCommand`),并向钩子进程导出 `CLAUDE_PROJECT_DIR`——当配置省略 `projectDir` 时,默认取 agent 的会话工作目录,因为真实的、未经修改的钩子普遍引用这个变量。`PreToolUse` 的 `deny`/`ask` 决策映射到 `tools/pre-execute` 的 `PreToolDecision`,其中 `ask` 会经由可选的审批接缝来解决,而不是桥接自己给出的终局决定。
-
-**`dsh-hooks-codex`** 支持 Codex 十个钩子点中的五个(`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`),永远使用正则 matcher(没有字面量快速路径),写出的是 snake_case payload,带有 `turn_id`/`model` 额外字段,并且**不带**尾随换行符(而 CC 的 payload 确实带一个),不做插件环境变量注入,也不做占位符替换,并且 `PreToolUse` 没有 `allow`/`ask` 路径——只有 `block` 会被理会,映射为 `PreToolDecision.deny`。
+| | `dsh-hooks-claude-code` | `dsh-hooks-codex` |
+|---|---|---|
+| 支持的钩子点 | CC 的 7 个——`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`、`SubagentStart`、`SubagentStop`(CC 30 个事件中的 23 个在解析阶段被丢弃) | Codex 10 个中的 5 个——`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop` |
+| Matcher 模式 | 字面量或正则 | 恒为正则,无字面量快速路径 |
+| stdin payload | CC 形状,**带**尾随换行符 | snake_case,带 `turn_id`/`model` 额外字段,**不带**尾随换行符 |
+| 命令/环境变量处理 | 解析阶段执行 `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_PROJECT_DIR}` 替换(见 `hooks-claude-code/src/config.ts` 的 `substituteCommand`);导出 `CLAUDE_PROJECT_DIR`,当省略 `projectDir` 时默认取会话工作目录 | 不注入插件环境变量,不做占位符替换 |
+| `PreToolUse` 决策 | `deny`/`ask` → `PreToolDecision`;`ask` 经由可选的审批 seam 解决,而不是桥接自己给出的终局决定 | 只有 `block` 被理会 → `PreToolDecision.deny` |
 
 两份 README 都设有"Known Limitations and Deferred Work"一节,精确列出了当前哪些钩子字段是"解析了但被忽略"的:`updatedInput`(工具输入重写)会被记录并发出警告,但从不真正应用;`systemMessage` 同样被记录并警告,但从不呈现给模型;两个参考工具都实现的 Stop 钩子连续阻断守卫,这里尚未被追踪(`TODO(stop-loop-guard)`),所以一个无条件阻断的 `Stop` 钩子会强制每一步都继续执行,直到该钩子自我限制为止。
 
@@ -149,9 +199,9 @@ export interface HookOutput {
 
 桥接注入的每一条消息——`SessionStart` 的上下文、被折叠进下游 `agent/pre-step` 决策的 `additionalContext`、`Stop` 钩子的续行原因——都携带一个显式的 `{ kind: 'plugin', plugin: 'hooks-claude-code' }` 或 `'hooks-codex'` 来源标记。这是一个虽小但刻意为之的防护:没有这个标记,钩子提供的文本就可能在日志里,或者在后续某次 prompt 重建过程中,被误认为是*用户*真正输入的内容。两个桥接的测试套件都会核对生成的 `user/message` 事件上的这个来源字段。
 
-## 一个相关但不同的坑:default export 与 Loader
-
+:::fold[一个相关但不同的坑：default export 与 Loader]
 [hook 桥接 Agent Note](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/.agents/notes/implemented/feature/2026-06-30-hook-bridges.md)明确要求两个桥接插件都以独立的命名导出方式导出 `name`/`inject`/`Config`/`apply`,**不带 default export**,并引用[postmortem 0001](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/postmortem/0001-acp-default-export-drops-inject.md)作为理由。那份 postmortem 记录的真实事故其实发生在另一个包里(`@deepseek-ai/dsh-acp`,ACP 桥接),而不是 hooks 家族——它的根因是一行多余的 `export default apply`,导致 Cordis 的 `Loader.unwrapExports` 优先选中裸函数而不是模块命名空间,悄悄丢弃了 `inject`,并在插件第一次读取被注入的服务时立刻崩溃。这个教训能直接推广到仓库里的每一个命名空间插件,hooks 桥接也不例外:**在 Cordis Loader 下,命名空间插件和 default export 是互斥的**。`hooks-claude-code/src/index.ts` 和 `hooks-codex/src/index.ts` 都遵循这份 postmortem 产出的规则——`export const name`、`export const inject`、`export const Config`、`export function apply`——正是因为一旦写错,就会悄悄把 `inject = ['shell']` 清空,在加载阶段就拖垮整个桥接,与 ACP 事故中 `session/new` 被拖垮的方式如出一辙。重新核对两个桥接当前源码可以确认这条规则依然成立:两个文件里都不存在任何 `default` 导出。
+:::
 
 ## 值得留意的已知局限
 

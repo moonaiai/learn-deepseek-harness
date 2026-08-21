@@ -9,9 +9,29 @@ module: foundations
 order: 6
 ---
 
-## 两个注册表，撑起一个步骤
+## 简明版
 
-agent loop 的每一个步骤都要做两件谁都不能单独把控全程的事：组装发给模型的请求，以及执行模型回复中包含的工具调用。`core/system-prompt`（`ctx.systemPrompt`）拥有第一件事——几十个互不相识的插件各自贡献一段提示词文本或一个工具 schema，`SystemPrompt.assemble()` 把这些片段拼装成一次确定性的请求，而不把整份提示词的控制权交给任何单一插件。`core/tools`（`ctx.tools`）拥有第二件事——无论是 `bash`、`read`、`grep`，还是委派给某个 subagent，每一次工具调用都要经过同一条 `ToolRuntime.execute()` 流水线，因此工具作者只需写一次 `execute()` 主体，就能免费获得策略、重试与可观测性。
+agent loop 的每一个步骤都要做两件谁都不能单独把控全程的事：组装发给模型的请求，以及执行模型回复中包含的工具调用。`ctx.systemPrompt` 拥有第一件事——几十个互不相识的插件各自贡献一段提示词文本或一个工具 schema，`SystemPrompt.assemble()` 把这些片段拼装成一次确定性的请求，而不把整份提示词的控制权交给任何单一插件。`ctx.tools` 拥有第二件事——无论是 `bash`、`read`、`grep`，还是委派给某个 subagent，每一次工具调用都要经过同一条 `ToolRuntime.execute()` 流水线，因此工具作者只需写一次 `execute()` 主体，就能免费获得策略、重试与可观测性。下面顺着代码，把这两个注册表都走一遍。
+
+## 一览
+
+撑起整章的是两个注册表，外加它们各自围绕构建的两个工件。
+
+:::concept{term="ctx.systemPrompt / SystemPrompt"}
+组装注册表。从每个已挂载插件收集具名、有序的提示词片段（`section`、`context`、`variable`）和工具 schema，再把它们融合成一次确定性的请求——每个步骤一次。
+:::
+
+:::concept{term="PromptAssembly"}
+组装产出的唯一工件：`sections`、`contexts`、`tools`、`variables` 同处一个结构体，因此一次 waterfall 遍历就能同时看到并协调提示词文本与工具列表，无论 wire 格式之后如何拆分它们。
+:::
+
+:::concept{term="ctx.tools / ToolRuntime"}
+执行注册表。独家决定一次模型发出的工具调用如何抵达某份定义的 `execute()` 主体——一条由策略、守卫、分发与后处理组成的固定阶段流水线，工具作者无需重新实现。
+:::
+
+:::concept{term="ToolDefinition / defineTool()"}
+工具作者注册的单元。`defineTool()` 直接从一份声明式 schema 推断类型化参数与规范输出，并在主体运行之前插入校验。
+:::
 
 ## 一份提示词，多个归属方
 
@@ -153,11 +173,17 @@ flowchart TD
 - 一个已注册的变量，其提供方在本次组装中返回了 `undefined`，会抛出「本次组装没有值」——例如一个引用 `{{cwd}}` 的 persona，用在没有 cwd 的配置预创建 stdio agent 上，会让该轮次响亮地失败，而不是悄悄渲染成空。
 - 一个孤立的 `{{`，其后文任何位置都没有 `}}`，会按字面量原样通过——这是唯一一种确实不存在撰写意图歧义的情况。
 
-目前没有在提示词行文中表示字面 `{{...}}` 的转义语法；这个包把它推迟到真正有提示词需要时再实现。`examples/acp-agent` 的 `tests/snapshots/text-turn/system-prompt.expected.md` 精确录制了一个纯文本轮次的产出：identity（order -100）、插值了 `{{model}}`/`{{cwd}}` 的 persona（order 0）、然后是每个已挂载工具包各自的一个 section，按升序排列，某个工具包没有注册 section 的地方则完全不出现任何内容。
+> [!LIMITATION]
+> 目前没有在提示词行文中表示字面 `{{...}}` 的转义语法；这个包把它推迟到真正有提示词需要时再实现。
+
+`examples/acp-agent` 的 `tests/snapshots/text-turn/system-prompt.expected.md` 精确录制了一个纯文本轮次的产出：identity（order -100）、插值了 `{{model}}`/`{{cwd}}` 的 persona（order 0）、然后是每个已挂载工具包各自的一个 section，按升序排列，某个工具包没有注册 section 的地方则完全不出现任何内容。
 
 ## 两类失败，以及工具 schema 归属何处
 
-`toolOrder` 的配置错误处理体现了「明确失败」的两级纪律。**形状**违规——列表中的重复名称，或缺少 `<unlisted-tools>` 其余项——会在插件构造时（配置加载时）由 `validateToolOrder()` 同步检查一次。**内容**违规——列出了一个没有任何提供方注册过的工具名——只有等提供方都有机会注册之后才能得知，因此只会在*第一次* `assemble()` 调用时才浮现，这仍然远早于模型能对一个错误的工具列表采取任何行动。
+`toolOrder` 的配置错误处理体现了「明确失败」的两级纪律：
+
+> [!NOTE]
+> **形状**违规——列表中的重复名称，或缺少 `<unlisted-tools>` 其余项——会在插件构造时（配置加载时）由 `validateToolOrder()` 同步检查一次。**内容**违规——列出了一个没有任何提供方注册过的工具名——只有等提供方都有机会注册之后才能得知，因此只会在*第一次* `assemble()` 调用时才浮现，这仍然远早于模型能对一个错误的工具列表采取任何行动。
 
 `PromptAssembly.tools: ToolSchema[]` 和 `sections`、`contexts`、`variables` 并列存在于同一个结构体中，尽管发往模型的 wire 协议把工具 schema 作为独立于系统提示词字符串的 JSON 字段传输——「模型被告知自己能做什么」是一个连贯的整体事实，无论 wire 格式恰好如何拆分它，把两者放在同一个 `PromptAssembly` 下意味着一次 waterfall 遍历就能同时看到并协调两者。`core/tools` 在自己的构造函数中恰好注册一次工具 schema 提供方（`ctx.systemPrompt.tools(context => this.wireSchemas(context.scope))`），并且仅在 code-mode 部署下额外注册两个普通 section（order 99 的 `tools:code-only`，order 150 的 `tools:sdk`），用行文陈述与 `wireSchemas()` 在 schema 列表中强制执行的同一条限制——如果没有它，模型会读到一份逐个描述的完整工具目录，却没有任何声明说明实际上只有一个工具可以被调用，于是它直接原生调用某个工具，收到 `UNKNOWN_TOOL`，进而合理地认定这个部署是坏的。
 
@@ -238,15 +264,21 @@ flowchart TD
 
 - `register(definition): () => void`——添加一个受信任、带类型的同进程 `ToolDefinition`。调用方上下文的作用域决定注册所在的层：普通插件上下文全局注册，而 agent 的 `agent.ctx` 只为该 agent 注册，并在那里遮蔽同名的全局工具。
 - `presentAs(mode)`——只为单个 agent 覆盖进程级的 `mode` 配置（`native`/`code`/`both`）。
-- `restrict(filter)`——在全局工具集合上叠加一个 agent 作用域的允许／拒绝掩码。这是可见性组合，明确不是权限边界——被限制掉的工具对该 agent 不可见，但限制本身不是用来强制「这个 agent 绝不能做 X」的手段，那是 `guard()` 的职责。
+- `restrict(filter)`——在全局工具集合上叠加一个 agent 作用域的允许／拒绝掩码。
 - `get(name, scope?)` / `schemas(scope?)`——解析某个作用域实际能看到什么，已经应用了遮蔽和限制。
 - `guard(guard: ToolGuard): () => void`——注册一个在 `pre-execute` 之后生效的单调拒绝。签名为 `(execution: Readonly<ToolExecution>) => string | undefined`（`packages/core/tools/src/index.ts:711`）：返回字符串即为最终拒绝理由，返回 `undefined` 则维持原决定不变。
 - `execute(exec)`——为一次调用运行完整流水线：快照并冻结参数，分配一个不透明的 `ToolExecutionToken`，依次运行 pre-execute → guards → execute → post-execute → finalize，并在 `tools/result` 触发前独立快照这个已冻结的结果。
 - `executionMode(exec)`——为调度决定这次调用是 `parallel` 还是 `exclusive`（见下文）。
 
+> [!PITFALL]
+> `restrict()` 是可见性组合，明确不是权限边界——被限制掉的工具对该 agent 不可见，但限制本身不是用来强制「这个 agent 绝不能做 X」的手段，那是 `guard()` 的职责。
+
 ### 取消是协作式的，不是强制杀死
 
-每一个 `ToolExecutionInput` 都携带一个由调用方拥有的必填 `AbortSignal`（`packages/core/tools/src/index.ts:314-338`）。工具主体以 `exec.signal` 的形式接收它，必须观测或转发它；只有 `tools/execute` 包装层可以临时替换这个信号（比如用来施加一个截止时间），而注册表会在主体启动之前立即把调用方的原始信号重新融合回去。主体运行之前发生的取消会结算为 `ABORTED_BEFORE_DISPATCH`；主体已经开始运行之后发生的取消，只能把一个*成功*的结果替换为 `ABORTED`——更具体的失败（拒绝、包装层抛出、工具抛出、后置策略失败，或者超时包装层产生的 `TOOL_TIMEOUT`）永远优先。注册表无法强制终止同进程代码；一个忽略自身信号的工具会径直继续运行下去。
+每一个 `ToolExecutionInput` 都携带一个由调用方拥有的必填 `AbortSignal`（`packages/core/tools/src/index.ts:314-338`）。工具主体以 `exec.signal` 的形式接收它，必须观测或转发它；只有 `tools/execute` 包装层可以临时替换这个信号（比如用来施加一个截止时间），而注册表会在主体启动之前立即把调用方的原始信号重新融合回去。主体运行之前发生的取消会结算为 `ABORTED_BEFORE_DISPATCH`；主体已经开始运行之后发生的取消，只能把一个*成功*的结果替换为 `ABORTED`——更具体的失败（拒绝、包装层抛出、工具抛出、后置策略失败，或者超时包装层产生的 `TOOL_TIMEOUT`）永远优先。
+
+> [!PITFALL]
+> 注册表无法强制终止同进程代码；一个忽略自身信号的工具会径直继续运行下去。取消是一个需要主体主动响应的请求，而不是一个杀死开关。
 
 ## `defineTool()`：类型化参数、规范输出、自动生成的校验
 
@@ -312,7 +344,10 @@ ctx.tools.register(defineTool({
 
 ## 并行调度与独占调度
 
-`ctx.tools.executionMode(exec)` 决定 agent loop 的滚动调度池如何对待一次调用。只有当已解析定义的 `isConcurrencySafe(exec.arguments)` 分类器恰好返回 `true` 时，它才会报告 `parallel`；任何未知、隐藏、未声明、参数无效或抛出异常的分类结果都是 `exclusive`。循环会把连续的 `parallel` 调用归入一个有界的池，并把每一个 `exclusive` 调用当作排序屏障——分发与主体执行可以重叠，但策略阶段、持久化结果和模型可见的上下文始终保持模型原本的调用顺序。这是一种主动选择加入、而且天生保守的机制：一个会修改父级拥有的状态、或者共享状态竞态不具备交换性的主体，绝不应该声明 `isConcurrencySafe`。
+`ctx.tools.executionMode(exec)` 决定 agent loop 的滚动调度池如何对待一次调用。只有当已解析定义的 `isConcurrencySafe(exec.arguments)` 分类器恰好返回 `true` 时，它才会报告 `parallel`；任何未知、隐藏、未声明、参数无效或抛出异常的分类结果都是 `exclusive`。循环会把连续的 `parallel` 调用归入一个有界的池，并把每一个 `exclusive` 调用当作排序屏障——分发与主体执行可以重叠，但策略阶段、持久化结果和模型可见的上下文始终保持模型原本的调用顺序。
+
+> [!PITFALL]
+> 这是一种主动选择加入、而且天生保守的机制：一个会修改父级拥有的状态、或者共享状态竞态不具备交换性的主体，绝不应该声明 `isConcurrencySafe`。
 
 ## Code Mode：用生成的 SDK 取代逐次调用
 
@@ -345,4 +380,4 @@ export function apply(ctx: Context) {
 }
 ```
 
-从这里出发，部署相关的策略应该放在流水线各阶段，而不是塞进工具主体：可扩展的允许／拒绝／询问逻辑放进 `tools/pre-execute`；最终的所有者策略拒绝放进 `ctx.tools.guard()`；围绕分发的超时／重试／指标包装层放进 `tools/execute`；替换内容、替换规范值、用纠正性反馈阻止结果，或附加面向模型的上下文，放进 `tools/post-execute`；纯粹的观测放进 `tools/result`。一个把沙箱逻辑或重试逻辑硬编码进自身的工具，只是在重复这些扩展点本就存在的职责——并且失去了「一个钩子或策略插件可以横跨所有工具族生效，而无需与其中任何一个耦合」这个本该有的性质。同样的纪律也适用于上游的提示词:跨调用的指导是工具自己所在包里的一个 `tool:*` section,运行时事实是只注册一次的变量,部署角色/行为则只留在 persona 里——因此一个新工具或一个新部署,永远不需要触碰 `agent-loop` 的请求构建路径,就能被模型听见。
+从这里出发，部署相关的策略应该放在流水线各阶段，而不是塞进工具主体：可扩展的允许／拒绝／询问逻辑放进 `tools/pre-execute`；最终的所有者策略拒绝放进 `ctx.tools.guard()`；围绕分发的超时／重试／指标包装层放进 `tools/execute`；替换内容、替换规范值、用纠正性反馈阻止结果，或附加面向模型的上下文，放进 `tools/post-execute`；纯粹的观测放进 `tools/result`。一个把沙箱逻辑或重试逻辑硬编码进自身的工具，只是在重复这些扩展点本就存在的职责——并且失去了「一个钩子或策略插件可以横跨所有工具族生效，而无需与其中任何一个耦合」这个本该有的性质。同样的纪律也适用于上游的提示词：跨调用的指导是工具自己所在包里的一个 `tool:*` section，运行时事实是只注册一次的变量，部署角色/行为则只留在 persona 里——因此一个新工具或一个新部署，永远不需要触碰 `agent-loop` 的请求构建路径，就能被模型听见。

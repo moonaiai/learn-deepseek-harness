@@ -9,6 +9,30 @@ module: orchestration-and-capstone
 order: 24
 ---
 
+## 一句话版本
+
+本章把一条命令——`pnpm dsh --profile headless "task"`——从头跑到尾，并用这一次运行把前面每一章串起来。我们会追踪 `headless` profile 如何组装、一个真实回合究竟做了什么、挂载了哪些工具与委托入口、会话最终落在哪。沿途还会把这次运行启动的内容分清哪些是真正的能力接缝、哪些是非接缝机件——正是本课程对每一章都用过的那同一把尺子。
+
+## 速览
+
+四个词撑起整章。前两个是这一次运行的操作词汇，后两个是它用来清点挂载内容的分析视角。
+
+:::concept{term="headless profile"}
+`headless` profile 是 `dsh-base` 叠加 `dsh-headless`：一个不挂 Host、HTTP 服务器或浏览器客户端的一次性 Agent 驱动器——一个任务进去，一段打印出来的答案出来。
+:::
+
+:::concept{term="overlay"}
+overlay 是与基础组合并列的具名 `*.cordis.yml`，只插入、覆盖或禁用演示某一特性所需的那几行——大多数 overlay 换个 replay/fixture 后端就能在无密钥下运行。
+:::
+
+:::concept{term="能力接缝"}
+能力接缝（capability seam）是一条挂载出来的、带有兄弟级可替换 Provider 的 Definition——本次运行指 `ctx.shell`、`ctx.fs`、`ctx.subagents`、`ctx.workflowEngine`、`ctx.compaction`、`ctx.sessionPersistence`。换一个 Provider（E2B 文件系统、另一种持久化后端）之后，工具与 `headless-runner` 完全不需要改动。
+:::
+
+:::concept{term="非接缝机制"}
+非接缝机制（non-seam mechanism）是不存在第二种可替换实现的机件：事件溯源的会话日志（每个 agent 一份 `Session`）、单一的 `ctx.tools` 注册表，以及 `todo_write`——它只是架在接缝之上的 Consumer，而非自成一条接缝。
+:::
+
 ## 一条命令，到底启动了什么
 
 ```sh
@@ -65,7 +89,9 @@ dsh --profile headless --dump-config
 
 这个随附组合包完全不挂载 Host、HTTP 服务器、Web 运行时或浏览器插件——这是一个直接的 Agent 驱动器,不是套了另一层 UI 的第二产品入口。
 
+:::fold[示例组合如何对应真实 profile]
 本章后文使用的 `examples/headless-agent/cordis.yml` 直接挂载了等价的配置行(没有通过 `include` 引用组合包的 patch),因此它的 id 与真实 profile `--dump-config` 打印出的内容一一对应:`settings`、`credentials`、`llm-deepseek`、`subprocess`、`bash`、`agent-spine`(在演示中替代了 `dsh-agent`/`agent-default-model`/`headless-runner`)、`persistence`、`checkpoint-policy`、`token-meter`、`compaction-basic`、`session-projection`,以及 subagent/workflow/todo 相关配置行和文件系统栈。`examples/headless-agent/composition.md` 里的生成图把这同一份清单渲染成了带有每个插件 id 和包名的流程图——值得先整体打开看一眼,而不是在这里逐行细读。
+:::
 
 ## 一次真实回合(回顾第 4 章)
 
@@ -79,7 +105,9 @@ dsh --profile headless --dump-config
 
 这个序列没有任何一步绕过 turn/step 生命周期:`agent.followup()` 开启的正是第 4 章 `turn()`/`step()`/`preStep()` 讲解过的那套机制——`turn/start`,一个或多个与工具分发交织的 `step/start`/`step/end` 配对,以及一个 `turn/end`,其 `reason.kind`(`completed`、`error`、`max-tokens`、`blocked`、`aborted`)正是 `headless-runner` 用来决定自身进程退出码的依据。`completed` 原因退出码为 `0`;其余情况退出码为 `1`,`error` 原因还会额外把错误码和消息写到 stderr——一次成功的运行,stderr 应当保持为空。
 
+:::fold[把一个完整回合看成 JSONL 流]
 `examples/headless-agent/tests/fixtures/headless-driver.ts` 里的快照测试驱动把这一点做得很具体:它启动一套同类型的组合配置,驱动一个 fixture 回合,并把每一条 `SessionEvent` 都以 JSONL 形式流式输出到 stdout,最后再加一条结果记录——这条 JSONL 流只是测试基础设施,从来不是受支持的 CLI 输出格式,但它是实际观察一个完整回合事件序列(`turn/start`、`agent/inbox/spliced`、`step/start`、`user/message`、运行时上下文快照、`assistant/message`、`tool/call`/`tool/result` 配对、`step/end`、`turn/end`)——每行一个 JSON 对象——最快的办法。
+:::
 
 ## 台面上有哪些工具,为什么(回顾第 6/7 章)
 
@@ -151,14 +179,6 @@ pnpm run demo:acp             # 需要 DEEPSEEK_API_KEY
 ## 究竟挂载了什么:接缝与非接缝
 
 用本课程通篇沿用的接缝/非接缝词汇,把这次组合里的各行对上号,能让"清单"这件事变得具体,而不是停留在抽象层面。这一次 `headless` 运行挂载的是真正的能力接缝——`ctx.shell`(`dsh-bash-local` 作为 Service Provider)、`ctx.subprocess`(`dsh-subprocess-local`)、`ctx.fs`(`dsh-fs-local`)、`ctx.subagents`(`dsh-subagent-spawn-in-process` 与 `dsh-subagent-fork-in-process` 并存)、`ctx.workflowEngine`(`dsh-workflow-worker-thread`)、`ctx.compaction`(`dsh-compaction-basic`)、以及 `ctx.sessionPersistence`(`dsh-session-persistence-jsonl`)——每一个都可以换成另一个 Provider(沙箱化的 bash、E2B 文件系统、另一种持久化后端),而 `dsh-tool-bash`、`dsh-tool-fs`、`dsh-tool-subagent`、`dsh-tool-workflow` 乃至 `headless-runner` 本身完全不需要变动——`e2b.cordis.yml` overlay 一次性演示的正是其中三个接缝的这种替换。
-
-:::concept{term="能力接缝"}
-能力接缝（capability seam）是一条挂载出来的、带有兄弟级可替换 Provider 的 Definition——此处指 `ctx.shell`、`ctx.fs`、`ctx.subagents`、`ctx.workflowEngine`、`ctx.compaction`、`ctx.sessionPersistence`。换一个 Provider（E2B 文件系统、另一种持久化后端）之后，工具与 `headless-runner` 完全不需要改动。
-:::
-
-:::concept{term="非接缝机制"}
-非接缝机制（non-seam mechanism）是不存在第二种可替换实现的机件：事件溯源的会话日志（每个 agent 一份 `Session`）、单一的 `ctx.tools` 注册表，以及 `todo_write`——它只是架在接缝之上的 Consumer，而非自成一条接缝。
-:::
 
 同样具体的是,这次运行也依赖着本课程刻意没有当作接缝来讲的机制:会话日志本身(每个 agent 一份 `Session`,事件溯源,没有另一种可替换的"会话实现");受控的工具流水线(`ctx.tools` 是单一注册表,不是带有兄弟 Provider 的 Definition);以及 `todo_write`——它和这次组合里其余的模型可见工具一样,是架在这些接缝之上的 Consumer,而不是它自己的一条接缝。区分这两者不是咬文嚼字:这正是本课程贯穿始终用来检验每一章的同一个标准——是否真的存在且要紧的第二种、可替换的实现——只是一次 `dsh --profile headless` 运行恰好把两种情况都摆在了一起。
 

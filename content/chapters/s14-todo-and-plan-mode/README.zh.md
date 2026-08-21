@@ -9,13 +9,38 @@ module: world-and-collab-seams
 order: 14
 ---
 
+## 简短版
+
+`todo_write` 和 plan mode 是本模块中仅有的两个**不是**能力 seam 的机制：两者都只有唯一一份实现，没有可替换的 Service Provider，部署时也不存在「选哪个 backend」的决策。它们完全由前面章节已经建好的三个原语拼装而成——一个 `SessionEventMap` 成员、在其之上的整值替换折叠，以及（仅 plan mode）一个 `ctx.systemPrompt` 段落。它们在此之上新增的，是持久、可供人类观察的协作状态：一份 UI 能在对话旁边渲染的任务清单，以及一个会在模型行动之前改变其指令的模式开关。继续往下读，看看两者各自如何由这些原语搭起来，以及为什么它们都不需要引入第四种角色。
+
+## 一览
+
+:::concept{term="todo_write"}
+注册在 `ctx.tools` 上的唯一一个工具：`todo_write(todos: [{ content, status }])`。它的定义性规则是整表替换：每次调用都发送完整列表，并替换掉之前的所有内容。没有单项编辑，没有 id，没有增量协议。
+:::
+
+:::concept{term="plan mode"}
+用同样的原语搭建出的一整套协作协议：一个 `/plan` 进入命令、一个 `plan:policy` 提示词段落、一个 `exit_plan_mode` 工具，以及一次把控转换的人类评审决定。软引导，而非强制执行。
+:::
+
+:::concept{term="整值替换折叠"}
+在单个 `SessionEventMap` 成员（`todo/write`、`plan/mode`）之上后写覆盖先写。没有合并、没有编辑历史——最新记录的事件*就是*全部状态，因此恢复、fork 和压缩都能直接还原，无需任何活跃内存镜像。
+:::
+
+:::concept{term="会话投影"}
+注册在 `ctx.sessionProjections` 上的一个折叠单元，把日志事件转成实时 UI 状态（web 客户端 `TodoPanel` 的任务条、plan mode 的 `{ active, pending }` 指示）。两个包都只是这个 `core` 注册表的消费者；它们本身从不渲染任何东西。
+:::
+
 ## 不是能力 seam——这正是重点
 
 前几章讲过的每一种机制都是真正的能力 seam：一个拥有 `ctx.<key>` 的 Service Definition、一个或多个 Service Provider，以及一个注入它的 Consumer——[权限与审批](../s13-approval-and-questions/README.zh.md)一章里的 `ctx.approval` 和 `ctx.userQuestions` 在生成的 `docs/capability-seams.md` 关系图中都被标记为 `seam`。`todo_write` 和 plan mode 不是这样构建的，生成的关系图对此直言不讳：`ctx.planMode` 被标记为 `core`，Provider 一列完全是空的；而 `todo_write` 压根没有注册任何 `ctx.<key>` 服务——它只是一个普通的工具包，外加一个投影单元注册，仅此而已。两者都只有唯一一份实现，没有第二个候补的 backend 等着替换进来，部署时也不存在「选哪个 provider」这样的决策。
 
 这两种机制真正建立于其上的，是前面章节已经确立的三个原语：一个 `SessionEventMap` 成员（`todo/write`、`plan/mode`）、在这个成员之上的整值替换折叠（后写覆盖先写，正是[会话日志](../s03-event-sourced-session/README.zh.md)一章讲过的模式），以及一个 `ctx.systemPrompt` 段落（仅 plan mode 需要——`todo_write` 完全不需要）。Plan mode 还额外调用了 `ctx.userQuestions`，它所依赖的唯一一个真正的 seam，但那是作为 Consumer 借用它，而非拥有它。这两个包里都没有出现任何新的循环机制、新的注册表，或第三种角色。
 
-这两个工具都没有模型用文字回答说不出来的外部副作用。它们买到的东西是**人类（或界面）能在对话旁边观察到的、可见、持久、结构化的状态**——一份持续显示在界面上的任务清单，以及一个会在模型行动之前改变其指令的模式开关。把两者放在一起读，还能形成一个有意思的对照：`todo_write` 是一个只做一件事的小工具包——记录一份快照。Plan mode 则是一整套协作协议——一个提示词段落、一个进入命令、一个退出工具，以及一次把控转换的人类评审决定。两者合起来展示了这个 harness 里「协作状态」这个概念的两端，且完全不需要引入第四种角色。
+> [!WHY]
+> 这两个工具都没有模型用文字回答说不出来的外部副作用。它们买到的东西是**人类（或界面）能在对话旁边观察到的、可见、持久、结构化的状态**——一份持续显示在界面上的任务清单，以及一个会在模型行动之前改变其指令的模式开关。
+
+把两者放在一起读，还能形成一个有意思的对照：`todo_write` 是一个只做一件事的小工具包——记录一份快照。Plan mode 则是一整套协作协议——一个提示词段落、一个进入命令、一个退出工具，以及一次把控转换的人类评审决定。两者合起来展示了这个 harness 里「协作状态」这个概念的两端，且完全不需要引入第四种角色。
 
 ## `todo_write`：以事件快照记录模型的任务清单
 
@@ -49,7 +74,22 @@ function toTodoList(raw: { content: string; status: string }[], allowParallel: b
 }
 ```
 
-`allowParallelInProgress` 是必填项，没有默认值——README 明确指出这是一个部署层面的选择而非固定规则，因为并发的活跃任务是否合理，取决于工具本身无法观测的运行时并发情况（并行的 subagent、后台任务）。这个开关会同时改变两件事：面向模型的描述文案（`index.ts` 中的 `DESCRIPTION_PARALLEL` 与 `DESCRIPTION_SINGLE`）以及接受的输入。但它**不会**改变持久日志的不变式——`packages/todo/tool-todo/src/invariant.ts` 有意对活跃数量保持沉默，因为在允许并行时写下的日志，必须在后续部署收紧策略之后仍可回放。
+`allowParallelInProgress` 是必填项，没有默认值——README 明确指出这是一个部署层面的选择而非固定规则，因为并发的活跃任务是否合理，取决于工具本身无法观测的运行时并发情况（并行的 subagent、后台任务）。这个开关会同时改变两件事：面向模型的描述文案（`index.ts` 中的 `DESCRIPTION_PARALLEL` 与 `DESCRIPTION_SINGLE`）以及接受的输入。
+
+> [!NOTE]
+> 这个开关**不会**改变持久日志的不变式——`packages/todo/tool-todo/src/invariant.ts` 有意对活跃数量保持沉默，因为在允许并行时写下的日志，必须在后续部署收紧策略之后仍可回放。
+
+从调用到渲染成任务条的数据路径是一条干净的有序流程：
+
+:::timeline
+- 模型调用 `todo_write` —— 把完整列表作为参数发送
+- `toTodoList()` —— 校验；拒绝空/重复 content，执行活跃数量策略
+- 拒绝非 agent 调用方 —— 没有承载会话就无处写入这份列表
+- 追加 `todo/write` —— 整份快照写入会话日志；被排除在 `SurfaceEventType` 之外
+- 投影折叠 —— `todos` 单元取整份新列表（后写覆盖先写）
+- UI 渲染 —— `TodoPanel` 显示当前有效计划；模型只看到一句小小的确认
+- `turn/start` —— 一旦新的一轮真正开始，任务条即被清空
+:::
 
 ### 是事件，不是 surface
 
@@ -78,7 +118,8 @@ execute(args, exec) {
 
 非 agent 调用方——没有 `exec.agent`，因而没有会话可以承载这份列表——会被直接拒绝，而不是静默地什么都不做。这就是「单一所有者」设计：列表属于调用工具的那唯一一个 agent 会话，没有 subagent、共享或 swarm scope。[`todo_write` Agent Note](../../../.agents/notes/implemented/feature/2026-06-29-todo-write-tool.md) 明确解释了这一取舍：claude-code 后续版本为条目加上了 id、依赖关系和逐项归属，但那只是为了支持基于磁盘、带锁保护的 agent **swarm**——不在本设计范围内，因此条目形状被有意保持在最小值 `{ content, status }`。
 
-关键的一点是，`todo/write` **被排除在 `SurfaceEventType` 之外**。Surface 是 `deriveMessages()` 折叠成 LLM 自身对话历史的那部分事件子集；一次 todo 写入在那里不产生任何消息。模型只看到自己的工具调用和工具返回的小小确认结果——完整列表从未作为对话内容被再次注入。整份快照只存在于会话日志中，作为纯粹的持久 UI 状态，供任何渲染它的一方读取。
+> [!NOTE]
+> 关键的一点是，`todo/write` **被排除在 `SurfaceEventType` 之外**。Surface 是 `deriveMessages()` 折叠成 LLM 自身对话历史的那部分事件子集；一次 todo 写入在那里不产生任何消息。模型只看到自己的工具调用和工具返回的小小确认结果——完整列表从未作为对话内容被再次注入。整份快照只存在于会话日志中，作为纯粹的持久 UI 状态，供任何渲染它的一方读取。
 
 ### 返回文本与已记录状态的区别
 
@@ -88,7 +129,10 @@ execute(args, exec) {
 Updated todo list: 2 pending, 1 in progress, 3 completed.
 ```
 
-这就是模型在自己的对话记录里能看到的全部内容。完整列表——UI 真正展示出来的东西——完全存在于 `todo/write` 事件里，模型从不会重新读取它。这个拆分对 token 走向很重要：**调用参数**（模型每次发送的完整列表）会一直保留在历史中直到压缩（compaction），并随每次写入增长；而**结果**始终很小、形状固定，与列表长度无关。
+这就是模型在自己的对话记录里能看到的全部内容。完整列表——UI 真正展示出来的东西——完全存在于 `todo/write` 事件里，模型从不会重新读取它。
+
+> [!NOTE]
+> 这个拆分对 token 走向很重要：**调用参数**（模型每次发送的完整列表）会一直保留在历史中直到压缩（compaction），并随每次写入增长；而**结果**始终很小、形状固定，与列表长度无关。
 
 ### 当前有效计划：在下一轮次被清空
 
@@ -109,13 +153,21 @@ projectionCtx.sessionProjections.register<'todos', TodoItem[] | null>({
 })
 ```
 
-这个折叠只有两条规则：每次 `todo/write` 取整份新列表（遵循整值替换模式，后写覆盖先写），并在下一次 `turn/start` 时重置为 `null`。其余所有事件——包括 `turn/end`——都原样传递状态。这是一个有意为之的生命周期决定，记录在[《todo 计划条在下一轮次清空》Agent Note](../../../.agents/notes/implemented/feature/2026-07-28-todo-plan-clears-on-next-turn.md) 里：如果在 `turn/end` 时清空，会在用户还在阅读刚完成的回答时把清单藏起来，所以已完成的列表会一直保持可见直到那一轮结束，只有当新的一轮真正开始时才会消失。UI——例如 web 客户端挂载在会话输入面板上的 `TodoPanel`——订阅这个投影并自行渲染这份「当前有效计划」；工具包本身从不渲染任何东西。
+这个折叠只有两条规则：每次 `todo/write` 取整份新列表（遵循整值替换模式，后写覆盖先写），并在下一次 `turn/start` 时重置为 `null`。其余所有事件——包括 `turn/end`——都原样传递状态。UI——例如 web 客户端挂载在会话输入面板上的 `TodoPanel`——订阅这个投影并自行渲染这份「当前有效计划」；工具包本身从不渲染任何东西。
 
-值得注意的是，`ctx.sessionProjections` 本身在生成的能力关系图中也被标记为 `core`，而非 `seam`：它是一个没有备选 backend 的单一折叠单元注册表，而不是一种可替换的能力。`tool-todo` 和 `plan-mode` 都只是这个 core 注册表的*消费者*，正如它们也是 `ctx.systemPrompt` 与 `ctx.tools` 的消费者一样——使用 core 基础设施本身并不会让某个包变成 seam。
+:::fold[为什么在 turn/start 而非 turn/end 清空任务条]
+这是一个有意为之的生命周期决定，记录在[《todo 计划条在下一轮次清空》Agent Note](../../../.agents/notes/implemented/feature/2026-07-28-todo-plan-clears-on-next-turn.md) 里：如果在 `turn/end` 时清空，会在用户还在阅读刚完成的回答时把清单藏起来，所以已完成的列表会一直保持可见直到那一轮结束，只有当新的一轮真正开始时才会消失。
+:::
+
+> [!NOTE]
+> 值得注意的是，`ctx.sessionProjections` 本身在生成的能力关系图中也被标记为 `core`，而非 `seam`：它是一个没有备选 backend 的单一折叠单元注册表，而不是一种可替换的能力。`tool-todo` 和 `plan-mode` 都只是这个 core 注册表的*消费者*，正如它们也是 `ctx.systemPrompt` 与 `ctx.tools` 的消费者一样——使用 core 基础设施本身并不会让某个包变成 seam。
 
 ## Plan mode：提案、评审、退出
 
-如果说 `todo_write` 是一个小巧的单一用途快照，那么 `@deepseek-ai/dsh-plan-mode` 就是用同样的原语搭建出的一整套协作协议。它是**软引导，而非强制执行**：沙箱模式和批准策略——也就是[权限与审批](../s13-approval-and-questions/README.zh.md)一章讲过的机制——完全独立地限制一次工具调用真正能做什么；plan mode 既不读取也不写入两者中的任何一个。Plan mode 拥有的只是一个持久事实、一个提示词段落，以及一次经过评审的转换。
+如果说 `todo_write` 是一个小巧的单一用途快照，那么 `@deepseek-ai/dsh-plan-mode` 就是用同样的原语搭建出的一整套协作协议。Plan mode 拥有的只是一个持久事实、一个提示词段落，以及一次经过评审的转换。
+
+> [!LIMITATION]
+> Plan mode 是**软引导，而非强制执行**。沙箱模式和批准策略——也就是[权限与审批](../s13-approval-and-questions/README.zh.md)一章讲过的机制——完全独立地限制一次工具调用真正能做什么；plan mode 既不读取也不写入两者中的任何一个。
 
 ### 持久事实
 
@@ -147,7 +199,10 @@ ctx.systemPrompt.section({
 })
 ```
 
-部署方提供 `section`——例如「你正处于 plan mode 中。请先探索与设计，再通过 exit_plan_mode 提交完整方案」这样的自由文本——这段原样文本会在 plan mode 激活期间渲染在[工具流水线与提示词](../s06-tool-pipeline-and-prompt/README.zh.md)一章讲过的提示词顺序 50 处，未激活时不贡献任何内容。这就是 plan mode 改变模型行为的全部机制：一条提示词指令，而不是工具过滤器或沙箱上限。一个忽略引导的模型仍然可以调用它一直能调用的任何工具——`exit_plan_mode` 在两种状态下都保持注册，正是为了让请求的工具目录在转换前后永远不变形，从而使目录结构在模式切换前后保持稳定。
+部署方提供 `section`——例如「你正处于 plan mode 中。请先探索与设计，再通过 exit_plan_mode 提交完整方案」这样的自由文本——这段原样文本会在 plan mode 激活期间渲染在[工具流水线与提示词](../s06-tool-pipeline-and-prompt/README.zh.md)一章讲过的提示词顺序 50 处，未激活时不贡献任何内容。
+
+> [!NOTE]
+> 这就是 plan mode 改变模型行为的全部机制：一条提示词指令，而不是工具过滤器或沙箱上限。一个忽略引导的模型仍然可以调用它一直能调用的任何工具——`exit_plan_mode` 在两种状态下都保持注册，正是为了让请求的工具目录在转换前后永远不变形，从而使目录结构在模式切换前后保持稳定。
 
 ### 提交一次选择：空闲期与轮次进行中
 
@@ -194,10 +249,10 @@ ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecisio
 })
 ```
 
-它先调用 `next()`——让其余所有 pre-step 监听器先运行，且有机会拒绝这一步——只有当这一步真正被接受之后，才会追加 `plan/mode`。被拒绝的步骤、被中止的信号、追加失败，三者都会把这次选择继续留待下一个被接受的 pre-step 处理，而不是强行推进或悄悄丢弃它。这与[智能体循环](../s04-agent-loop/README.zh.md)一章讲过的「只在下游接受之后才提交」的纪律完全一致。
+> [!NOTE]
+> 它先调用 `next()`——让其余所有 pre-step 监听器先运行，且有机会拒绝这一步——只有当这一步真正被接受之后，才会追加 `plan/mode`。被拒绝的步骤、被中止的信号、追加失败，三者都会把这次选择继续留待下一个被接受的 pre-step 处理，而不是强行推进或悄悄丢弃它。这与[智能体循环](../s04-agent-loop/README.zh.md)一章讲过的「只在下游接受之后才提交」的纪律完全一致。
 
-### 通知：只在必要时告诉模型，绝不多余
-
+:::fold[通知：只在必要时告诉模型，绝不多余]
 一次由用户发起的转换还需要告诉模型情况变了，但只有在模型确实会因此困惑的时候才需要：
 
 ```ts
@@ -212,6 +267,7 @@ private narration(session: Session, target: boolean): UserMessage | undefined {
 ```
 
 `planModeAtLastHeader()` 只把日志折叠到最近一次 `request/header` 为止——也就是模型上一次真正被告知的 plan 状态。如果那个值已经和新目标一致，就不会追加任何通知：这次转换对模型不可见，因为它见过的东西并没有过时。只有当「模型上次被告知的」和「现在实际的」之间真正出现不一致时，才会产生一条插件来源的 `user/message`。
+:::
 
 ### 通过评审退出：`exit_plan_mode`
 
@@ -303,12 +359,16 @@ view: state => ({
 
 ## 为什么是这个设计，而不是通用 mode 注册表
 
-[plan 专用协作状态 Agent Note](../../../.agents/notes/implemented/simplification/2026-07-22-plan-specific-collaboration-state.md) 记录了第一版实现走的是相反的路：一个通用的具名 mode 注册表（`ModeConfig.modes`、`ctx.modes.list()`、退役定义的回退逻辑），尽管产品实际只上线了 `plan` 这一个 mode。重写把这些全部删除，改用一个 plan 专用的产品包，理由可以推广到这一个特性之外：
+[plan 专用协作状态 Agent Note](../../../.agents/notes/implemented/simplification/2026-07-22-plan-specific-collaboration-state.md) 记录了第一版实现走的是相反的路：一个通用的具名 mode 注册表（`ModeConfig.modes`、`ctx.modes.list()`、退役定义的回退逻辑），尽管产品实际只上线了 `plan` 这一个 mode。重写把这些全部删除，改用一个 plan 专用的产品包。
+
+:::decision
+选择 plan 专用包而非通用 mode 注册表，理由可以推广到这一个特性之外：
 
 - **一套词汇对应一个已上线的特性。** 那些未被使用的名称/配置机制，依然需要维护和测试，却没有第二个生产用例来证明其价值——这正是这个代码库到处应用的「要求有当前的所有者与需求」原则。
 - **「mode」在这里已经另有所指。** 沙箱模式是由 `ctx.sandboxPolicy` 拥有并以 `sandbox/mode` 记录的**强制执行**策略；plan mode 是提供引导和经评审退出的**协作立场**。把两者塞进同一个通用具名 mode 抽象，会掩盖它们拥有完全独立的所有者与生命周期语义这一事实。
 - **一个面向人类的传输层不能证明存在通用领域。** 该 Note 明确拒绝了「让某一个展示传输层拥有 plan 状态」的方案——TUI、web、恢复、fork、提示词组装和退出工具都需要**同一个**已记录事实，且与任何一个传输层无关，因此这个事实应当属于一个服务，而不是某个 UI 自己的词汇。
 - **按名单过滤工具的方案同样被拒绝。** 可变性是每一个具体工具（包括未来的和 MCP 工具）自身的属性，而不是每个 plan 部署都要手工维护的一份名单；plan mode 有意只做引导，而非安全边界，强制执行仍然留在它原本所在的地方——沙箱模式与批准策略。
+:::
 
 由此带来的结果是：未来再增加一种协作立场是一次明确的设计决定，而不是在既有注册表里加一条配置——而且自动化客户端（ACP 桥接）完全不会通过这个包获得人类的 mode 控制能力，因为 ACP 是纯自动化协议，既不挂载 plan mode，也不挂载任何 mode 选择协议。值得注意的是，即使真的出现第二种协作立场，也不会自动让这两个包变成能力 seam：seam 要求同一个 Service Definition 存在不止一份可替换实现，而「多了一种 mode」本身并不意味着「多了一种 backend」。
 
@@ -329,7 +389,8 @@ view: state => ({
 
 ## 值得记住的已知限制
 
-- `todo_write` 仅支持单一所有者：被委派的 subagent 没有属于自己的列表，也不存在共享或 swarm scope（这是有意推迟的设计，不是遗漏）。
-- 如果在一轮次最后一个被接受的 pre-step 之后进行了 plan mode 选择，而进程在下一个被接受的 pre-step 之前就退出了，这次选择就会丢失——UI 需要自行重新应用它。
-- Fork 出的 agent 会继承已记录的 plan 状态；新 spawn 的 agent 则一律从未激活状态开始，不存在创建时的 plan 选项。
-- 一个由另一个 agent 所有的存活子级完全无法打开 `exit_plan_mode` 评审——失败的调用会告诉它把尚未解决的决定折叠进自己的最终结果里，这与 `ctx.userQuestions` 在所有场景下应用的 `DELEGATED_CALLER` 规则完全一致。
+> [!LIMITATION]
+> - `todo_write` 仅支持单一所有者：被委派的 subagent 没有属于自己的列表，也不存在共享或 swarm scope（这是有意推迟的设计，不是遗漏）。
+> - 如果在一轮次最后一个被接受的 pre-step 之后进行了 plan mode 选择，而进程在下一个被接受的 pre-step 之前就退出了，这次选择就会丢失——UI 需要自行重新应用它。
+> - Fork 出的 agent 会继承已记录的 plan 状态；新 spawn 的 agent 则一律从未激活状态开始，不存在创建时的 plan 选项。
+> - 一个由另一个 agent 所有的存活子级完全无法打开 `exit_plan_mode` 评审——失败的调用会告诉它把尚未解决的决定折叠进自己的最终结果里，这与 `ctx.userQuestions` 在所有场景下应用的 `DELEGATED_CALLER` 规则完全一致。

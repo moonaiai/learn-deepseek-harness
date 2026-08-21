@@ -9,6 +9,30 @@ module: extension-memory-seams
 order: 18
 ---
 
+## 简短版本
+
+压缩是 harness 对无上限上下文窗口的应对：当 `deriveMessages()` 投影出的历史逼近 provider 的上限时，`ctx.compaction` seam 会用一段简洁、被记录、可重放的摘要检查点替换较早的一段历史，同时原样保留近期尾部。它以四包能力 seam 的形式发布——一个抽象的 `CompactionEngine`、默认的 token 压力后端 `compaction-basic`、一个可选的无模型修剪器，以及 `/compact` 命令。自动压力在每一次成功步骤之后检查，上下文溢出兜底对 provider 的拒绝做出反应，每一次变更都以一条持久、可被重放校验的事件落地，而不是一次静默的修改。接下来看每一部分如何决定*何时*历史过大，以及*该摘要什么*。
+
+## 一览
+
+四个术语撑起整章：服务本身、它落地的检查点、包裹这次变更的仅记录事件，以及为压力定价的共享计量器。
+
+:::concept{term="CompactionEngine"}
+`ctx.compaction` 背后的抽象 `Service`。三个操作——`compactIfNeeded`、`compactNow`、`compactRegion`——只陈述压缩做*什么*，绝不规定*怎么做*。
+:::
+
+:::concept{term="checkpoint（检查点）"}
+唯一的一次 surface 变更：一条 `user/message`，其 `surfaceOp: { op: 'replace', start, end }` 遮蔽一段范围并插入经过包装的摘要，通过 `sourceEventSeqs` 引用每一个被移除的事件。
+:::
+
+:::concept{term="compaction/* 仅记录事件"}
+`compaction/start` → `compaction/summary` → `compaction/end`。它们获取并释放持久锁、为重放记录原始摘要，但自己从不加入模型可见的 surface。
+:::
+
+:::concept{term="ctx.tokenMeter"}
+共享的 LLM 家族服务，在一次已消费的日志版本上对当前的信封与 surface 进行定价。压缩自己不会另造一套 token 模型。
+:::
+
 ## 压缩要防止什么
 
 `Session` 是一条只追加的 `SessionEvent` 日志（参见 [s03](../s03-event-sourced-session/README.zh.md)），`deriveMessages()` 从中投影出模型的对话历史。这条历史的增长没有任何天然上限——一次长时间运行的 agent 对话，尤其是工具密集的 ReAct 循环，会不断追加 `assistant/message` 和 `tool/result` 事件，直到派生出的历史逼近 provider 的上下文窗口。如果放任不管，模型最终会在响应中途被截断，或者 provider 直接拒绝这次请求。
@@ -26,7 +50,11 @@ order: 18
 | `@deepseek-ai/dsh-compaction-tool-result-pruner` | 可选的无模型配套组件 —— 对过大工具结果做确定性的首尾修剪 | `ctx.toolResultPruner` |
 | `@deepseek-ai/dsh-command-compact` | 用户 Consumer —— `ctx.commands` 上的 `/compact` 命令 | 注册到 `ctx.commands` |
 
-这与 bash seam（`dsh-shell` / `dsh-bash-local` / `dsh-tool-bash`）使用的三加一结构相同，但有一处刻意的偏离：这个 Service Definition 依赖 `dsh-session` 和 `dsh-llm`。[压缩能力 seam Agent Note](../../../../deepseek-harness/.agents/notes/implemented/feature/2026-06-18-compaction-capability-seam.md) 解释了这为何不是耦合上的问题——这份契约的动词作用于一个由 agent 拥有的 `Session`（`compactRegion(start, end, agent)`），其输出是来自 `dsh-llm` 的 `ContentBlock[]` 词汇。不命名这两个包，就无法表述"把较早的历史摘要为一个 session surface 节点"这件事。`dsh-session` 和 `dsh-llm` 本身是接口/词汇包，而非具体实现，所以这个 seam 真正的不变式——实现方与消费方各自独立演进——依然成立。
+这与 bash seam（`dsh-shell` / `dsh-bash-local` / `dsh-tool-bash`）使用的三加一结构相同，但有一处刻意的偏离：这个 Service Definition 依赖 `dsh-session` 和 `dsh-llm`。
+
+:::decision
+[压缩能力 seam Agent Note](../../../../deepseek-harness/.agents/notes/implemented/feature/2026-06-18-compaction-capability-seam.md) 解释了这为何不是耦合上的问题——这份契约的动词作用于一个由 agent 拥有的 `Session`（`compactRegion(start, end, agent)`），其输出是来自 `dsh-llm` 的 `ContentBlock[]` 词汇。不命名这两个包，就无法表述"把较早的历史摘要为一个 session surface 节点"这件事。`dsh-session` 和 `dsh-llm` 本身是接口/词汇包，而非具体实现，所以这个 seam 真正的不变式——实现方与消费方各自独立演进——依然成立。
+:::
 
 ### 抽象的 `CompactionEngine`
 
@@ -67,7 +95,13 @@ export abstract class CompactionEngine extends Service {
 type CompactionTrigger = 'pressure' | 'context-overflow'
 ```
 
-`'pressure'` 是主动式的——后端测量了当前的信封大小，发现它越过了配置的阈值。`'context-overflow'` 是被动式的——provider 已经因超出其上下文窗口而拒绝了一次请求，因此后端绕过正常的阈值/保留策略，强制执行一次有效的缩减，不再考虑标量压力。
+:::concept{term="pressure"}
+主动式——后端测量了当前的信封大小，发现它越过了配置的阈值。
+:::
+
+:::concept{term="context-overflow"}
+被动式——provider 已经因超出其上下文窗口而拒绝了一次请求，因此后端绕过正常的阈值/保留策略，强制执行一次有效的缩减，不再考虑标量压力。
+:::
 
 ## 压缩是被记录的，而不是静默的变更
 
@@ -81,16 +115,19 @@ type CompactionTrigger = 'pressure' | 'context-overflow'
 
 一次成功的压缩会依次落下五个事件：
 
-```
-compaction/start    → 仅记录。获取锁。
-[通过后端摘要较早的范围]
-compaction/summary  → 仅记录。记录原始摘要、范围、被遮蔽的 seq、token 数。
-user/message        → 唯一的 surface 变更：source = compactCheckpointSource(compactionId)，
-                       surfaceOp = { op: 'replace', start, end }，content = 经过包装的摘要。
-compaction/end       → 仅记录。释放锁。
-```
+:::timeline
+- compaction/start —— 仅记录。获取锁。
+- summarize —— 后端摘要较早的范围。
+- compaction/summary —— 仅记录。记录原始摘要、范围、被遮蔽的 seq、token 数。
+- user/message —— 唯一的 surface 变更：source = compactCheckpointSource(compactionId)，surfaceOp = { op: 'replace', start, end }，content = 经过包装的摘要。
+- compaction/end —— 仅记录。释放锁。
+:::
 
-这里有两点直接来自 harness 的核心 session 日志不变式"模型可见即已记录"：摘要文本本身留在 `compaction/summary` 上以支持完整重放，而模型*实际唯一*能看到的是那条替换用的 `user/message`——一段摘要本质上就是 user 角色的上下文，所以复用 `user/message` 而不是发明第五种事件类型，是对检查点本质的坦诚表述，而不是一种变通做法。`deriveMessages()` 会像渲染其他任何 surface 节点一样渲染它；被遮蔽的原始事件仍留在底层日志中，因此重放是确定性的，读取 append-origin 事件的人类可读事务日志仍能还原实际发生的一切。
+这里有两点直接来自 harness 的核心 session 日志不变式"模型可见即已记录"：摘要文本本身留在 `compaction/summary` 上以支持完整重放，而模型*实际唯一*能看到的是那条替换用的 `user/message`。`deriveMessages()` 会像渲染其他任何 surface 节点一样渲染它；被遮蔽的原始事件仍留在底层日志中，因此重放是确定性的，读取 append-origin 事件的人类可读事务日志仍能还原实际发生的一切。
+
+:::decision
+复用 `user/message` 作为检查点，而不是发明第五种事件类型。一段摘要本质上*就是* user 角色的上下文，所以这是对检查点本质的坦诚表述，而不是一种变通做法。
+:::
 
 这次 surface 变更位于锁的括号**内部**——`compaction/end` 是最后追加的事件，而不是第一个。这个顺序把一次摘要过程中的崩溃从静默损坏变成了一个*可检测的孤儿*：一个没有对应 `compaction/end` 的 `compaction/start`。一个存活的未匹配 start（出现在最新的 `session/end-seed` 之后）会阻塞每一个压缩入口点；一个出现在该边界之前的未匹配 start 则是上一个进程生命周期遗留的陈旧证据，不会阻塞一个恢复或 fork 出的会话。
 
@@ -129,7 +166,11 @@ flowchart TD
 
 ### 压力何时触发：调用之后，而非之前
 
-压力检查运行在 `agent/pre-step`——这是一个串行瀑布式扩展点，在*上一步*的助手输出、工具结果、缓冲上下文与引导信息都已持久化之后，*下一次*请求被构造之前触发。[调用后恢复 Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md) 解释了为什么选在这个边界而非更早的位置：`agent/pre-step` 观察到的是一次已完成的成功调用,而像 `agent/request` 这样更早的钩子看到的仍是一个尚未冻结路由与工具 schema 的临时请求。在*每一次*成功的步骤之后检查，而不是每个回合检查一次，这一点对失控回合的存活能力至关重要：一个工具密集的 ReAct 回合会在每一步追加一对 `assistant/message` + `tool/result`，因此 surface 会在*同一个回合内*不断增长，下一次 pre-step 检查就能在继续开启新的一步之前压缩早期已经关闭的工具配对。
+压力检查运行在 `agent/pre-step`——这是一个串行瀑布式扩展点，在*上一步*的助手输出、工具结果、缓冲上下文与引导信息都已持久化之后，*下一次*请求被构造之前触发。
+
+:::decision
+在调用之后检查，而不是之前。[调用后恢复 Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-07-10-after-call-compaction-pressure-and-overflow-recovery.md) 解释了为什么选在这个边界而非更早的位置：`agent/pre-step` 观察到的是一次已完成的成功调用,而像 `agent/request` 这样更早的钩子看到的仍是一个尚未冻结路由与工具 schema 的临时请求。在*每一次*成功的步骤之后检查，而不是每个回合检查一次，这一点对失控回合的存活能力至关重要：一个工具密集的 ReAct 回合会在每一步追加一对 `assistant/message` + `tool/result`，因此 surface 会在*同一个回合内*不断增长，下一次 pre-step 检查就能在继续开启新的一步之前压缩早期已经关闭的工具配对。
+:::
 
 ```ts
 // packages/compaction/compaction-basic/src/index.ts:147-165
@@ -147,7 +188,8 @@ ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecisio
 })
 ```
 
-注意这里的失败姿态：一次操作性的压力检查失败只会警告并调用 `next()`——它永远不会拒绝这一步。压缩是维护性工作，而不是对话必须通过的关卡。
+> [!NOTE]
+> 注意这里的失败姿态：一次操作性的压力检查失败只会警告并调用 `next()`——它永远不会拒绝这一步。压缩是维护性工作，而不是对话必须通过的关卡。
 
 ### 上下文溢出：被动兜底
 
@@ -186,7 +228,12 @@ while (keepFromIdx > 0) {
 return { start: surfaceNodes[0]!, end: surfaceNodes[keepFromIdx - 1]! }
 ```
 
-这里的"单元"是一个完整的已关闭步骤,或者一条无步骤消息——绝不是整个回合。回合边界并不能保护一个失控回合内部的旧步骤不被压缩；只有工具调用/结果配对是一条硬性的结构约束。`toolPairingBalancedBefore`/`After` 之所以从 Service Definition 包中导出，正是为了让 `compaction-basic` 与未来任何后端共享同一份边界检查实现，而不必各自重新实现一遍。一个不可分割的、仍处于开启状态的尾部步骤（工具调用尚无结果）会让选择结果返回 `null`——压缩就此放弃，等到那一步关闭后再重试。
+这里的"单元"是一个完整的已关闭步骤,或者一条无步骤消息——绝不是整个回合。
+
+> [!PITFALL]
+> 回合边界并不能保护一个失控回合内部的旧步骤不被压缩；只有工具调用/结果配对是一条硬性的结构约束。
+
+`toolPairingBalancedBefore`/`After` 之所以从 Service Definition 包中导出，正是为了让 `compaction-basic` 与未来任何后端共享同一份边界检查实现，而不必各自重新实现一遍。一个不可分割的、仍处于开启状态的尾部步骤（工具调用尚无结果）会让选择结果返回 `null`——压缩就此放弃，等到那一步关闭后再重试。
 
 ### 摘要：这是上一次请求的真实前缀，而不是一次独立支线
 
@@ -208,9 +255,15 @@ const options: GenerateOptions = {
 for await (const chunk of ctx.llm.stream(options)) assembler.push(chunk)
 ```
 
-回放对话自己的前缀,而不是重新组装一份最小化的新提示词，是刻意的设计：这让这次辅助调用成为上一次路由请求的真实前缀，使 provider 温热的 KV Cache 前缀得以复用而不是失效——网络上真正新增的只有末尾的指令和摘要输出。`GenerateOptions.purpose: 'compaction'` 是一个 provider 中立的判别字段,adapter 可以把它映射为传输层元数据（DeepSeek adapter 会发送 `x-deepseek-harness-compact: 1`），而不触碰模型可见的请求体。只有返回的*文本*会进入检查点——推理内容和工具调用被排除在外，这样摘要器就不会泄露私有推理内容,也不会伪造一个孤立的工具调用；图像输出则会以 `UNSUPPORTED_CONTENT` 明确失败，而不是被悄悄丢弃。
+:::decision
+回放对话自己的前缀,而不是重新组装一份最小化的新提示词：这让这次辅助调用成为上一次路由请求的真实前缀，使 provider 温热的 KV Cache 前缀得以复用而不是失效——网络上真正新增的只有末尾的指令和摘要输出。
+:::
 
+`GenerateOptions.purpose: 'compaction'` 是一个 provider 中立的判别字段,adapter 可以把它映射为传输层元数据（DeepSeek adapter 会发送 `x-deepseek-harness-compact: 1`），而不触碰模型可见的请求体。只有返回的*文本*会进入检查点——推理内容和工具调用被排除在外，这样摘要器就不会泄露私有推理内容,也不会伪造一个孤立的工具调用；图像输出则会以 `UNSUPPORTED_CONTENT` 明确失败，而不是被悄悄丢弃。
+
+:::fold[`llmStreamCall` 标记：证明摘要来自哪条调用路径]
 只有当结果确实经由*这个* context 的 `ctx.llm.stream()` 恰好消费了一次调用时，返回结果才会携带 `llmStreamCall: true`——如果子类用模板或远程摘要器覆盖 `summarize()`，就不应设置这个标记，因为未标记的 `rawOutput` 无法以同样的方式确认调用路径。
+:::
 
 ### 包装与共享事务
 
@@ -254,4 +307,13 @@ for await (const chunk of ctx.llm.stream(options)) assembler.push(chunk)
 
 ## 已知局限
 
-有一些溢出情形结构性地超出了压缩的能力范围：一个不可分割的单元（一条巨大的粘贴 `user/message`，或者一个非可修剪剩余部分本身就超出窗口的工具单元）无法被平衡的摘要压缩拆分，而一个仅靠自身就逼近窗口大小的信封——系统提示词、工具 schema 或 session 前缀——从来都不是 surface 压缩会触及的对象；只有派生历史会被缩减。`/compact` 不暴露任何范围或策略参数；显式范围仍然只能通过编程方式的 `compactRegion()` 路径实现。没有面向模型的压缩工具——压缩要么是自动策略，要么是直接的人工命令，模型永远无法把它作为一个任务动作来请求。
+有一些溢出情形结构性地超出了压缩的能力范围。
+
+> [!LIMITATION]
+> 一个不可分割的单元——一条巨大的粘贴 `user/message`，或者一个非可修剪剩余部分本身就超出窗口的工具单元——无法被平衡的摘要压缩拆分。
+
+> [!LIMITATION]
+> 一个仅靠自身就逼近窗口大小的信封——系统提示词、工具 schema 或 session 前缀——从来都不是 surface 压缩会触及的对象；只有派生历史会被缩减。
+
+> [!LIMITATION]
+> `/compact` 不暴露任何范围或策略参数；显式范围仍然只能通过编程方式的 `compactRegion()` 路径实现。没有面向模型的压缩工具——压缩要么是自动策略，要么是直接的人工命令，模型永远无法把它作为一个任务动作来请求。

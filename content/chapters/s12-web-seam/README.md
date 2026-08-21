@@ -11,6 +11,32 @@ module: world-and-collab-seams
 order: 12
 ---
 
+## The short version
+
+`ctx.web` is how the agent reaches the web, and unlike shell or LLM it is **two operations on one seam**: `search` and `fetch`. One concrete registry (`WebRuntime`) holds any number of providers for each, so three rival search vendors and one fetch backend can sit registered side by side in a single process. Selection is not made at boot — `resolveProvider` runs fresh on every call and refuses to guess among several usable providers. `dsh-tool-web` is the single stable model-facing consumer and never imports a provider package. Read on for why two operations share one seam, why selection is execution-time, and why three search vendors is the point rather than redundancy.
+
+## At a glance
+
+:::concept{term="ctx.web / WebRuntime"}
+A Cordis `Service` that is the Web Service Definition: a concrete class owning two provider `Map`s — one for search, one for fetch — plus the per-call selection policy. This is what `dsh-tool-web` calls.
+:::
+
+:::concept{term="WebSearchProvider / WebFetchProvider"}
+The provider contract: a plain object with an `id`, an `available()` probe, and `search()`/`fetch()`. No provider subclasses `WebRuntime`; each is registered into it and torn down with its contributing fiber.
+:::
+
+:::concept{term="resolveProvider"}
+The selection policy, executed fresh on every call rather than once at boot. It pairs a configured id (or, when unset, a count of usable providers) with each provider's local `available()` check — and throws rather than guess among several.
+:::
+
+:::concept{term="available()"}
+A synchronous, local-only probe — credential presence, parseable endpoint config. It answers "is this implementation usable right now," never "is the network reachable," and must not make network calls.
+:::
+
+:::concept{term="WebError"}
+The seam's single error/abort vocabulary: structured codes (`WEB_DUPLICATE_PROVIDER`, `WEB_PROVIDER_AMBIGUOUS`, `WEB_PROVIDER_UNAVAILABLE`, …) that surface to the model as an ordinary tool error.
+:::
+
 ## One seam, two operations
 
 Every other capability seam covered so far — shell, and shortly LLM — resolves one thing: one executor, one adapter. `ctx.web` is different on purpose. The [`dsh-web` README](../../../packages/web/web/README.md) states it directly: "Unlike shell/fs it spans two operations (search and fetch) on one seam, with potentially multiple providers each." Search and fetch share no request schema and no business logic — a `WebSearchRequest` looks nothing like a `WebFetchRequest`, and the code that calls Exa's endpoint has nothing in common with the code that follows an HTTP redirect. What they share is everything *around* the operation: one provider-id registry, one execution-time selection policy, one abort/error vocabulary (`WebError`), and one product-facing "how does this harness reach the web" configuration surface.
@@ -100,6 +126,19 @@ function resolveProvider<P extends ResolvableProvider>(selection: Selection<P>):
 }
 ```
 
+Read as a decision procedure, that function walks one ordered path on every call:
+
+:::timeline
+- configured id set — look it up in the provider map
+- id not registered — throw `WEB_PROVIDER_CONFIGURED_MISSING`
+- registered but `available()` false — throw `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`
+- registered and usable — select it; done
+- no configured id — keep only providers whose `available()` passes
+- zero usable — throw `WEB_PROVIDER_UNAVAILABLE`
+- several usable — throw `WEB_PROVIDER_AMBIGUOUS`, naming every id
+- exactly one usable — select it; done
+:::
+
 Three deployments are all legal at once, and the seam behaves differently in each:
 
 | Registered providers | `searchProvider` config | Behavior |
@@ -124,11 +163,18 @@ Exa, Perplexity, and DeepSeek's native search are not interchangeable drop-ins o
 - **Perplexity** exposes an OpenAI-compatible `POST /chat/completions` endpoint. It returns a *generated answer* (`choices[0].message.content`) plus citations, and — critically — has no result-count control on the wire, so `maxResults` is enforced only after the fact by seam truncation.
 - **DeepSeek** exposes no dedicated search endpoint at all. The provider issues a full Anthropic-compatible Messages API call with the native `web_search_20250305` server tool attached, so "one search" costs a complete model turn — real generation latency and tokens — not a retrieval call. It runs in **strict mode**: if the response carries no `web_search_tool_result` block, the provider throws rather than degrading to scraping URLs out of prose.
 
+:::decision
 These are genuinely different search-quality/API-shape/cost tradeoffs, which is exactly the case the [Agent Note's problem statement](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md#problem) says the seam exists to prove: supporting Exa and Perplexity from the start — "two deliberately different provider shapes" — is what demonstrates the normalized `WebSearchResult` contract doesn't just mirror one vendor's response. A single-provider design would have let `content`, `sources[].snippet`, and result-count semantics silently calcify around whichever vendor shipped first.
+:::
 
 ## Why fetch is a separate operation, not folded into search
 
-Fetching a known URL and searching for one are different problems with different security postures. Search returns *citations* — provider-controlled excerpts of pages the provider already crawled. Fetch retrieves an *arbitrary caller-supplied URL* directly, which makes `web_fetch` a live network boundary: the [`dsh-web-fetch-http` README](../../../packages/web/web-fetch-http/README.md) states plainly that "this provider is an SSRF primitive" until private-network blocking lands, and it currently ships with only same-origin redirect following, byte/character/URL-length caps, credential-in-URL rejection, and a real `User-Agent` — no DNS-resolve-then-validate, no per-hop re-validation, no blocking of loopback/link-local/private ranges. None of that transport hygiene is a search concern; search providers never touch the model's caller-supplied URL at all.
+Fetching a known URL and searching for one are different problems with different security postures. Search returns *citations* — provider-controlled excerpts of pages the provider already crawled. Fetch retrieves an *arbitrary caller-supplied URL* directly, which makes `web_fetch` a live network boundary.
+
+> [!LIMITATION]
+> The [`dsh-web-fetch-http` README](../../../packages/web/web-fetch-http/README.md) states plainly that "this provider is an SSRF primitive" until private-network blocking lands; it currently ships with only same-origin redirect following, byte/character/URL-length caps, credential-in-URL rejection, and a real `User-Agent` — no DNS-resolve-then-validate, no per-hop re-validation, no blocking of loopback/link-local/private ranges.
+
+None of that transport hygiene is a search concern; search providers never touch the model's caller-supplied URL at all.
 
 The responsibility split inside fetch itself mirrors the seam's general discipline: the provider owns safe *retrieval* (validation, transport, redirect policy, decoding, binary rejection), while `dsh-tool-web` owns *presentation* (HTML→markdown via turndown, truncation formatting). A non-2xx HTTP response is a **result** — status code plus decoded body — never a `WebError`; the error type is reserved for failures to safely retrieve or represent the resource at all.
 
@@ -169,4 +215,10 @@ async execute(args, exec) {
 
 ## What this seam deliberately does not expose
 
-Two omissions matter for reading the rest of the seam correctly. First, there is no capability-status query and no provider-change event: a caller "observes" availability only by executing and routing the thrown `WebError` code — the [seam's Known Limitations](../../../packages/web/web/README.md) call this out directly, along with the reference to the [dropped-observation-surface Agent Note](../../../.agents/notes/archived/simplification/2026-07-04-drop-unconsumed-web-observation-surface.md) recording why no consumer ever needed one. Second, `WebSearchRequest` carries only `query` and `maxResults` — no recency window, domain filter, or search-depth control reaches the seam, even though Perplexity's `searchRecency` and Exa's `searchType`/`highlightsPerResult` exist as *provider-private* config fields. A provider-neutral field is added only once every current search provider can honor it honestly; until then, provider-specific knobs stay out of the shared vocabulary rather than leaking through as optional fields only some providers fill in.
+Two omissions matter for reading the rest of the seam correctly — both are deliberate, and both are recorded in Agent Notes.
+
+:::fold[No status query, and a deliberately thin WebSearchRequest]
+First, there is no capability-status query and no provider-change event: a caller "observes" availability only by executing and routing the thrown `WebError` code — the [seam's Known Limitations](../../../packages/web/web/README.md) call this out directly, along with the reference to the [dropped-observation-surface Agent Note](../../../.agents/notes/archived/simplification/2026-07-04-drop-unconsumed-web-observation-surface.md) recording why no consumer ever needed one.
+
+Second, `WebSearchRequest` carries only `query` and `maxResults` — no recency window, domain filter, or search-depth control reaches the seam, even though Perplexity's `searchRecency` and Exa's `searchType`/`highlightsPerResult` exist as *provider-private* config fields. A provider-neutral field is added only once every current search provider can honor it honestly; until then, provider-specific knobs stay out of the shared vocabulary rather than leaking through as optional fields only some providers fill in.
+:::

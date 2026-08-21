@@ -10,6 +10,26 @@ module: execution-seams
 order: 9
 ---
 
+## The short version
+
+Everything in the harness that runs a child process or allocates a terminal — bash, the LSP host, the PTY shell backend, and three out-of-process subagent transports — spawns through one low-level seam, `ctx.subprocess`. Swap that single provider and every one of those Consumers moves to a different execution world at once; that fan-out, not any single Consumer, is the payoff. Layered on top is a second, smaller seam, `ctx.terminals`, for interactive sessions whose identity must survive across many tool calls rather than complete within one. This chapter covers the substrate first, then the session seam built on it.
+
+## At a glance
+
+Three terms organize the whole chapter — one execution world, two seams stacked vertically:
+
+:::concept{term="execution world"}
+The set of providers that agree on *where* processes run and files live. Point the filesystem and subprocess providers at a remote sandbox and Bash, PTY, and LSP move together — with no provider forks.
+:::
+
+:::concept{term="ctx.subprocess / SubprocessRuntime"}
+The low-level process-spawning seam: one abstract Service Definition with exactly three verbs (`resolveExecutable`, `spawn`, `spawnTerminal`), a local provider, and a remote (`e2b`) alternative.
+:::
+
+:::concept{term="ctx.terminals / TerminalSessionService"}
+A distinct, smaller seam built on `ctx.subprocess.spawnTerminal`: owner-scoped, persistent PTY sessions that accept many operations across separate tool calls until an explicit close.
+:::
+
 ## One execution world, two layers of seam
 
 [The capability seams primer](../s07-capability-seams-primer/README.md) worked through `ctx.shell` as the canonical three-role trio. This chapter goes one layer deeper: `dsh-bash-local` does not spawn processes itself. It resolves a `ShellExecRequest` into a `ShellExecSpec` and hands the actual spawning to a service it injects — `ctx.subprocess`. That service is a capability seam in its own right, and its Consumers are not limited to bash. The persistent-PTY backend, the LSP host, and three out-of-process subagent providers all spawn through the same `ctx.subprocess` seam, which is why `docs/architecture.md` states the payoff directly:
@@ -157,6 +177,17 @@ A one-shot `bash` call resolves a request, spawns, waits for `done`, and returns
 
 1. **Owner-scoped identity that survives.** `TerminalSessionService` "mints opaque session ids, routes creation through named backends, fences every operation to the exact live `Agent`." A `TerminalSessionId` is meaningless to any agent other than the one that opened it — `dsh-tool-terminal`'s README states this as a security property: "a model cannot address another agent's terminal even if it learns the id." An ordinary subprocess handle has no such concept; it belongs to whichever code called `spawn()` and typically does not outlive that call.
 2. **Multiple operations against one live session.** A subprocess handle is written once (or streamed once) and waited on. A terminal session accepts a `spawn`, then any number of separate `startSend`/`read`/`signal` calls across separate tool-call turns, until an explicit `terminal_close` — or the owning Agent disposing — tears it down. "One session accepts at most one live send operation... another send fails until the operation settles," which is a concurrency contract that only makes sense for a session meant to be reused repeatedly.
+
+### The session lifecycle, end to end
+
+A persistent terminal session has a defined shape from allocation to teardown — and unlike a one-shot `spawn`, every stage is a separate tool-call turn:
+
+:::timeline
+- terminal_open — route creation through a named backend; `ctx.subprocess.spawnTerminal` allocates the PTY and the service mints an opaque session id fenced to the exact owning `Agent`
+- terminal_send / terminal_read / terminal_signal — any number of operations across separate tool-call turns; at most one live send at a time, another send fails until the operation settles
+- terminal_close — explicit teardown, or the owning `Agent` disposing tears the session down
+- terminate escalation — disposal reaches every session member via the shared `SIGTERM` → `graceMs` → `SIGKILL` tree-termination verb, awaited to quiescence
+:::
 
 `dsh-terminal-bash` is the package that bridges the two seams. It `inject`s `['terminals', 'sandboxPolicy', 'subprocess']`:
 

@@ -9,14 +9,18 @@ module: foundations
 order: 2
 ---
 
-## Booting a profile is composing patch layers
+## The short version
 
-`dsh --profile web` does not launch a fixed binary with a fixed feature set. It resolves a directory, `$DSH_HOME/profiles/web`, and composes a plugin tree from the layers that directory names. The same mechanism boots `dsh --profile headless "run the tests"`, and it boots any profile a person creates by hand — there is no privileged, hardcoded composition inside `apps/cli` that the shipped profiles get and a custom one does not.
+`dsh --profile web` does not launch a fixed binary — it composes a plugin tree from ordered patch layers over an empty root. A *profile* is an ordinary directory naming which bundles to stack; a *bundle* is an ordinary npm package carrying one `cordis.patch.yml`. `--dump-config` prints the composed tree before anything boots. Read on for the fixed layering order, the three shipped bundles, and why an explicit list beats scanning `dependencies`.
 
-A profile directory holds two files: a `package.json` carrying a `dsh.profile` field with an ordered `bundles` list (plus whatever out-of-tree plugin `dependencies` pnpm manages there), and the profile's own `cordis.patch.yml`. Bundle names in that list resolve from the `dsh` installation first, then from the profile's own `node_modules`, so shipped bundles (`@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, `@deepseek-ai/dsh-headless`) always come from the same installation as the running `dsh`, while a plugin someone `add`ed comes from pnpm.
+## At a glance
+
+:::concept{term="profile"}
+An ordinary directory: a `package.json` carrying a `dsh.profile` field with an ordered `bundles` list, plus the profile's own `cordis.patch.yml`. It names which bundles to stack — nothing more.
+:::
 
 :::concept{term="bundle"}
-A bundle is not a special runtime concept — it is a distribution format. Any npm package whose manifest declares
+A distribution format, not a runtime concept. Any npm package whose manifest declares
 
 ```json
 "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
@@ -24,6 +28,16 @@ A bundle is not a special runtime concept — it is a distribution format. Any n
 
 is installable as one patch layer in a profile's `bundles` list. The two roles — `dsh.profile` for a profile's own manifest, `dsh.bundle` for a bundle's — live under distinct keys, so a `package.json` states unambiguously which one it is.
 :::
+
+:::concept{term="patch layer (cordis.patch.yml)"}
+The unit of composition: an ordered list of row `insert`s plus id-keyed overrides and disables. The bundles, the profile, the home directory, and each `--patch` flag each contribute one layer.
+:::
+
+## Booting a profile is composing patch layers
+
+`dsh --profile web` does not launch a fixed binary with a fixed feature set. It resolves a directory, `$DSH_HOME/profiles/web`, and composes a plugin tree from the layers that directory names. The same mechanism boots `dsh --profile headless "run the tests"`, and it boots any profile a person creates by hand — there is no privileged, hardcoded composition inside `apps/cli` that the shipped profiles get and a custom one does not.
+
+A profile directory holds two files: a `package.json` carrying a `dsh.profile` field with an ordered `bundles` list (plus whatever out-of-tree plugin `dependencies` pnpm manages there), and the profile's own `cordis.patch.yml`. Bundle names in that list resolve from the `dsh` installation first, then from the profile's own `node_modules`, so shipped bundles (`@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, `@deepseek-ai/dsh-headless`) always come from the same installation as the running `dsh`, while a plugin someone `add`ed comes from pnpm.
 
 ## The tree composes over an empty root
 
@@ -38,7 +52,8 @@ const PROFILE_ROOT_CONFIG = `# dsh profile root — an empty entry list. The tre
 `
 ```
 
-Nothing lives in that file by design — the whole composition is patches applied over `[]`, and the file exists only so the Loader has a real include root to anchor relative paths at the profile directory.
+> [!NOTE]
+> Nothing lives in that file by design — the whole composition is patches applied over `[]`, and the file exists only so the Loader has a real include root to anchor relative paths at the profile directory.
 
 ## The three shipped bundles
 
@@ -93,7 +108,10 @@ Nothing lives in that file by design — the whole composition is patches applie
 
 ## Layering order
 
-A patch either replaces a targeted row's whole `config` by `id`, or inserts new rows — there is no deep merge, so a profile override restates every field it wants to keep. Layers apply in one fixed order, and the same order governs both what actually boots and what `--dump-config` prints:
+> [!PITFALL]
+> There is no deep merge. A patch either replaces a targeted row's whole `config` by `id`, or inserts new rows — so a profile override restates every field it wants to keep.
+
+Layers apply in one fixed order, and the same order governs both what actually boots and what `--dump-config` prints:
 
 ```mermaid
 flowchart TD
@@ -173,13 +191,17 @@ The dump itself is produced by `runDumpConfig`, which loads the profile, turns e
 
 ## Why bundles and profiles, not a scan
 
-The design this chapter describes replaced an earlier, more implicit scheme, and the rejected alternatives are informative:
+:::decision
+Compose from one explicit, ordered `dsh.profile.bundles` list rather than scanning `dependencies` and guessing an order. A single deterministic source of truth beats two (the scan plus an implicit alphabetical tie-break), and it means a plain `pnpm add` installs a library and nothing more until you name it in `bundles`.
+:::
 
+The design this chapter describes replaced an earlier, more implicit scheme. The payoff for getting it right: a new composition surface — a TUI, a provider pack — ships as an ordinary npm package installable per profile, and the repository does not need a dedicated row or entry mode for every deployment shape. `apps/cli` itself shrank to argv parsing, profile-machinery consumption, and a thin pnpm forwarder.
+
+:::fold[The three rejected alternatives]
 - **Scanning `dependencies` for bundles, ordering the rest alphabetically** was the original sketch. It has two sources of truth (the scan and an implicit alphabetical tie-break) instead of one explicit, fully deterministic `dsh.profile.bundles` list. It also means a plain `pnpm add` inside a profile would risk silently activating a patch layer; under the shipped design, `pnpm add` installs a library and nothing more until you add it to `bundles`.
 - **`link:` entries for in-box bundles** were rejected because pnpm cannot version, install, or update a `link:` pointed at the dsh installation, and a `link:` bakes a machine-specific path into a file a person might commit or share. The two-anchor resolution (installation first, profile directory second) plus a healed `$DSH_HOME/profiles/node_modules` symlink fallback gives the same "bundles come from the installation" guarantee without either problem.
 - **Transitive bundle auto-application** — a bundle silently pulling in another bundle's patch through its own dependency graph — was rejected. Only bundles named directly in `dsh.profile.bundles` contribute a layer; a bundle that wants to re-export another bundle's rows must do so explicitly in its own patch file.
-
-The consequence: a new composition surface — a TUI, a provider pack — ships as an ordinary npm package installable per profile, and the repository does not need a dedicated row or entry mode for every deployment shape. `apps/cli` itself shrank to argv parsing, profile-machinery consumption, and a thin pnpm forwarder.
+:::
 
 ## Installing a bundle into a profile
 

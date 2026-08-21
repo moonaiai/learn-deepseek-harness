@@ -9,15 +9,33 @@ module: foundations
 order: 3
 ---
 
+## The short version
+
+`@deepseek-ai/dsh-session` keeps no mutable message array. A `Session` is an append-only log of typed `SessionEvent`s, and every view the harness needs — the LLM message history, the human transcript, the durable storage row — is a *projection* computed from that one log. This chapter traces the event vocabulary, the `append()` commit path, the `surface` projection that decides what the model actually sees, and the `fork()` and runtime-invariant machinery that all rest on the same primitive.
+
+## At a glance
+
+:::concept{term="Session"}
+An **append-only log of typed `SessionEvent`s** — the single source of truth for everything that happened in an agent's interaction. There is no separate "current state" to keep in sync: the log **is** the state, and every other view is a projection computed from it.
+:::
+
+:::concept{term="SessionEvent"}
+One shared envelope for every log entry: a discriminated union over `type` carrying `seq`, `time`, and `data`. Plugins extend the vocabulary by TypeScript declaration merging on `SessionEventMap`, without touching this package.
+:::
+
+:::concept{term="surface"}
+The ordered projection of the three message-producing events (`user/message`, `assistant/message`, `tool/result`) maintained incrementally on top of the raw log. It is what `deriveMessages()` reads; everything else in the log is log-only.
+:::
+
+:::concept{term="surfaceOp"}
+How a surface-eligible event joins the surface: `'append'` lands at the tail, `{ op: 'replace', start, end }` shadows an existing range. The raw log stays append-only underneath; only the projection changes.
+:::
+
 ## The array you'd expect, and the log you actually get
 
 Most agent frameworks represent a conversation as a mutable array of messages: push a user turn, push an assistant turn, splice in a tool result, and hand the array to the provider. It works until something needs to *observe* that history changing — a persistence layer, a telemetry pipeline, a replay tool, a second UI tab — and now you either poll the array or bolt a notification system onto every mutation site. The two representations (the array, and whatever your notifications said happened) can drift. A missed event, a dropped notification, a mutation that forgot to fire one, and your trace lies about what the model actually saw.
 
-`@deepseek-ai/dsh-session` avoids that problem by not having a mutable array at all.
-
-:::concept{term="Session"}
-An **append-only log of typed `SessionEvent`s** — the single source of truth for everything that happened in an agent's interaction, from turn boundaries and raw provider stream chunks to the assembled messages themselves. There is no separate "current state" to keep in sync: the log **is** the state, and every other view — the LLM message history, the human transcript, the durable storage row — is a *projection* computed from it. Divergence between what happened and what's recorded is not a bug you have to avoid; it's structurally impossible, because there is nothing else to diverge from.
-:::
+`@deepseek-ai/dsh-session` avoids that problem by not having a mutable array at all. Divergence between what happened and what's recorded is not a bug you have to avoid; it's structurally impossible, because there is nothing else to diverge from. The sections below define the vocabulary, then walk the mechanism top to bottom.
 
 ## `SessionEvent`: one append-only, merge-extensible union
 
@@ -64,11 +82,20 @@ export interface SessionEventMap {
 
 Two fields on the envelope do a lot of quiet work. `ignorable?: true` marks an event that a reader may safely skip when it doesn't recognize the `type` — absent means *required*, so meeting an unknown required type refuses reconstruction rather than silently resuming a gutted session (the [version-mechanism Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md) covers why the default has to be this way round). `sourceEventSeqs`/`surfaceOp` only type-check on `SurfaceEventType` members (`user/message`, `assistant/message`, `tool/result`) — the compiler itself rejects attaching surface metadata to `turn/start` or `assistant/chunk` at the `Session.append()` call site.
 
-The [generated persistence catalog](../../../../deepseek-harness/docs/persistence-catalog.md) enumerates every event type shipped in this repo — core and plugin-merged alike — each tagged `surface` or `log-only`, with its exact payload and declaration site. It's the reference to check when you need an exact field name; this chapter picks out the events that matter for understanding the mechanism, not the full inventory.
+> [!NOTE]
+> The [generated persistence catalog](../../../../deepseek-harness/docs/persistence-catalog.md) enumerates every event type shipped in this repo — core and plugin-merged alike — each tagged `surface` or `log-only`, with its exact payload and declaration site. It's the reference to check when you need an exact field name; this chapter picks out the events that matter for understanding the mechanism, not the full inventory.
 
-## `append()`: validate once, commit synchronously, notify after
+## `append()`: the life of one event
 
-`session.append(type, data, opts?)` is the only way an event enters the log:
+`session.append(type, data, opts?)` is the only way an event enters the log. One event's path through it is strictly ordered:
+
+:::timeline
+- validate — `snapshotJsonValue` checks `data` is lossless-JSON and copies it in the same pass
+- freeze — `deepFreeze` the event before anything can observe it
+- surface-check — `surfaceManager.validateNext(event)` rejects an illegal surface transition
+- commit — `this.log.push(event)`; the event is now durable history
+- notify — `session/event` fires synchronously, post-commit, fire-and-forget
+:::
 
 ```ts
 append<T extends SessionEventType>(
@@ -105,9 +132,7 @@ A few properties are worth naming explicitly:
 
 Not every logged event turns into something the model sees. Only three types — `user/message`, `assistant/message`, `tool/result` — are `SurfaceEventType`s, eligible to join the surface. Everything else (turn/step boundaries, raw stream chunks, `todo/write`, `request/header`, `session/end-seed`, and any plugin-merged log-only event) has no surface entry at all — it exists for replay, trace, and durability, and `deriveMessages()` never looks at it directly.
 
-:::concept{term="surface"}
-An ordered projection of message-producing events maintained incrementally on top of the raw log. Each surface-eligible event declares **how** it joins the surface via `surfaceOp`:
-:::
+Each surface-eligible event declares how it joins via `surfaceOp`:
 
 ```ts
 export type SurfaceOp =
@@ -232,11 +257,11 @@ This is not just a style preference — it's why the package's shipped `invarian
 
 ## Why event sourcing, and not a mutable array with notifications
 
-The [event-sourced-sessions Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md) records the alternative that was considered and rejected:
+:::decision
+The [event-sourced-sessions Agent Note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-06-11-event-sourced-sessions.md) records the alternative that was considered and rejected: **a mutable message array with events fired as notifications** — simpler, but state and log can diverge; with event-sourcing the log IS the state, so divergence is structurally impossible. The requirement driving the decision was blunt: the MVP needed strict event-based tracing with fully replayable sessions, and "usually in sync" is exactly the failure mode a trace-and-replay product can't tolerate. Making the log the state, rather than a shadow of the state, removes the category of bug rather than mitigating it.
+:::
 
-> **A mutable message array with events fired as notifications** — simpler, but state and log can diverge; with event-sourcing the log IS the state, so divergence is structurally impossible.
-
-The requirement driving the decision was blunt: the MVP needed strict event-based tracing with fully replayable sessions. A mutable array plus a notification stream can *usually* be kept in sync, but "usually" is exactly the failure mode a trace-and-replay product can't tolerate — one missed emit, one mutation that forgot to notify, and the durable record no longer matches what the model actually processed. Making the log the state, rather than a shadow of the state, removes the category of bug rather than mitigating it. The tradeoff acknowledged in the same note: derivation cost grows with log length, and the intended mitigation is compaction (`dsh-compaction`), not falling back to mutating the log itself.
+The tradeoff acknowledged in the same note: derivation cost grows with log length, and the intended mitigation is compaction (`dsh-compaction`), not falling back to mutating the log itself.
 
 ## How it fits together
 
@@ -256,8 +281,8 @@ flowchart TD
 
 A tool result, a summarized range, a resumed conversation, and a forked child are all the same primitive underneath: events land in one append-only log, a projection reads back exactly what it needs, and nothing that reaches the model exists anywhere the log doesn't already record.
 
-## Known limitations worth carrying forward
-
+:::fold[Known limitations worth carrying forward]
 - `SESSION_FORMAT_VERSION` is pinned at `0` pre-release: `Session` accepts only current-format seeds, and a backend refuses any other version by naming the direction (newer: upgrade; older: no migration ships yet). Ordinary event-vocabulary growth doesn't bump this — the per-event `ignorable` marker covers that instead ([version-mechanism note](../../../../deepseek-harness/.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md)).
 - `fork()` only cuts at stable boundaries of a **live** session in the store; forking a persisted-but-unloaded session is out of scope for the current API.
 - Session branching as a tree (multiple children fanning from arbitrary points, pi-style) is deferred — the shipped primitive is single-parent, boundary-based `fork()`.
+:::

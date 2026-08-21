@@ -10,7 +10,33 @@ module: execution-seams
 order: 10
 ---
 
-## No OS gives you one process-confinement primitive
+## The short version
+
+`ctx.sandbox` is the harness's process-confinement seam. One Service Definition (`dsh-sandbox`) fixes a deliberately narrow vocabulary — confine this exact argv under this file-effect mode — and one Service Provider (`dsh-sandbox-local`) dispatches that call to whichever OS-specific runner the host actually has: `bwrap`, Landlock, Seatbelt, or the Windows ACL token. Consumers such as `dsh-bash-sandbox` and `dsh-terminal-bash` call `ctx.sandbox.confine()` without knowing which runner answered. The seam's signature move is honesty: every runner reports its own enforcement completeness — `full` or `partial` — rather than hiding behind a uniform guarantee. Read on for why one seam needs three backends, how the platform dispatch works, and what `partial` really means on Windows.
+
+## At a glance
+
+:::concept{term="SandboxMode"}
+`read-only` / `workspace-write` / `danger-full-access` — the file-effect vocabulary, and nothing else. No network, process, syscall, device, or credential axis exists in this seam.
+:::
+
+:::concept{term="SandboxEnforcement"}
+`full` / `partial` — how much of the mode the selected backend actually verified. The chapter's signature: reported per runner, never papered over.
+:::
+
+:::concept{term="SandboxExecutionPolicy / SandboxPolicy"}
+The complete per-call confinement request: a mode plus the filesystem-canonical workspace root, carried per call rather than pinned on the provider.
+:::
+
+:::concept{term="ConfinedArgv"}
+What `confine()` returns: the wrapped argv to spawn instead, plus the backend's enforcement completeness, its denial dialect (`denialSignatures`), and structured runner-failure evidence (`runnerFailureRules`).
+:::
+
+:::concept{term="SANDBOX_UNAVAILABLE"}
+The fail-closed error thrown when no backend is usable — the seam never passes argv through unconfined.
+:::
+
+## Why one seam needs three backends
 
 Linux, macOS, and Windows each expose a different kernel-level mechanism for restricting what a spawned process can touch, and none of the three mechanisms is a drop-in substitute for either of the others. Linux offers `bwrap`'s mount-namespace bind profile and, underneath it, the Landlock LSM. macOS ships Seatbelt, a deny-by-default sandbox profile compiler wired through the (Apple-deprecated but still-shipped) `sandbox-exec` CLI. Windows has no equivalent sandbox profile language at all — its nearest primitive is a `WRITE_RESTRICTED` access token whose restricting SIDs gate write access at the ACL layer, a completely different shape of guarantee from a mount namespace or an LSM.
 
@@ -18,25 +44,7 @@ Linux, macOS, and Windows each expose a different kernel-level mechanism for res
 
 ## The Service Definition: `ctx.sandbox`
 
-[`dsh-sandbox`](../../../packages/sandbox/sandbox/README.md) owns `ctx.sandbox` and the shared confinement vocabulary:
-
-:::concept{term="SandboxMode"}
-`read-only` / `workspace-write` / `danger-full-access` — file effects only.
-:::
-
-:::concept{term="SandboxEnforcement"}
-`full` / `partial`.
-:::
-
-:::concept{term="SandboxExecutionPolicy / SandboxPolicy"}
-The complete per-call mode plus workspace root.
-:::
-
-:::concept{term="SANDBOX_UNAVAILABLE"}
-The fail-closed error thrown when no backend is usable.
-:::
-
-It depends only on Cordis and the harness error base — never on a backend.
+[`dsh-sandbox`](../../../packages/sandbox/sandbox/README.md) owns `ctx.sandbox` and the shared confinement vocabulary the cards above define. It depends only on Cordis and the harness error base — never on a backend.
 
 ```ts
 // packages/sandbox/sandbox/src/index.ts:158-176
@@ -113,7 +121,7 @@ private chainVerdict(): SelectedRunner | 'unavailable' {
 }
 ```
 
-## Stepping through the dispatch
+## The dispatch, step by step
 
 ```mermaid
 flowchart TD
@@ -143,13 +151,22 @@ flowchart TD
   cache --> wrap
 ```
 
-Three things this walk makes concrete:
+The flowchart is one ordered pipeline; here it is as a step-through you can run:
 
 :::timeline
-- Linux is the only platform that actually arbitrates — it has two candidates, so `bwrap` is tried first (spawning a real mount-namespace profile under `--ro-bind` / `--dev` / `--proc`) and Landlock is the fallback only if that probe fails; macOS and Windows each have exactly one candidate, so `chainVerdict` skips probing entirely and selects it directly, its own execution-time refusal failing closed rather than a preflight probe.
-- Selection happens once per provider lifetime, cached in `this.selectedRunner` — installing, removing, or repairing a runner requires reloading the plugin before selection changes, a known limitation rather than an oversight.
-- A platform absent from `PLATFORM_CHAINS`, or a chain where every candidate probes `unusable`, fails closed with `SandboxUnavailableError` and the `SANDBOX_UNAVAILABLE` code — never a silent unconfined passthrough.
+- `confine(argv, policy)` called — a Consumer hands over the exact argv it is about to spawn
+- runner cached? — reuse the `SelectedRunner` chosen once for this provider's lifetime, else select it now
+- dispatch on `process.platform` — `linux` / `darwin` / `win32` each name a candidate chain; any other platform fails closed
+- probe only where a platform has two candidates — Linux spawns a real `bwrap` mount-namespace profile; Landlock is the fallback
+- select and cache — the surviving runner plus its `SandboxEnforcement` is stored for the provider's whole lifetime
+- wrap and return — the caller spawns the wrapped argv and reads the reported enforcement back off `ConfinedArgv`
 :::
+
+Three things that walk makes concrete:
+
+- **Linux is the only platform that arbitrates** — it has two candidates, so `bwrap` is tried first (spawning a real mount-namespace profile under `--ro-bind` / `--dev` / `--proc`) and Landlock is the fallback only if that probe fails; macOS and Windows each have exactly one candidate, so `chainVerdict` skips probing entirely and selects it directly, its own execution-time refusal failing closed rather than a preflight probe.
+- **Selection happens once per provider lifetime**, cached in `this.selectedRunner` — installing, removing, or repairing a runner requires reloading the plugin before selection changes, a known limitation rather than an oversight.
+- **A platform absent from `PLATFORM_CHAINS`**, or a chain where every candidate probes `unusable`, **fails closed** with `SandboxUnavailableError` and the `SANDBOX_UNAVAILABLE` code — never a silent unconfined passthrough.
 
 ## Enforcement completeness: `full` versus `partial`, reported honestly
 
@@ -171,8 +188,7 @@ Windows ACL is the one runner whose table entry is unconditionally `partial`, an
 
 This is the theme worth naming precisely: every runner in the chain reports what it actually verified, not what the mode vocabulary would like to promise. A consumer that needs an absolute boundary reads `result.sandbox.enforcement` and can choose to reject a `partial` result rather than silently trusting it as if it were `full`. Nothing in the seam papers over the difference — the Landlock launcher's own stderr and the Windows ACL provider's own README both say `partial` in as many words.
 
-## The Windows ACL mechanism, precisely
-
+:::fold[The Windows ACL mechanism, precisely]
 Windows has no Landlock or Seatbelt equivalent, so [`dsh-sandbox-windows-acl`](../../../packages/sandbox/sandbox-windows-acl/README.md) builds directly on a lower-level primitive: `CreateRestrictedToken` with the `WRITE_RESTRICTED` flag. The mechanism, in the package's own words:
 
 > "the caller's token is duplicated into a `WRITE_RESTRICTED` token whose restricting SIDs carry separate workspace and private-temp capabilities... Windows grants a write only where BOTH the caller's normal access AND the restricting-SID intersection allow it."
@@ -184,6 +200,7 @@ The restricted-token approach is a deliberate design choice recorded against two
 `workspaceWriteSid` is derived deterministically from the canonical workspace path, so its ACE materializes once per workspace per machine and every later session or restart hits an "exact-ACE skip" instead of re-propagating permissions across the whole directory tree. `tempWriteSid` is different by design: every live session/workspace pair gets a fresh, randomly located private temp directory and its own derived SID, so sessions sharing a workspace share its intended write authority without inheriting each other's temp authority. This is a Node.js/[koffi](https://koffi.dev/) port of the mechanism demonstrated in `huoyaoyuan/windows-acl-restrict-poc` (pinned revision `10e4dfb`).
 
 The runner it produces is the same architectural shape as the POSIX runners: an argv-prefix wrapper (`node runner.js --workspace <dir> --temp <dir> --mode <mode> [--write-sid ... --temp-write-sid ...] -- <argv...>`) that `dsh-sandbox-local` spawns in place of the caller's command, so `ctx.sandbox.confine()`'s contract needs no per-platform special case at the call site — only inside the dispatcher shown above.
+:::
 
 ## Not a seam: `ctx.sandboxPolicy`
 

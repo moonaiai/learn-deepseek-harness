@@ -10,6 +10,30 @@ module: orchestration-and-capstone
 order: 24
 ---
 
+## The short version
+
+This chapter runs one command — `pnpm dsh --profile headless "task"` — end to end, and uses that single run to revisit every earlier chapter. It traces how the `headless` profile composes, what one real turn actually does, which tools and delegation surfaces mount, and where the session finally persists. Along the way it sorts what the run boots into genuine capability seams versus non-seam machinery — the same test this course has applied to every chapter.
+
+## At a glance
+
+Four terms carry the chapter. Two are the operational vocabulary of this one run; two are the analytical lens it uses to take stock of what mounted.
+
+:::concept{term="headless profile"}
+The `headless` profile is `dsh-base` stacked with `dsh-headless`: a one-shot Agent driver with no Host, HTTP server, or browser client — one task in, one printed answer out.
+:::
+
+:::concept{term="overlay"}
+An overlay is a named `*.cordis.yml` beside the base composition that inserts, overrides, or disables exactly the rows needed to demonstrate one feature in isolation — most run keyless against a replay/fixture backend.
+:::
+
+:::concept{term="capability seam"}
+A capability seam is a mounted Definition with sibling, swappable Providers — in this run `ctx.shell`, `ctx.fs`, `ctx.subagents`, `ctx.workflowEngine`, `ctx.compaction`, `ctx.sessionPersistence`. A different Provider (E2B filesystem, a different persistence backend) drops in without the tools or `headless-runner` changing at all.
+:::
+
+:::concept{term="non-seam mechanism"}
+A non-seam mechanism is machinery with no second, swappable implementation: the event-sourced session log (one `Session` per agent), the single `ctx.tools` registry, and `todo_write` — a Consumer sitting on top of the seams, not a seam of its own.
+:::
+
 ## What one invocation actually boots
 
 ```sh
@@ -66,7 +90,9 @@ The positional task argument reaches the runner through Cordis's dependency grap
 
 The shipped bundle mounts no Host, HTTP server, Web runtime, or browser plugin at all — this is a direct Agent driver, not a second product entry point wearing a different UI.
 
+:::fold[How the example composition maps to the real profile]
 The `examples/headless-agent/cordis.yml` composition used through the rest of this chapter mounts the equivalent rows directly (no `include` of the bundle patches), so its ids match one-to-one with what `--dump-config` would print for the real profile: `settings`, `credentials`, `llm-deepseek`, `subprocess`, `bash`, `agent-spine` (a demo stand-in for `dsh-agent`/`agent-default-model`/`headless-runner`), `persistence`, `checkpoint-policy`, `token-meter`, `compaction-basic`, `session-projection`, the subagent/workflow/todo rows, and the filesystem stack. The generated diagram at `examples/headless-agent/composition.md` renders this same list as a flowchart with every plugin id and package name — worth opening once to see the whole tree at a glance rather than reading it row by row here.
+:::
 
 ## One real turn (back to s04)
 
@@ -80,7 +106,9 @@ Once the tree settles, `headless-runner`'s `run()` function (`packages/bundle/he
 
 Nothing in this sequence bypasses the turn/step lifecycle: `agent.followup()` opens exactly the turn machinery described in Chapter s04's `turn()`/`step()`/`preStep()` walkthrough — `turn/start`, one or more `step/start`/`step/end` pairs interleaved with tool dispatch, and a `turn/end` whose `reason.kind` (`completed`, `error`, `max-tokens`, `blocked`, `aborted`) is exactly what `headless-runner` reads to decide its own process exit code. A `completed` reason exits `0`; anything else exits `1`, and an `error` reason additionally writes its code and message to stderr — a successful run's stderr stays empty.
 
+:::fold[Seeing a full turn as a JSONL stream]
 The snapshot test fixture in `examples/headless-agent/tests/fixtures/headless-driver.ts` makes this literal: it boots the same kind of composition, drives one fixture turn, and streams every `SessionEvent` as JSONL to stdout before a final result record — that JSONL stream is test-only infrastructure, never a supported CLI output format, but it is the fastest way to actually see a full turn's event sequence (`turn/start`, `agent/inbox/spliced`, `step/start`, `user/message`, the runtime-context snapshot, `assistant/message`, `tool/call`/`tool/result` pairs, `step/end`, `turn/end`) laid out one JSON object per line.
+:::
 
 ## Which tools are on the table, and why (back to s06/s07)
 
@@ -152,14 +180,6 @@ The two examples share the same DeepSeek adapter, the same sandboxed bash/filesy
 ## What actually mounted: seams versus non-seams
 
 Naming the composition's rows against the seam/non-seam vocabulary this course has used throughout makes the inventory concrete rather than abstract. This one `headless` run mounts real capability seams — `ctx.shell` (`dsh-bash-local` as the Service Provider), `ctx.subprocess` (`dsh-subprocess-local`), `ctx.fs` (`dsh-fs-local`), `ctx.subagents` (`dsh-subagent-spawn-in-process` and `dsh-subagent-fork-in-process` side by side), `ctx.workflowEngine` (`dsh-workflow-worker-thread`), `ctx.compaction` (`dsh-compaction-basic`), and `ctx.sessionPersistence` (`dsh-session-persistence-jsonl`) — each swappable for a different Provider (sandboxed bash, E2B filesystem, a different persistence backend) without `dsh-tool-bash`, `dsh-tool-fs`, `dsh-tool-subagent`, `dsh-tool-workflow`, or `headless-runner` itself changing at all, exactly as the `e2b.cordis.yml` overlay demonstrates for three of these seams at once.
-
-:::concept{term="capability seam"}
-A capability seam is a mounted Definition with sibling, swappable Providers — `ctx.shell`, `ctx.fs`, `ctx.subagents`, `ctx.workflowEngine`, `ctx.compaction`, `ctx.sessionPersistence` here. A different Provider (E2B filesystem, a different persistence backend) drops in without the tools or `headless-runner` changing at all.
-:::
-
-:::concept{term="non-seam mechanism"}
-A non-seam mechanism is machinery with no second, swappable implementation: the event-sourced session log (one `Session` per agent), the single `ctx.tools` registry, and `todo_write` — a Consumer sitting on top of the seams, not a seam of its own.
-:::
 
 Just as concretely, this run also depends on mechanisms this course deliberately did not frame as seams: the session log itself (one `Session` per agent, event-sourced, with no alternate "session implementation" to swap); the guarded tool pipeline (`ctx.tools` is a single registry, not a Definition with sibling Providers); and `todo_write`, which — like the rest of the composition's model-facing tools — is a Consumer sitting on top of these seams, not a seam of its own. Telling the two apart is not a pedantic distinction: it is the same test this course has applied to every chapter — does a second, swappable implementation actually exist and matter — and a single `dsh --profile headless` run happens to exercise both kinds side by side.
 
